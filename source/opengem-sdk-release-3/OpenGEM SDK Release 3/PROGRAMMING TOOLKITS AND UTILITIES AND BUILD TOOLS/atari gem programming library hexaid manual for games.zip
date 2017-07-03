@@ -1,0 +1,1198 @@
+								HEXAID
+							  RPG Creator
+							   Version 2x
+								Manual
+							   06/7/2001
+
+				Standard Disclaimer (and a bit more)
+
+	This program and associated files may be distributed freely as a unit, 
+by individuals to individuals. I am not responsible for any damage caused 
+to the user's equipment, nor am I aware of any possibility of damage.
+	Any modification to the program or files must be documented in a file 
+which is part of the new version. I specifically forbid any modification 
+which is intended to cause damage to the user's equipment, or to the user.
+
+			Autobiographical introduction (May be skipped)
+
+	I like programming; I don't have to do it for a living, so I suppose it 
+counts as my favorite computer game. I also like fantasy literature.
+	My first programming experience was on a borrowed ZX80 in Basic; a 
+version of Mastermind.
+	I then built a Microtan 65 from a kit, and since I couldn't afford the 
+optional Basic in EPROM, added a home-built EPROM programmer, learnt 6502 
+assembly language and wrote my own higher level language, which was sort of 
+like Forth. I used this for writing programming tools and a few games.
+	Next was a second hand Vic20, with Basic as standard. Personal Computer 
+World gave the Basic source for a role playing game for the Pet, which I 
+heavily modified, and I played my first CRPG! I also bought some adventure 
+games on cartridge or tape.
+	A tape given by a friend turned out to be for the C64, so I bought a 
+shop-soiled C64 from another friend. I naturally started to transfer my own 
+CRPG to the C64, but never finished it because so much of my time was spent 
+on playing purchased CRPGs, particularly after I bought a disk drive.
+	We are now approaching modern times; I had gone from 1k of RAM and a 
+cassette drive to 48k and a disk. Then the disk drive broke, and I decided 
+to buy a new, modern computer rather than replacing it. The ST was cheaper 
+than the Amiga, so that was that; of course, I really wanted a Mac.
+	Basic was starting to get a bad name, and ST Basic was a particularly 
+loathed example, so I decided that it was time to switch to C, and to help 
+me learn it I would program a role playing game.
+	A few years down the line I had, without realizing it, programmed 
+myself into a corner. Most of my time was being spent on improving my fight 
+and movement algorithms and blitblock routines in Assembly. I didn't really 
+have a story, and wasn't sure how to twist what I had written to give me 
+one. Something was needed to save me from myself.
+	The deus cum (Latin joke) machina was Atari Corp, which was being run
+(into the ground) by the Tramiel family, and my gratitude is reflected in
+the name of this gaming system. I sold my ST to buy a second hand STE, and
+it trashed my hard disk - a known bug. I then discovered that the only 
+working copy of my backup program had been on the hard disk! (Do laugh, 
+then check the backups in your own tin box; when did you last test them?)
+	I had lost everything, my programming environment, my tools and my 
+graphics, so I had to start from scratch. On another unidentifiable 
+computing platform I had been looking at RPG construction kits, CASE tools 
+and HTML, and got the Great Idea; you break the problem into bits, and use 
+tools to make the bits and a shell to stick the bits together.
+	I also decided to use only C, as near ANSI as I could stomach, with 
+simple graphic and fight routines, and get something to work before I began 
+to 'improve' it. Those resolutions I have bent, but not broken - yet.
+	So I bought a copy of Lattice C 5 from someone who had decided GEM 
+programming was too hard, and (you'll love this) was going to learn Windows 
+programming instead. The rest, as they say, is history. (Actually, the bit 
+above is history; the rest is the manual proper. But that's what they say; 
+shows how much they know, doesn't it?)
+
+							Overview
+
+	HEXAID (HEX-based Adventures In Dungeons) is a program for making and 
+editing objects which are used by a shell to run roleplaying games - 
+Untramielled Adventures. There are no provisions for creating graphics or 
+sounds; other utilities are used for these, as will be explained later in 
+this manual. The objects which HEXAID creates are interlinked in several 
+ways; this also will be explained later.
+
+						System Requirements
+
+	An Atari ST or STE with 1MB of Ram and a color monitor would be the
+ideal. As an alternative, I found that a device I bought for my children to
+play games on had a limited capacity to take instruction, increased if it
+used Linux. If you have one of those, you could try it, I suppose. They're
+called IBM PC's, and you'll probably find one in the dodgy shop next to the
+adult bookstore.
+	If you go down that road, you'll probably need the Allegro library as well,
+definitely if you want to build your executables from source.
+
+						 User Requirements
+
+	No programming experience is necessary for using HEXAID. But I have to 
+point out that no programming experience is necessary for programming. If 
+you don't have the quirk that makes people into programmers, you won't 
+manage this either.
+	Some imagination might be useful for plot creation, but I don't have 
+any, so that proves it's not essential.
+	A set of graphics and tunes is needed, but they don't have to be of 
+excellent quality. I wish mine were, though.
+
+							  Object Types
+
+	Because the objects are so interlinked it is difficult to know where to 
+start. It would be as well to read the next few paragraphs in one lump the 
+first time through.
+
+CELL. A position within a Hex; for example, where your party stands. Each 
+cell is hexagonal, so has 6 neighbours.
+HEX. A group of 300 cells. A not quite symmetrical hexagon which is either 
+a World or part of one. You can't tile a plane or a spheroid with 
+symmetrical groups of hexagons, so the asymmetry was necessary.
+TERRAIN. A piece of ground, its type, effect, etc. There are 48 terrains 
+per World, so there can be 48 types of Cell.
+SHAPE. Not manipulable by HEXAID. A group of graphics which is associated
+with a terrain, making the scenery.
+WORLD. A city, dungeon or continent and everything in it; the basic
+playing area. There has to be at least one World, and there can be up to
+32, each holding up to 48 terrains and 48 gates - entrances to other
+worlds or other parts of the world. A world can have more than 72 items
+during play, but must start with 72 or less.
+MAP. The graphic representation of a World; either 1, 2-8 or 9-108 hexes, 
+with 48 possible values for each cell. What actually happens on a cell is 
+decided by other objects, but cells of the same value in the same map
+share the same Terrain. The graphics in the map generators are mnemonics
+for properties I have decided on, and can be changed with a PCX editor.
+PICTURE. Not totally manipulable by HEXAID. This includes a palette as
+well as a graphic of 152*128 pixels. Any item can have a picture
+associated with it. Some pictures are used for default situations like
+camping or looting. Each world also has a background picture on which the 
+shapes are drawn.
+GALLERY. A collection of pictures. 128 general pictures are allowed, the 
+biggest single diskspace user in the game, but only 14 backgrounds. Only 
+one of each is in memory at a time.
+SONG. Background music in midi format. Different Songs can be used for 
+different worlds and for events like fights. The limit is 14.
+TEXT. A set of 16 lines of 64 characters or one of 1039, depending. There 
+is a maximum of 134. Some of them are used for reporting occurrences in the
+game, but most are attached to items, as description or dialog. Codes in a
+text can be used to change other elements.
+SPELL. A spell, or rather its name, effect, cost etc. There can be 32 of
+these.
+ITEM. An object, event or person. They can be of several types and
+subtypes. There are 72 allowed for each world, though more can be added
+during play. They are also found in Baggages.
+RANDOM. A random monster, similar in structure to an item, but produced 
+from a set of 128 encounters. All are hostile, but they differ in their 
+characteristics and in the worlds and terrains where they appear. The 
+appropriate ones for a world are loaded with the rest of the world.
+COUNTER. An event which can be triggered. What happens then can be any or
+many of a lot of possibilities. There are 32 of these.
+FLAG. 16 flags can be set and unset during the game. They determine whether
+items can be experienced or terrains entered.
+BAGGAGE. The set of items and spells associated with each item for which 
+this is appropriate, shops, temples, randoms etc. There are 128 allowed, 
+the first of which is used as a template for the Baggage of a new character 
+in the game.
+
+							Using HEXAID
+
+	Aside from the graphic and music portions everything is editable. Some 
+selections can only be made from the menu, others only within the objects 
+they are part of, but many can be approached in both ways. Thus you can
+edit an item in the general collection, in a world or in a baggage, but
+only the first is on the menu; also, you can, while editing a world's
+items, select one from the general collection and use it in the world.
+	But you cannot build or test a map outside the world or worlds it is
+associated with, or edit a battlefield outside its item. I hope to remove
+these restrictions when I can come up with a reasonable and safe method.
+
+						What You Get To Start
+
+	The Hexaid folder contains subfolders:-
+	design - a convenient place for the design document you need for editing a
+game, though not for playing.
+	screens - the design screens for the various types of world maps.
+	defaults - libraries of default graphics and the three basic tunes.
+	demo.dsn - a sample game.
+
+	I assume you have already played 'Escape from Demon's Trandum' or some 
+other Untramielled Adventure.
+
+							Main Menu
+
+	The menu bar contains a Fuji (the Atari logo), Design, where you start or
+load a design, alter some of its parameters or save the game.ini, Structures, all the editables,
+Reports, which  produces lists of the editables and of where texts, pictures
+and baggages are used, and Import for adding files from elsewhere. Clicking on
+the fields under Structures loads, if necessary, the appropriate listfiles and
+brings up a dialog box where you can select one.
+
+							Starting a Design
+
+	Create brings up a small box where you can enter the name of your new
+design document, yourgame.hex. You then get the global editor with various
+defaults filled in; selecting any of the boxes at the top will show what has
+already been set under that heading, and let you change it.
+
+	Very little should be done with the Item Types, as their behavior is
+hardwired or cosmetic, eg the various subtypes of Person won't change their ways
+if you call them nasty names, and Traders won't buy items of a type or subtype
+they don't sell. You can, however, fit them to your own convenience, so you are
+reminded that Rifles are HiTech, instead of Staffs being Magical.
+
+	Amulet subtype names will appear in the player's inventory, so your Boots of
+Speed won't be described as a Ring if you remember to change that subtype in
+yourgame.hex.
+
+	World Types are totally freeform, but none of the names you use will have
+any meaning beyond what you decide, and will only keep random monsters within
+defined areas.
+
+	Folders are where Hexaid and Hexplay look for databases and non-default
+art, where Hexaid looks for mapscreens, and where Hexplay puts saved games.
+
+	The folders used in yourgame.hex can have any names you like, or you can
+have everything in the one folder. A / at the beginning of a folder name lets
+you have it anywhere; otherwise it is contained in the folder you run from.
+They are used when looking for, in order:
+
+	worlds		The database of towns, dungeons etc.
+	texts		Various texts.
+	holdings	The possessions of the various NPCs
+	spells		The spell names, restrictions and effects.
+	monsters	Random monster characteristics.
+	counters	Ways of counting events and reacting.
+I call this folder 'statics'.
+
+	pict*.blt	Pictures of the various characters and NPCS.
+	back*.blt	Backgrounds for the world view.
+	*.spr		Sprites for the battlers.
+These are called 'effects'. Hexaid doesn't really manipulate these
+files; it only assigns them.
+
+	*.map		Maps of the different areas, or 'worlds'.
+These go in the 'worlds' directory.
+
+	*.shp		Graphics for the scenery.
+These are put in the 'shapes' directory, which is likely to be reusable
+across games, but if not, can be the same as 'effects'.
+
+	The text files generated by the report writing section, including the 
+game.ini. For some reason I call this 'reports'.
+
+	smallmap	Design screen for single hex world.
+	midmap		Design screen for multi-story world.
+	bigmap		Design screen for multi-hex world.
+	scenery		Design screen for battle scenery.
+	arenas		Design screen for battles.
+These 'screens' are called up from time to time during editing. Only scenery
+matches anything in the game, but it's convenient to have the option of
+different screens for different designs.
+
+	Because changing the folders where Hexaid loads and saves gamedata in
+mid-edit is a bad idea (trust me on this), some of the folders can only be
+changed the first time yourgame.hex is edited.
+
+	Make Ini creates a game.ini for the current game, ensuring that data that
+are common to both game and generator are passed on so that Hexplay can load
+them.
+
+	Both of the files are saved as text, so they can be re-edited by hand. If
+you feel you must do this, be aware that the separators are all tabs, not
+spaces. After the first time, also, the global info will be saved as
+yourgame.hey and must be renamed.
+
+
+							  Editing Items
+
+	The Item Editor can be accessed from the menu, giving you the general 
+complete list, or from the baggage or world editors, with the appropriate
+lists. The title line tells you where you actually are.
+	The names for item types and subtypes come from yourgame.hex, but their
+behavior, like the spell effects, is hardwired into the program. Some of the
+stats also have different meanings in different types.
+	Codes, if used, normally link 2 or more items, and 255 are possible. 
+Items may be destroyed in certain worlds, based on whether their codes are 
+above 127. This is mainly to facilitate the making of special weapons for
+special places.
+	The item types and subtypes will be dealt with in order, because I 
+think (hope) that that will make the editing of them easier to understand.
+	Nothing: shorter than Miscellaneous. It is used for keys, torches, 
+quest objects and anything else you like. Keys need the right Code, and a 
+defined number of uses, after which they disappear. Quest objects just have 
+to have the right name. Torches can be used once and last for their Light 
+value in game minutes. Broken weapons are Nothing of subtype Rubbish, and 
+will disappear if replaced; this stops them from cluttering up the game.
+	Edible: Food and Drink. What actually makes a food is having a food 
+value. The game characters can manage on one meal a day, but they can't get 
+a good night's sleep or pray if they're hungry. There is a hidden variable 
+to ensure that when a character finishes his first packet of iron rations 
+and it disappears, the food value of the rest is recharged. Drink I use 
+only in Inns.
+	Edibles reduce Fatigue, so eating will refresh statistics. They can 
+also have an effect; if so, they also need a power. Such edibles can be 
+Used if their locales include Travel; Feed only looks for the first edible 
+in the backpack; it's your problem if the effect is undesirable or wasted.
+	Weapon: Something intended for hitting other things with. A weapon has 
+a Hit value, the amount of damage by which it multiplies an attack (halved 
+if the weapon is in the left hand), and a Protection, the amount which it 
+contributes to the wielder's defence by worrying the opposition. Actually, 
+anything can be used as a weapon; decide how little you would like to be 
+hit by it and rate it accordingly. As an aside, I find it odd that a 
+culture which believes that small, unimpressive projectile throwers called 
+'guns' are a necessity for defence in real life denies that a sword is a 
+better defence than a toothpick in its games. Some weapons are made largely 
+or entirely of wood, which means they can realistically be given a Light 
+value for Use as torches; there is no need to tell the player!
+	Armor: Something that does a better than average job of covering up the 
+squidgy bits, so naturally the Cover value is the important one.
+	Shield: The Shield value of the object in the left hand is calculated 
+as part of the general defence. It can also be used to hit people. (This is 
+wrong! The Greeks and Romans knew that a soldier who had thrown away his 
+shield had stopped fighting. Your shield was your primary offensive weapon, 
+mainly just because it got you close enough to use your others, sometimes 
+because it knocked the enemy opposite you out of the line and sometimes 
+because it knocked him down and then you and the three behind you stamped 
+all over him with hob-nailed boots, and if the sergeant had time and mercy 
+he would give a quick jab with his gladius to finish it.) I may amalgamate 
+Shield and Protection later, or complicate the whole thing in the direction 
+of reality.
+	Amulet: Something that can be worn in the relevant equipment slot. All 
+player statistics have maxima which get refreshed up to by rest. When these
+maxima are calculated, any amulet values are added on. The names you choose
+for Amulets are the only ones that are carried on into the game.
+	Writing: Anything whose purpose is to print a single text. Caption 
+differs from Notice in that the message in the game is not preceded by 'You 
+read:'. It should usually have as the first character of its name an 
+underline (_), as this disables the 'You see' which you normally get in a 
+cell adjacent to an object when facing in the object's direction. Only one 
+line is printed, but that can be the total text. Captions are handy for
+changing anything that can be changed; if the party meet the caption, they
+have automatically satisfied all the conditions.
+	Fight: A non-random Random. It won't actually attack unless you move
+into the same cell; I assume the party is moving stealthily. It is removed
+after the fight; whether it will reappear the next time the party enters
+that dungeon depends on its subtype. If it has a non-zero Fightfield then a
+pregenerated battlefield will be used. Items 13 and 14 in its pack, if
+present, must also be Fights as they will join in the battle. It can have a
+text and picture.
+	Person: An NPC. The various subtypes have different behaviours, but 
+they should all have a picture, a text, a contents and an effect\attitude 
+which changes their greeting to the party. Person and Fight names are
+printed in 'You see' statements as is, so if you want an article, it has to
+go in the name.
+	If a line of text is not listed as used in the descriptions that follow 
+it can be amalgamated with the one above, as explained in 'Editing Texts'.
+	Guard: A Person who stops you going any further. The first line of the 
+text is his challenge. For the rest, if what you type matches the first 8 
+characters or to the wildcard of a line, he says the rest of the line, and 
+if not he says the 16th line. If one of the lines he says contains '#m' the 
+Guard will be 'disappeared' and you can pass after the conversation.
+	Shop: A place to buy the goods in the Contents. The greeting depends on 
+whether you bought anything on your last visit. The first line of the text 
+is the 'come-hither'. The second is for selecting a customer if the answer 
+to the first is 'Yes', and sets up the selected party member for any later 
+use. The third is a farebadly line if the answer is 'No' or nothing is 
+bought, and the fourth is for after something has been bought. The fifth 
+and sixth are called if the customer has no money or no room. The seventh 
+cycles back to the second.
+	Normal: Just someone to talk to. He or she greets you first, then 
+responds like a Guard, but doesn't stop you going past.
+	Seeker: Someone who wants something. The first seven items in his pack 
+are the things he wants, and their costs are what he will pay. The next 
+seven are what he will give in return; if any of these is called 'THE END' 
+the endgame is called. The first line of text is a general request for aid, 
+used for the first quest in the baggage; the fifteenth may be used when all 
+his quests are completed and the fourth if you visit him after that. The 
+second line details the current quest; the variables current object 
+(=quest), current object's cost and current item (=reward item) are set 
+before this line appears, so it can be fairly specific. The third line is 
+used when the quest is satisfied, that is, when one of the party has an 
+object with the same name as the quest in his pack. The fifth line is used 
+if a quest is turned down and the sixth if you meet him again before it is 
+completed. The eighth to fourteenth lines are printed when the appropriate 
+quests are completed or can be left blank.
+	Beggar: Someone else who wants something - in this case, money. If he's 
+not given some, he says at random one of the last three lines of his text; 
+otherwise, he says a random line from the middle.
+	Inn: Like a Shop, except that you don't actually get to keep what it 
+sells unless you have serious genito-urinary problems, and it dispenses rumors
+with its wares. The dialog is the same, with the line about no room missed
+out, and the seventh line on printed when the appropriate drink is purchased,
+which means there should never be more than 10 items in the backpack. A drink
+will reduce fatigue. Trust me on this.
+	Oracle: Tells you part of the plot (if any), or some other long screed.
+The first line of text is used for the first meeting. The last is used for
+any subsequent meetings.
+	Temple: A place of prayer and healing. The baggage should contain 
+Scrolls whose names mirror their effects and with costs appropriate to the 
+healing. I don't cater for multiple spells and only actually charge for 
+real healing spells; if you decide a player can have his party poisoned, 
+it's free! The first question asks for a patient; the second asks for a
+payer. The fifth line goes with the actual cure, while the third is for
+when the payer can't pay and the seventh for when the selection is no
+use. The fourth line is leavetaking, and the eighth is used every game
+hour the party stays. An hour of prayer is equal to one of sleep. The
+sixth line recycles back to the beginning.
+	Resting can only be done at night or in temples, but because the first
+doesn't always happen when you want it, and a full-blown church of good
+priests is a bit unlikely in the middle of the Palace of the Evil Overlord,
+a temple with the first baggage will use only the first and eighth lines, and
+let the party rest till nightfall or a mouse or key click. Of course, they
+still have to find it.
+	School: Where spells are learned. The spells are whatever ones are 
+marked in the school's spellbook. There are two costs to learning; the 
+first is taken from the PC's mana level, and is the casting cost squared; 
+the second is 16 times the casting cost in GP and comes from his purse. The 
+first two lines select a learner, and the fourth is for leaving after he 
+learns a spell. The third, fifth, sixth and seventh are for wrong answers, 
+selecting a known spell, insufficient mana and insufficient funds.
+	Because of graphics text limitations it was easiest for me to have the 
+party leave after learning only one new spell. In my games I gloss over 
+this by making teachers irascible and brusque; nothing like real life.
+	Trader: A shop which buys as well as selling. The first two lines 
+determine which and select a customer. The third to sixth lines are the 
+same as for shopping. A figure of 255 in the stock list will never run out. 
+A Trader will buy anything of the same type and subtype as what he sells; 
+if he sells swords, he buys swords. If the item bought is the same as the 
+current stock and the count is 255 it disappears; otherwise it is added to 
+the count. If it's slightly different it is added to the Contents unless 14 
+items has been reached, when it is turned down. Lines seven and eight deal 
+with these contingencies. So if one trader buys a new item from you, all 
+traders with the same backpack have it; on the other hand, you can only buy 
+it back from one of them. I haven't implemented haggling; to me it's no fun 
+the first few times and a dead bore the next thousand.
+	Riddler: Another stopper. The first 13 lines are the actual riddle;
+the next is the answer, and should be less than 25 characters. The last
+two are the responses to right and wrong answers.
+	Thief: Exactly like a Normal, except that there is a 50% chance he will 
+disappear after a conversation, taking a purse with him.
+	Casino: Useless, but possibly entertaining - a bit like the whole game.
+The statistics from Hits on have to be zero, apart from the one being used
+for gambling; the higher this is, the less chance the punter has. The Purse
+is the stake the punter puts up, and the Count is the base value of the
+return on his investment.
+	The first 6 texts are standard greetings, and the rest are used, up to
+the Casino's limit, for the results of the gamble. A very bad result loses a
+vitality point, a point from the relevant statistic and the stake; bad loses
+the stake; normal breaks even. Vitality won't be reduced below 1.
+	All the options available above that are wins. If there are objects in
+the Baggage corresponding to them they become available. This is too chancy
+for essential objects, but is a nice way of handing out goodies. The party
+leaves as for a shop, or on the very bad result or on the best result.
+	There is a spare Person subtype, which I no longer use, as I never found
+a need for it. If you put it in by mistake, it will devolve to a Fight.
+Later on, though, I might get a bright idea.
+	Lock: Anything which can be locked, that is, have the Code set to 
+non-zero. Chests and Doors are all I can think of. If the object is locked 
+the game searches everybody's pack for the appropriate key, which then 
+loses 1 from its Use, and the Lock disappears. Chests leave their contents 
+behind to be picked up; if one of these items is 'THE END' the game is 
+over. More than one Chest can have the same Contents. Anything can be a 
+key; only the Code matters.
+	Magical: An item with a spell effect and conditions like those of 
+spells; or, if you don't have magic, something that would reinforce the 
+medieval belief in it. Each use of an item decrements the Use, and I 
+consider Scrolls and Consumables to have 1 Use, Potions a couple, Wands and 
+Staves more. Potions also can only affect the user. You need not be bound 
+by these opinions. The Power is the maximum effect of the item when used. 
+To ensure that using one copy of a potion for example doesn't lower the Use 
+of any other copies in the pack, an extra variable is also set to the Use 
+you assign. When used up they lose their magical properties, and will 
+disappear if they had only one Use. Magicals are equally effective in 
+either hand in combat, but only one will be used at a time. If you make 
+them rechargable, ensure that their code doesn't match that of any door.
+	Consumables require a Code which matches that on some other Magical. 
+When the other Magical is in hand and the Consumable is Used from the 
+backpack (i.e. not in a fight), the Consumable's Effect, Power and Locales 
+are given to the other item. This doesn't have much place in Fantasy, but 
+the difference between a rechargeable wand and a pistol is in the name.
+	Fights and Persons who turn nasty can be put into a world that is
+absolutely peaceful and will still attempt to kill the party. Similarly,
+dangerous terrains are always dangerous. I guess no world is really
+absolutely peaceful if you go looking for trouble.
+	When a character wears an item, its Magic Resistance, Hits and the 
+appropriate Defence are added to the base statistics, which are themselves 
+derived from even more basic characteristics which will be explained soon.
+	Use is an index of relative durability. Every time a Magical is used or 
+any item worn or wielded doesn't succeed in combat its Use drops. When a 
+Magical loses its magic it keeps its other properties and can still be used 
+as a weapon, but non-Magicals are 'broken' and lose all properties but 
+Weight, Skill and Speed.
+	 Weight, Skill and Speed modify the holder's statistics downwards, so a 
+hobbit with a claymore can hardly walk while a giant can wield two with 
+full bonuses and no penalties. The modification will be touched on in 
+Editing Randoms.
+	In deference to the sensibilities of my daughter, Persons and Fights 
+have a gender, as have the PCs and Randoms.
+	Range only applies to Magicals and has the same meaning as for Spells.
+	Sprite is the battle picture for a Person. I recommend setting up a
+Person who may be fought as a Random first, to get the stats reasonable.
+They can then be edited to be unreasonable in the desired direction.
+	Fightfield first shows the list of available battle texts. If you select
+a non-zero, you are shown the actual field, which can be edited, and will be
+resaved.
+	If the battlefield is empty, a field is created from the Item's
+surroundings, with the current Facing direction to the top. If it's not
+empty and you don't like what you've got, a right click on the map will
+clear it and you can Exit and start again.
+	The Facing direction is the last direction you were facing while testing
+the world, which is not the best method of editing, but encourages actually
+walking the map before designing the fight. Set battles are supposed to be
+significant events, and it's very embarrassing if the party can dodge them.
+	The stamps for the field are quadruplicated with slight variations, to
+allow for the four permissable options. The first set only break the
+monotony of an empty plain; whatever is there can be walked through. The
+second set will stop magic or bullets, but not a fighter. The third are
+impassible, and the fourth are both impassible and impermeable to magic.
+Sometimes you can go straight through a bush and sometimes you can't, but
+magic doesn't necessarily work in the same way.
+	The background color is set as in Terrains.
+	To increase the number of battlefields, up to the maximum of 15, you
+have to start in the Text Editor, with the battle text.
+	DoFlags gives all the flags that must be set before the item can be seen or
+interacted with.
+	Unflags is the opposite; if any is set, the item might as well not exist.
+	Items 'live' in the Items list, and are only referred to in the worlds and
+baggages where they are used; this means only one copy of each unique item is
+needed, but that the buttons at the bottom of the items dialog have to function
+in different ways depending on where you come from, so the names of two of them
+change for clarity.
+	Done always exits the dialog and returns to the previous position.
+	Previous and Next always cycle through the current set, but this is only
+the complete collection in Items; in Worlds it's the 72 items used in that
+world and in Baggages the 20 of that baggage.
+	Duplicate adds a copy of the current item to the end of the general
+items list if there's room. If called in baggages or worlds, there has to be
+room there too, and an index to the new item is placed in the world or baggage
+ready for editing.
+	List, Place or Don will bring up a complete list of all items. The item you
+select in List is only the one you will jump to; in Place or Don, it's the one
+you add to that collection as well.
+	Lose, Clear or Doff will delete an Item, either completely or from a particular
+baggage.
+	If you delete a text or baggage, the program will automatically adjust
+the items to fill the gap.
+	Deleting an item from Worlds causes everything else to move up. In
+Baggages the space is just cleared, because in some cases, e.g. Fights,
+Inns and Seekers, placement of items in a baggage is significant.
+
+						  Editing Worlds
+
+	Worlds are the places where it's at. You start off in one world and may 
+move through others. Each world has certain properties, e.g. name, size and 
+type, includes sets of items, doors to other worlds and other places in the 
+same world, terrains, and references to its background, map, and song.
+	The properties at present (some may be redundant) are:
+	Name: up to 24 characters; e.g. Highridge Green or Manchester.
+	Size: the number of hexes used in the world. A size of 1 is defined as 
+a city, and means the city generator will be used for mapmaking, 2-8 is 
+multi-level and the dungeon generator is used, more than 8 defaults to a 
+108-hex world generator.
+	Mins: the amount of game time in minutes it takes to go from one cell 
+to another; this gives a size for each cell, and is affected by a ratio 
+associated with each terrain.
+	Type: selected from the world types in yourgame.hex. These types 
+are also used in Randoms, so each type of world can have its own set of 
+monsters. There can be up to 14 types, so you may add a Skyscraper and 
+fill it with appropriate Randoms, like MBAs, Yuppies and Janitors.
+	States: a hodge-podge of binary values. The first two flags modify the
+hostility rating of the game, making some worlds more likely to have fights
+than others. Using Y for Selected, N for Not, NN is absolutely peaceful, YN
+is more peaceful than NY. The fifth says whether a world is Light, i.e. you
+don't need torches to see where you're going. The last 3 help set the level
+of any fights encountered as the first set the frequency.
+	The third and fourth are more complicated. If V but not B, walking off 
+the edge of the current hex of the current world in the game brings you 
+back on the opposite side, and your line of sight twists in the same way; 
+if you don't want this you have to put in an obstruction. This sets up 
+those nasty little dungeons where you can walk off one edge and arrive at 
+another without noticing it.
+	If not V, you walk into the next hex of the 108 hex map; what happens 
+if the world you are in is not a 108-hex one might be amusing. If B, you 
+can see into the next hex; this gives the view of multi-hex flat worlds. If
+not B, you will see nothing of the next hex; this ensures you can't see
+anything outside a city (normally, anything there would be irrelevant at
+best).
+	If V and B, walking to any edge of the hex exits the world and brings 
+you back to wherever you entered it from, but you can't see anything 
+outside the hex.
+	Junk has 3 states. If 'Nothing', it does nothing; if 'Code', then any 
+item a party member has or tries to have equipped whose Code (see Editing 
+Items) is greater than 127 is destroyed; if 'NonCode', items with codes 
+less than 128 are destroyed.
+	Cast also has 3 states. 'All' means any spell can be cast here; 'Clear' 
+means only unMarked spells will work.
+	The references are:
+	Mapname: the actual name of the map used for the world. The same map 
+can be used for more than one world, and if you alter the terrains it will 
+look and feel totally different. You can select a starting map using the 
+file selector; if it is not in the current maps directory it will be 
+transferred there.
+	Background: the number of the background for drawing the scenery on; 
+clicking here lets you scroll through the available backgrounds. You can 
+add backgrounds from other Untramielled Adventures by grabbing.
+	Mus: the name, from yourgame.hex, of the Song which normally plays 
+while in this particular world.
+	The clickables on the right are general editing functions.
+	List gives you as developer a quick way of jumping from one world to 
+another. It is used the same way in several other dialogs.
+	Seed and Make Map make quick-and-nasty multi-floor dungeons; Seed 
+sprinkles 8 random monsters around, and can be repeated as often as you 
+have room, while Make Map builds a random maze round them and saves it as 
+SEED.MAP. If you like the look of it you can finetune and rename it.
+	Test Map lets you wander round the map of the world to check that Items 
+and Gates are in the right places and that Terrains do what you think they 
+will do. L moves you forward, > and < turn you right and left, Space turns 
+you 180 degrees, W toggles the ability to walk through walls, P (if there's 
+an item in front of you) lets you see and change it, G does the same for
+gates, B shows your current block and Q brings you back to the dialog.
+Mousomaniacs may also use the mouse.
+	Draw lets you draw or change the map, using the appropriate map editor. 
+Using 3 types of world means there are differences between the drawing 
+operations, but there are also certain similarities.
+	The most important similarity is that the graphics of the cells on the 
+right side have only as much realism as you care to give them. The graphics
+are a representation of the Terrain numbers for any world; the actual
+Terrain properties are totally separate. The editing screens are PCXs, so
+you can customize them.
+	The code beside each graphic says whether it has been assigned and, if 
+so, a little information about the associated Terrain.
+	Right click and left click sometimes have different effects.
+	The normal order of operation is:
+1) Select block by clicking on it. 2) Select function if appropriate. 3) 
+Select cell/s to change.
+	Clicking on a block selects it for any future drawing operations. Right 
+click also gives you the Terrain Editor, full information about the block 
+selected or any other, and the ability to change this. Cycling thru the 
+terrains here does not change the block number actually selected.
+	Copy stores a copy of the current hex which will survive until you copy 
+another hex, while Paste replaces the current hex with the last Copy.
+	Undo only undoes the last Draw, Fill or Wash.
+	Twist puts a clear path through the hex which passes through the 
+current cell. This may not be an improvement, hence the name (Bust).
+	Block toggles between only showing the terrains used and superimposing 
+the various Gates, Persons and Objects in the hex.
+	Wash right clicked fills the whole hex with the selected block. Left 
+click in Cities and Dungeons puts a wall round 3 sides of the hex. This is 
+nearly enough to prevent movement outside the hex. In Worlds, left click 
+forces a redraw of the map.
+	In Block mode left clicking on the map replaces the previous graphic 
+with the one selected; right clicking on it does Fill, which will replace 
+all contiguous occurences of the previous graphic with the new one.
+	In Items mode, clicking on a cell with no gate or item in it brings up 
+either the Item (Left) or Gate (Right) editor in an empty slot with the 
+current location filled in, unless all the slots are used up. If there is a 
+gate or item, either click brings up the appropriate editor.
+	Superimposing items, or putting an item on a gate can only be done in 
+the main world dialog or by putting the second somewhere else then editing 
+its coordinates. An item will be processed before a gate, and could be a 
+Guard or a nasty Fight.
+	The Dungeon design screen has two arrows for cycling through the 
+levels; it is assumed that the next level is down.
+	The City and Dungeon maps only show the current hex, but the World map 
+also shows parts of its neighbours so you can avoid extreme discontinuities 
+between hexes. Click on a hex to scroll in that direction.
+	If you want a really big city, give it a lot of hexes so that the world 
+drawer is called and put a wall round it.
+	When you exit, another file selector appears; this time Cancel will 
+exit without saving. Saving under a different name will not change the map 
+used in the current world, but is the only way of creating new maps.
+	The center of the dialog shows some of the gates, items or terrains,
+depending on which is selected, without which there will be nothing to
+actually see or do in the world. The arrows on either side let you scroll
+from top to bottom or bottom to top.
+
+Gates
+
+	When you first edit a world, Gate is selected, and the major part of 
+the screen is taken up with a list of the first 16 gates, the places from 
+which you will be transported to somewhere else. To get the last 16 use the 
+down-arrow beside Terr.
+	Doors are not 2-way; one will take you from A to B, but if you want one 
+from B to A, you have to set it up separately. They work inside a world as 
+well as between worlds and are used in multi-level worlds to go from one 
+floor to another.
+	To remove a gate, click on the At C.. field; this technique also 
+removes items and clears terrains.
+	If you have set up a world as a Village (V and B both selected), the 
+first gate is the default for leaving by the edge, but there can still be 
+several others if you want a Railway station in your town.
+	Clicking on the name of the destination or the equivalent blank brings 
+up the Gate Editor.
+	If the title line is disabled, there is no gate where the current gate 
+comes out. This is not actually a fault unless you intended the party to 
+come back from the same cell. Force Link will either make the gate the current 
+gate is pointing to point back to it or create a complementary gate.
+	You can remove a gate by setting the cell it leaves from to 300. The 
+gate will not be totally removed till you leave Hexaid, but is ignored.
+	The entrytext is a line which appears as you enter a gate, and the 
+exittext appears when you exit it. You can use up to 15 64-character lines 
+for each, from 2 of the Texts; if you use less, you can have more than 64 
+characters; see 'Editing Texts' for details. If the description line is 
+selected, no text will be used at the gate.
+	As a gate can be anything, and take the party anywhere, I think it only 
+fair to tell them if their next step will take them from one world to 
+another. This is done by setting the Announced flag to Yes. If it is set to 
+No, the warning is disabled.
+	If the Optional flag is No, the party are transported immediately when 
+they enter the gate; Yes gives them a chance to turn back. The flags are 
+independent, but anyone who has been warned and keeps going has made a 
+decision, and I respect it. Maybe not a lot...
+
+Items
+
+	Item shows the first 24 of these. Clicking on a name calls up the Item 
+dialog, with the name of the world at the top and the coordinates of the 
+item at the bottom. The other fields are identical to those in the General 
+Items dialog.
+
+Terrains
+
+	Clicking on the name of an associated shape brings up a box in which 
+the various elements of this structure can be changed. As well as the Shape 
+(1 of 16 maximum per world), there are several other properties which give 
+a Terrain its character. Doors have to come in sets of 3 because of their 
+orientation changing with the direction you are facing; see hextools.README.
+	If the Shape you want is not in your Shapes directory you can look 
+elsewhere, and the one you select will be copied across.
+	Base: useful effects can occasionally be achieved economically by 
+overlaying one shape over another rather than loading a new shape. If you 
+give the number of a terrain with the required shape here, that shape will 
+be drawn first. If this is left at 0, no previous shape is drawn; if it's 
+48, one of the Floor shapes from the adjacent cells is drawn. Note that only
+the previous shape and no other characteristic will be used, and that if you
+are not using the previous shape for something in this world, this technique
+will actually cost memory and the only possible advantage is a saving of disk
+space.
+	Scenery: the shape which will be used in this terrain during a battle.
+Most battles take place on a field which is generated from the surrounding
+scenery. Clicking on Pict brings up the scenery screen, but the first thing
+you must do is use the arrows to set up the battlefield color for any fight
+which takes place on this cell. Then you can select the appropriate piece
+of scenery. As the battlefield is a magnified view of a small area, the
+various types of terrain are treated differently, both to decorate and to
+avoid (mostly) large no-go areas. Picking the chair for an empty floor in a
+house will scatter bits of furniture around, for example.
+	Type: mostly used to determine whether a terrain can be walked on. N.B.
+this is independent of the Shape used, so a wall you see can actually be an
+illusion. If I is set, the Terrain is Impassible. H set means it is High,
+so will stop a bullet or a spell in a fight. D puts the light out. P raises
+the chance (Peril) of combat; use this with restraint; a small room where
+you have to fight every step of the way to your goal can be exciting, but 
+an entire dungeon isn't.
+	Time: divide this by 5 to get a multiplier for the world's Mins. It 
+should correlate with difficulty of traverse.
+	Effect: these are the same effects as used for spells (q.v.), randoms
+and counters.
+	Level: This is used along with the world level, the experience value 
+of the local Randoms and a general ferocity index to set up fights, so a
+dungeon or tower can be made tougher as you go through it. 8 here is the
+equivalent of 1 world level.
+	Area: each set of areas in yourgame.hex is associated with a type of 
+world and with monsters that can be found in that world.
+	Flags: if a flag is set here then the terrain cannot be stepped into 
+unless the same flag is set in the flags variable. Clicking here calls up 
+the list (taken from yourgame.hex), and you can set or unset them. The 
+blocks beside it show which flags are set.
+	Counter: if you select a counter in either, it will be incremented every
+time the player attempts to step into this type of cell.
+	Change: a real ragbag. Stepping into a cell of the type which has a To 
+field of 48 will win the game; if it is more than 48, the direction the 
+party is facing will change. Otherwise, if the From field is not zero, 
+stepping into the cell will change the Terrain for all the cells in the 
+current world of the type in the From field to that in the To field. Unless 
+there is an effect, when raising the number in the From field will raise 
+the power, and the To field increases the likelihood, out of 20. Clear?
+
+						Editing Baggages
+
+	Baggages are the kits of NPCs and the contents of shops and chests. The 
+idea is to save space and maintain consistency, but leave enough room to 
+add variety.
+	They can be selected through the menu or in a random or an item of 
+appropriate type and subtype.
+	The structure holds two editable strings, a spellbook and up to 20 items,
+six worn, which influence the owner's statistics but aren't obtainable in the
+game after the owner's demise, and 14 in a backpack, which are.
+	The first string doubles as a mnemonic for owner type and the term 
+used for an individual opponent in combat. The second is only used in 
+combat; if English formed its plurals logically it wouldn't be needed, but
+I hate facing 6 thiefs. (6 theifs, whatever they are, are even more 
+annoying).
+	The items worn modify the statistics of a random monster, and those of
+the first baggage are copied along with its backpack and spellbook to each
+new character in the game. Only one copy of an item can be in any slot 
+here.
+	The backpack is the contents of chests and shops and the booty made 
+available after combat. Up to 255 copies per slot are allowed, with 255 
+essentially equal to infinity. Clicking on the Copies will let you set the 
+count to 0, which will delete the item when you leave Hexaid.
+	The last two items in the backpack of a fightable Person or Random are 
+reinforcements who will appear at the beginning of the fight.
+	Clicking on an item's name works as in the World Editor. There will be 
+more on this in the section on editing items.
+	The spellbook will show the list of spells, specifying whether each 
+spell is known to a holder of the baggage. Clicking on a spell name will 
+change this; clicking on Cancel leaves, but does not reset the spellbook
+	If you delete a baggage, the last baggage in the list is copied into the
+space, and the contents for any holder of that baggage is adjusted. Any
+remaining holder of the deleted baggage is unchanged, i.e. he now holds what
+was the last baggage but retains most of his previous statistics; the normal
+use of this function is to tidy up after removing an NPC.
+
+							Editing Texts
+
+	Most of the texts used in the game for dialogs and descriptions are 
+editable. There are, of course, some constraints; standard game dialogs 
+like 'Do you want to buy' can be changed to 'Penny for the Guy', but it's 
+not exactly useful.
+	The first 6 texts contain generic statements for use in various parts 
+of the game, and should not be edited until you have seen how they work, 
+and the next two are the introduction to a new game and the message for 
+when that game is won.
+	Each text line is usually printed as a block; the print function knows 
+when the next word will overrun and scrolls up at that point.
+	There is also a certain amount of 'formatting' of text; that is, what 
+is actually shown or even, occasionally, done is dictated by variables called
+by reserved characters in the text, rather than the text itself. Fairly long
+sequences of events can be controlled this way without the overhead of a full
+scripting language.
+	The formatting characters are:
+~ Starts a new line, whether the screen line is finished or not. This lets 
+you print a set of short lines, useful for notices, questions and verse, e.g.
+riddles, and provide paragraphs for longer texts without losing too much space.
+< Sets the default text color to red.
+{ Sets the default text color to green.
+	Either of the corresponding closing brackets sets the default text 
+color to white (This assumes you stay with my palette choices).
+^ Prints the next letter in red; used to highlight available keys.
+* The rest of the line is comment and not printed, except when it's a jump; see
+below.
+% This is C, used in a couple of statements where more elaboration seemed 
+otiose; it won't work anywhere else.
+? In the first 8 characters of text lines this can be used as a wildcard.
+& The single letter after this is a print variable. These are mainly used 
+for names and pronouns so the default texts don't over-indulge in the bland 
+'You can't have that' type of screen message.
+	a The name of the current object. If there's more than one, and it's
+not a person, 's' is added on.
+	b The cost in GP of the current object.
+	c The name of the current world.
+	d The name of the selected party member. There is always one.
+	e 'he' or 'she', depending on the sex of the above.
+	f 'Sir' or 'Madam', depending.
+	g In combat, the name of the current hitter.
+	h Also in combat, the name of the current target.
+	i 'him' or 'her', depending on the current target.
+	j 'his' or 'her', depending on the current target.
+	k The current value of a particular numeric variable; not useful out of 
+its context.
+	l The name of the current item in a backpack.
+	m The name of a random non-selected party member, used for
+conversations within the party.
+	n 'his' or 'her', depending on the current party member.
+	o 'his' or 'her', depending on the current hitter.
+	p 'him' or 'her', depending on the current party member.
+	q The game will pause till a key is pressed.
+	r A routine is called which responds positively to a choice of 'Y'. On 'Y'
+the text carries on; otherwise it skips to after the first asterisk it meets.
+	s Another routine is called which prints out a set of short lines separated
+by '~' and terminated by '*', followed by an equal number of sub-texts separated
+by '*'. Clicking on a line causes text control to jump to the equivalent
+subtext, which is executed/printed.
+	z The party has done something to lose the game.
+
+# The single letter after this is a game variable, some of which are 
+ornamental, but others can change the course of the game. Several are 
+followed by one or more numbers.
+	a The number is that of the picture from picts.cmp which will appear 
+immediately in the view window.
+	b The number becomes the Danger level of the current world.
+	c The number becomes the base fight level of the current world.
+	d The number is interpreted as a pause of appropriate length. Not 
+essential, but amusing - to me anyway.
+	e The number is that of the picture which will appear for the current NPC
+in future.
+	f The number is that of the text from the texts file which the current
+NPC will use in future.
+	g works like d, and also starts a new line. Even less essential.
+	h changes the current background. This may cause palette confusion;
+use it with care.
+	i changes the direction the party is facing.
+	j changes the horrible noises you hear from the speakers.
+	k gives the active character experience.
+	l toggles the map_on variable, which is normally on. If it's off,
+mapview spells will still work, and automapping continues, but normal map
+viewing and the compass are disabled. To be used only in special cases and
+for short periods.
+	m The current user of the text where this is found will disappear from 
+the game after the dialog if the line is printed.
+	n picks one of the non-random battlefields, which I haven't
+mentioned yet. The 2 other numbers specify how many sides the available
+enemies are on and whether you have a chance of running away.
+	o schedules a fight.
+	p Followed by three numbers separated by spaces, puts the party in that
+world, hex and cell. In the introduction it gives the starting point of a
+new game, but has other uses. You can, for example, have an annoyed NPC
+telling the party to go to Hell (or Liverpool). The view window will show where
+the party arrives.
+	q The current user of the text will fight the party after the dialog if 
+the line is printed, and then disappear. Make sure it is actually fightable 
+- and beatable.
+	r shows the active character's picture.
+	s The first is a terrain index in the current world and the second is 
+the terrain index which is copied into the first. Its main use is for 
+opening/closing doors permanently after conversations.
+	t The number is the delay with which text will be printed after this 
+expression is evaluated. If you find long text is whizzing off the screen 
+this will slow it. Remember to reset to zero at the end of the text. To give an
+idea of relative speed, the default value for battle texts is 4.
+	u The number is the value of the flag which will be set in the flag
+variable. 
+	v The number is the value of the flag which will be reset in the flag
+variable.
+	w does things to the party. The first number is the effect, the second
+the power.
+	x followed by 2 numbers jumps to another text at another line,
+increasing the effective length of a text. Useful occasionally.
+	y changes a counter. The first number is the counter itself, the second
+is added to (or subtracted from) the current state of the counter - 0 resets
+the counter.
+	z After this line the game is over and you go to the 'win' sequence.
+	If I can think of any way of adding to this section or making it more 
+flexible, I will do so. Customizable texts improve the look of a game.
+	The menu items under Help give abbreviated forms of these lists as even 
+I don't consider them particularly memorable. If you click on a menu item
+the appropriate letter is inserted in the text, and in the more abstruse
+cases you'll get another dialog which will pick a number for you.
+	The text editor acts like a window, and most of the options have been 
+transferred to the menu. The numbers of the lines which are actually used 
+are shown in red. If a line is not in use it is treated as an extension of 
+the line above.
+	The mouse toggles the line-used flag when clicked on the left margin, 
+places the cursor when clicked in the text and selects the menu options. 
+The arrow keys also move the cursor. Backspacing or deleting through the 
+beginning of a line adds it to the previous line.
+	Clicking on the top bar saves the current text and puts up the list of 
+available texts, and the closer naturally saves and quits.
+	Pressing Return will save the current text and move on to the next.
+	Pressing Escape will delete the full line that contains the cursor.
+	Deleting a text works exactly like deleting a baggage.
+	There is a default list of basic texts provided. When you first edit or add
+to them, a new set will be saved in your directory, and that will be loaded in
+further editing and in the game.
+
+							Editing Spells
+
+	Spells can be edited from the menu or in the baggage screen. Most of 
+them affect a character statistic
+	The name and the verb, which will be used whenever the spell is cast, 
+should be appropriate to the effect.
+	The cost is the amount of mana casting the spell will subtract from the 
+caster, and the power the maximum effect on the target's statistic.
+	The range is the number of cells away from the caster the spell will
+work. It only applies to fights.
+	The conditions are a ragbag of modifiers and restrictions which are 
+used in a game. Their meanings are:
+F Fight. The spell can be cast in combat.
+T Travel. The spell can be cast outside combat.
+M Multi. Every member of a group is affected.
+C Cluster. In battle, anyone in the 6 cells surrounding the target will
+be affected as well.
+O Other. One member of the group, caster included, will be affected.
+S Self. Only the caster is affected.
+E Enemy. In combat, an enemy group is targeted.
+X marks the spot the player may find himself in if he relies on a spell 
+that has this selected (or not) in a world where it won't work. In 
+conjunction with the Cast option in worlds it can be used to make magically 
+dead areas or just to increase the player's confusion.
+	The effect names are mostly self-explanatory, and usually come in
+good/bad pairs. The actual effect is the same whether it is cast,
+encountered or injected by teeth, but context does play a role.
+	Poison, Starve and Disease are not very useful to the player, as
+battles don't usually last long enough for them to take effect and the
+party don't leave survivors if they win. If they are cast on a monster, it
+will lose morale faster.
+	For game balance, the Restore effect should not be usable in combat. 
+Any character who can cast it on himself is almost unkillable, since, if he 
+is not killed outright before his next turn, he can cast it again. Also, if
+it is given by a player spell, it should be exceedingly hard to get and to
+cast.
+	Trouble changes the difficulty level of the current dungeon, and only
+makes sense for Counters and the occasional Terrain.
+	Battle only makes sense in Counters. When triggered, a random fight
+suitable for the World and Terrain will be generated. This should be used
+with caution, even if you like fights.
+	Spells can increase statistics beyond their maxima; I didn't bother 
+much with bounds-checking, because spells are by definition Magic. In this 
+case, though, rest and Restore reduce statistics to their maxima.
+	Harmful spells can be designed for casting on the party outside combat, 
+though I can't think of a use for this.
+	There is a default list of spells provided. If you edit them, a new set will
+be saved in your directory, and that will be loaded in further editing and in
+the game.
+
+							Editing Randoms
+
+	Some people don't like random combats in RPGs. I find them a handy way
+of upping statistics, as well as enjoyable in themselves if they're used in
+moderation.
+	If you intend never to use combat, you can skip this section. If all
+your worlds are peaceful, the game won't look for monsters.
+	If you intend to have a series of non-random fights though, you'll have
+to grade them very carefully so that the party builds up its statistics to
+cope with the next one, and the Random is the basis of the fightable Item.
+	If you object to dungeon ecologies featuring an infinite supply of sword
+fodder, the codes in the Texts section can be used to modify the hostility
+of a world in various ways.
+	In general, Randoms shouldn't require much explanation. They're very
+like Persons. Since Randoms don't babble and can't be bought (all right,
+they're not all that like Persons), the text is an index to a group of 'hit
+words' in the INI, the weight is the experience gain from killing one, and
+the cost is the money found after the battle. These are only really noticed
+if you transfer one to the general items. The baggage is the reinforcements
+and the booty found after battle, the names, and available spells.
+	The Weightrat, Skillrat, Speedrat and Hitrat show the effect of what 
+the Random wears on its real statistics. These modified statistics are the 
+ones shown.
+	Selecting Item makes a Fight which is added to General Items, from 
+where it can be transferred to whichever world it will do the least good 
+in. The statistics of the Fight are the real statistics of the Random, but 
+can be re-edited like any other item property.
+	The worlds are used to load the appropriate Randoms as you go from one 
+world to another, and the areas where a particular Random can be found are 
+used by the random combat generator in the game, along with its frequency 
+and experience value (to reduce the possibility of unwinnable fights). 
+Power is used up by spellcasting, and when it's gone, the spells stop. The 
+spells themselves are selected from those available to the Random.
+	The Effect is not magical but natural, and comes into force whenever 
+there is a successful attack. The results, however, are the same as if a 
+spell was cast.
+	A Random has a sprite rather than a picture. This is selected from
+those available in sprites.blt.
+	The 4 faint numbers are the characteristics, which are used to generate 
+the other statistics. Which leads to the next section.
+
+						Generating Characters
+
+	There is no law against making Randoms with any statistics, goods and 
+values you like (and calling them Montyhalls), but I wanted something a bit 
+closer to character generation. I'm still not happy with what I've done, 
+but it seems to produce a reasonable balance.
+	Clicking on the title line of the random editor resource changes it to 
+'Random Changer'; the four characteristics are now editable and several of 
+the other stats greyed out.
+	The characteristics currently used are Strength, Endurance, Dexterity 
+and Intelligence, and they are discussed more fully in the Readme for the 
+game. They are used to calculate the experience value, and, in conjunction 
+with the Items Worn from the pack, the statistics which are used in battle. 
+If the new Random has no spells its Power is split between Speed and Skill.
+	The 'rats' centre round 128, with 1 as minimum, 255 as maximum, and the 
+higher they are the less a character is handicapped by his equipment's 
+limitations and the more benefit he gets from it in combat. The numbers 
+have been adjusted so that a 'normal' character fights best with Dagger and 
+Leather at level 1; at level 2 he is better than he was and can change to 
+Shortsword or Ringmail for further improvement; at 3 he's best with 
+Shortsword and Ringmail, but still more dangerous with Dagger and Leather 
+than before. It's all very complicated, but flexible, and can be used to 
+handicap low level monsters for the beginning of the game.
+	To see the results of any changes you have to force redraw of the 
+resource; you can do this by clicking on Show or pressing Return. Lose will 
+discard your attempt; Keep lets you edit the revised Random.
+	Selecting Copy in the Editor dialog also brings up the Changer, but 
+working on a copy of the original monster. If you don't keep the new 
+monster you will return to your starting point.
+	If you think this makes fights too easy/tough, you can edit the 
+Random's experience value by hand. Lowering it will increase the difficulty 
+of fights.
+
+								Counters
+
+	A counter's current state can only be changed by a text, but it's
+usually easy to introduce texts.
+	When the current state reaches the 'fires' point, the counter acts at
+the beginning of the next turn, if the world is right, and all its
+attributes take effect. So, a picture and text can appear, flags can be set
+and reset, things can happen to the party and items can be made available.
+	If the 12th item slot in the counter's baggage is used, there will be
+an immediate fight with the contents of the last 3 slots, otherwise the
+first items can be picked up.
+	If a particular world, hex and cell are set, the event will only take
+place in that cell, and will wait until the party reach it. If the cell
+count is out of range, any cell in the hex will do. If the hex is greater
+than the number in the world, the events can happen anywhere in the world,
+and if the world number is greater than the number of worlds, the events
+happen wherever the party is.
+	The counter will be reset if that option is picked. If the number of
+resets is 255 it will be reset indefinitely.
+
+								Reports
+
+	Lists of what's where and what's used are easy to make, so I included  this
+facility. The reports are saved in their own directory. I haven't  found much
+need to consult them while making a design; they do save time  when something
+in the game isn't where or what I thought it was, and help  in tidying up after
+deletions.
+
+	The worlds list includes a sublist of randoms that can be found in worlds
+of this type. Those marked with a star are above the maximum level for any
+terrain in the world and will never appear; if they aren't used in more
+dangerous worlds of the same type, they should be removed or modified. The
+number after each monster is its percentage of the base level for the world;
+again, 100 or above will only appear in higher level areas. The levels list is
+a hive-off; it gives only the name and base level of each world and the actual
+level of each terrain in the world which has a  higher level. In general, the
+progression of levels should reflect the  order in which the party deals with
+the worlds and areas within them.
+
+								Imports
+
+	A much nicer name than 'Stealing', but that's what it does. It lets you use
+things from other designs, either your own or somebody else's. As such, it's
+pretty simple to use. Standalone objects like pictures and shapes are just
+grabbed direct, others are extracted from their sets and placed into yours.
+
+							And In Conclusion
+
+	HEXAID still has several rough edges, and there are a lot of areas  where I
+would have done things differently if I had thought more before  writing it and
+had a clearer idea of who beside myself would use it. I am  open to
+suggestions, even for better ways of wasting my time. Just try not  to suggest
+anything that has commercial possibilities; programming for  money is work.
+There may be a few mistakes and hangovers from the ST version in this manual;
+certainly some things could be explained better. All comments to
+odonnllb@indigo.ie.
+
+Appendix A: Game setup
+
+	When you put the game together there have to be an opening picture,  called
+'intro.blt', a game-lost picture, 'joes.blt' (long story), and a border,
+'frame.blt'. 'intro.blt' and 'joes.blt' can be several pictures, shown in
+order. You should change these in your own style, but the frame border will
+have to keep the same shape. If you can't be bothered making your own, the
+defaults are used.
+
+	By default, the first of the 'Variables' in yourgame.ini is 600, which will
+give an average of 6 in the primary statistics. How high they can go depends on
+how long you play, but the monster statistics are set with this base level.
+
+	If the number is increased, then the starting stats will also increase, but
+so will the actual playing stats of the monsters, the damage done by weapons
+and spells, the starting money, and the costs of learning spells - not all by
+the same proportion.
+
+	This eases game design by keeping it at the base level, while making sure
+that imported characters from a previous game are not ridiculously overpowered
+in comparison to new characters. Tough monsters should stay tough, though magic
+will become increasingly important in higher levels.
+
+	It is, of course, possible for the player to cheat, but then, it always
+is.
+
+Appendix B: Game distribution
+	The morality of this is covered by the first statement of this manual.
+	If you wonder what all this is about, a couple of the games made with 
+the PC program FRUA that I looked at were intended as entertainment for 
+some of the all-haters of this world. If you hate me, that's regrettable, 
+and quite possibly my fault, but if you hate all Irish, or all Americans, 
+or even all AOLers, I'd rather you didn't express your erroneous opinions 
+through something I've worked on. End of sermon.
+	The player manual for each game is included with it. If you 
+extensively rewrite my manual for your own game, the standard disclaimer 
+has to stay.
+	In this case, also, I would like (but do not insist) you to send me a 
+copy of your rewrite. Technical writing is another of my non-forte's, and 
+if you can explain part of the standard gameplay better than I can, I might 
+want, with permission, to incorporate it into the standard manual.
+
+Appendix C: Miscellaneous game design hints
+
+I'm not a designer, so treat these with the respect they deserve. I think 
+them good ideas, but I'm less sure I've managed to implement them myself.
+1:  Starting characters are very fragile, so be gentle with them. On the 
+other hand, it should always be possible for them to die.
+	One technique to use is a 'starter dungeon' with useful goodies and 
+selected combat Items, but no randoms. Another is magic wands in the 
+starter baggage.
+2:  Arrange a gradation in difficulty that doesn't force the player into 
+looking for lots of little fights just so the characters can advance to the 
+next stage of the game; this can be boring.
+3:  Food is intrinsically boring. If you want more than a couple of types, 
+a few effects can spice up the list, as long as you don't put the Temples 
+out of business. Or if you do, then don't have Temples providing anything 
+except the 3 Rs, Rest, Reformation and Resurrection.
+4:  Space out your spells or special items so that they're available when 
+really needed, but not before.
+	If you have lots of poisonous creatures then Unpoison should be quickly 
+available and cheap to use. Mapview should come earlier in a big world.
+	OTOH, the player will appreciate them more if he wants them before he 
+can get them.
+5:  Use higher levels of combat more than higher frequency. Too many fights 
+per dungeon without a good reason is boring.
+6:	Saving disk space and execution time is very important to a programmer,
+but the best games are not actually those that are pared down to the
+essentials. Don't be afraid to put in encounters and incidents that have
+nothing to do with the plot and everything to do with trying to entertain
+the player.
+7:  In general, try to keep things moving. If you have an idea for a maze 
+that will take the player days to solve - forget it; unless the next place 
+the party has to go is several levels tougher, when you can get both of 
+these mistakes out of your system at the same time.

@@ -1,0 +1,14 @@
+SOURCE 
+
+If you require the source code for OpenGEM please
+send a self-address envelope to:
+
+OpenGEM Source Code
+Opendawn
+25 Meadowlands Est.
+Oakpark
+Tralee
+Co. Kerry
+Ireland
+
+You can also download the source from http://gem.opendawn.com

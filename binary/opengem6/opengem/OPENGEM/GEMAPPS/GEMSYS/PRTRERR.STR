@@ -1,0 +1,48 @@
+~2[2][
+Der Drucker antwortet nicht. Ist der|
+Strom eingeschaltet und die richtige|
+Kabelverbindung hergestellt?
+][ Abbruch | Nochmal ]
+~2[2][
+Der Drucker ist nicht verfÅgbar|(off-line). Schalten Sie den Drucker|
+vor dem nÑchsten Versuch auf verfÅgbar|(on-line).
+][ Abbruch | Nochmal ]
+~2[2][
+Kein Papier mehr im Drucker. Legen Sie|
+neues Papier ein und versuchen Sie es|nochmal.
+][ Abbruch | Nochmal ]
+~2[2][
+Papierstau im Drucker. Machen Sie den|
+Papierweg wieder frei und versuchen|Sie es nochmal.
+][ Abbruch | Nochmal ]
+~2[2][
+Der Toner geht zu Ende. Legen Sie eine|
+neue Toner-Kartusche ein und versuchen|Sie es nochmal.
+][ Abbruch | Nochmal ]
+~2[2][
+Ihr Drucker antwortet nicht. öberprÅfen|
+Sie den Drucker und beheben Sie das|
+Problem, bevor Sie WEITER|
+anwÑhlen.
+][ Abbruch | Nochmal ]
+~2[2][
+Die Stromversorgung des Druckers ist|ausgeschaltet. Schalten Sie den Strom|
+ein und versuchen Sie es nochmal.
+][ Abbruch | Nochmal ]
+~2[2][
+Das Druckwerk hat|
+Betriebsstîrungen.
+][ Abbruch | Nochmal ]
+~1[3][
+Die Ausgabe-Datei konnte nicht|angelegt werden.
+][ Abbruch ]
+~1[3][
+Fehler beim Schreiben in die Ausgabe-|Druckdatei.|
+VerfÅgt Ihre Platte noch Åber genÅgend|
+freien Speicherplatz?
+][ Abbruch ]
+~1[3][
+Zuwenig Speicher auf dem PC verfÅgbar,|
+um Ihr Dokument auszugeben.
+][ Abbruch ]
+~

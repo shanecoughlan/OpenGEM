@@ -1,0 +1,13 @@
+Begin3
+Title:          OpenGEM desktop
+Version:        6
+Entered-date:   2012-09-25
+Description:    Graphical desktop manager. Includes several GUI apps.
+Keywords:       atari, gem, opengem, desktop
+Author:         DRI
+Maintained-by:  Shane Coughlan (shane@shaneland.co.uk)
+Primary-site:   http://gem.shaneland.co.uk
+Alternate-site: http://gem.shaneland.co.uk
+Platforms:      DOS
+Copying-policy: GNU General Public License, Version 2
+End
