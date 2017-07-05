@@ -1,0 +1,520 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+; SD256: This is a stab at a 256-colour driver for GEM, initially based
+; on the disassembled source of SDPSC9.VGA. 
+;
+; New in this version: Attempts to make various aspects of the driver 
+; configurable by EQU directives, to support less memory-hungry resolutions
+;
+
+		cseg
+		public	chk_fnt
+		public	inc_lfu
+		public	CLC_DDA
+		public	ACT_SIZ
+		public	in_rot
+		public	in_doub
+		public	cpy_head
+		public	txtblt_rep_rr	
+		public	txtblt_tran_rr
+		public	txtblt_xor_rr
+		public	txtblt_itran_rr
+		public	txtblt_xor_rr_s
+		public	txtblt_xor_rl_s
+		public	ftmgradd
+		public  txtblt_rrot_table_1
+
+		dseg
+if mono_mem
+		extrn	current_bank:byte
+endif
+		extrn	first:dword
+		extrn	cur_font:dword
+		extrn	act_font:dword
+		extrn	cur_head:dword
+		extrn	T_SCLSTS:word
+		extrn	DDA_INC:word
+		extrn	fi_flags:word
+		extrn	FOFF:word
+		extrn	poff_tbl:word
+		extrn	seg_htbl:word
+		extrn	TEXT_BP:word
+		cseg
+		if	VESA_MULTISEG
+		 extrn	VESA_SLICE:word
+		 extrn	setslice:near
+		endif
+		extrn	incdi1024:near
+		if	VESA_SPLITLINE
+		 extrn	bumpdi1024:near
+		 extrn	stosb1024:near
+		endif
+set_flag	rb	1
+;
+;these two tables are initialized to rotate and mask the data 
+;
+txtblt_rrot_table_1 rb	2048
+txtblt_rrot_table_2 rb	2048
+double_table	    rb	512	
+public	double_table
+;
+;
+; BX = next char addr
+; DL = character width, pixels
+; DH = offset in source byte, bits
+; SI = source bitmap
+; BP = form width
+; ES:DI = where to draw character
+
+txtblt_itran_rr:	
+		push	bx
+		mov	bh,3
+		jmps	txtblt_cmn
+txtblt_xor_rr:	
+		push	bx
+		mov	bh,2
+		jmps	txtblt_cmn
+txtblt_tran_rr:	
+		push	bx
+		mov	bh,0
+		jmps	txtblt_cmn
+;
+txtblt_rep_rr:	
+		push	bx
+		mov	bh,1
+txtblt_cmn:	
+		mov	bl,ss:byte ptr TEXT_BP
+		if	VESA_MULTISEG
+		 push	cs:VESA_SLICE
+		endif
+txtblt_2:	
+		if	VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		endif
+		push	di	;Dest addr
+		push	si	;Source addr
+		push	cx
+		mov	al,[si]	;Byte to draw
+		mov	ah,8
+;
+; Apply the X offset in DH to the source form
+;
+		cmp	dh,0
+		jz	txtblt_rr1	
+		mov	cl,dh
+txtblt_rr:	rol	al,1
+		dec	ah
+		dec	cl
+		jnz	txtblt_rr
+;
+txtblt_rr1:	mov	cl,dl		;CX = count
+		mov	ch,0
+		or	cx,cx		;If nothing to be drawn
+		jz	txtblt_nocx	;then don't draw 256 pixels.
+txtblt_1:	rol	al,1
+		jc	txtblt_pixfg
+;
+; Draw a 'background' pixel
+;
+		cmp	bh,3
+		jz	txtblt_ppix
+		cmp	bh,1
+		jnz	txtblt_drawn	
+		mov	es:byte ptr[di],0
+		jmps	txtblt_drawn
+;
+; Draw a 'foreground' pixel
+;	
+txtblt_pixfg:	cmp	bh,2
+		jz	txtblt_dxor
+		cmp	bh,3
+		jz	txtblt_drawn
+txtblt_ppix:	mov	es:byte ptr[di],bl
+		jmps	txtblt_drawn
+;
+txtblt_dxor:	xor	es:byte ptr[di],0FFh
+txtblt_drawn:
+		if	VESA_SPLITLINE
+		 call	bumpdi1024
+		else	
+		 inc	di
+		endif
+		dec	ah
+		jnz	txtblt_nosi
+		mov	ah,8
+		inc	si
+		mov	al,[si]
+txtblt_nosi:	loop	txtblt_1
+txtblt_nocx:	pop	cx
+		pop	si
+		pop	di
+		if	VESA_SPLITLINE
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		add	si, bp
+		call	incdi1024
+		dec	cl
+		jnz	txtblt_2
+		if	VESA_MULTISEG
+		 pop	cs:VESA_SLICE
+		 call	setslice		
+		endif
+		pop	bx
+		retn	
+;
+;
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+txtblt_xor_rr_s:
+					; text_italic+6Fp ...
+		mov	bx, ax
+		not	dx
+
+loc_0_81C4:				; CODE XREF: txtblt_xor_rr_s+49j
+		push	si
+		push	di
+		mov	bl, [si]
+		mov	al, cs:txtblt_rrot_table_1[bx]
+		and	al, dl
+		xor	es:[di], al
+		inc	di
+		mov	ah, ch
+		and	ah, ah
+		jz	loc_0_81EE
+
+loc_0_81D9:				; CODE XREF: txtblt_xor_rr_s+2Cj
+		mov	al, cs:txtblt_rrot_table_2[bx]
+		inc	si
+		mov	bl, [si]
+		or	al, cs:txtblt_rrot_table_1[bx]
+		xor	es:[di], al
+		inc	di
+		dec	ah
+		jnz	loc_0_81D9
+
+loc_0_81EE:				; CODE XREF: txtblt_xor_rr_s+17j
+		mov	al, cs:txtblt_rrot_table_2[bx]
+		inc	si
+		mov	bl, [si]
+		or	al, cs:txtblt_rrot_table_1[bx]
+		and	al, dh
+		xor	es:[di], al
+		pop	di
+		pop	si
+		add	si, bp
+		add	di, 50h
+		dec	cl
+		jnz	loc_0_81C4
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+txtblt_xor_rl_s:
+		mov	bx, ax
+		not	dx
+
+loc_0_8210:				; CODE XREF: txtblt_xor_rl_s+51j
+		push	si
+		push	di
+		mov	bl, [si]
+		mov	al, cs:txtblt_rrot_table_2[bx]
+		inc	si
+		mov	bl, [si]
+		or	al, cs:txtblt_rrot_table_1[bx]
+		and	al, dl
+		xor	es:[di], al
+		inc	di
+		mov	ah, ch
+		and	ah, ah
+		jz	loc_0_8242
+
+loc_0_822D:				; CODE XREF: txtblt_xor_rl_s+34j
+		mov	al, cs:txtblt_rrot_table_2[bx]
+		inc	si
+		mov	bl, [si]
+		or	al, cs:txtblt_rrot_table_1[bx]
+		xor	es:[di], al
+		inc	di
+		dec	ah
+		jnz	loc_0_822D
+
+loc_0_8242:				; CODE XREF: txtblt_xor_rl_s+1Fj
+		mov	al, cs:txtblt_rrot_table_2[bx]
+		inc	si
+		mov	bl, [si]
+		or	al, cs:txtblt_rrot_table_1[bx]
+		and	al, dh
+		xor	es:[di], al
+		pop	di
+		pop	si
+		add	si, bp
+		add	di, 50h
+		dec	cl
+		jnz	loc_0_8210
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+in_doub:
+		push	ds
+		push	es
+		push	bp
+		mov	ax, cs
+		mov	es, ax
+
+		mov	di, offset double_table
+		mov	cx, 100h
+		mov	bp, 0C000h
+		mov	dl, 80h
+		xor	bx, bx
+
+loc_0_8274:				; CODE XREF: in_doub+29j
+		xor	ax, ax
+
+loc_0_8276:				; CODE XREF: in_doub+22j
+		test	dl, bl
+		jz	loc_0_827C
+		or	ax, bp
+
+loc_0_827C:				; CODE XREF: in_doub+18j
+		ror	bp, 1
+		ror	bp, 1
+		ror	dl, 1
+		jnb	loc_0_8276
+		xchg	ah, al
+		stosw
+		inc	bl
+		loop	loc_0_8274
+		pop	bp
+		pop	es
+
+		pop	ds
+		retn	
+
+
+;*************************
+; in_rot
+;	initialize the two rotation tables
+;	
+;*************************
+in_rot:
+	push	ds
+	push	es
+	push	bp
+	mov	ax, cs
+	mov	ds, ax
+	mov	es, ax
+	mov	di, offset txtblt_rrot_table_1
+	mov	si, offset txtblt_rrot_table_2
+	mov	ch, 8			;we will build two tables of 2k	
+	xor	ax, ax
+	mov	dx, ax
+	not	dl			;init the source and mask data
+	mov	cl, al
+in_rot_out_loop:
+	mov	bp, 256
+in_rot_in_loop:
+	mov	al, ah			;get the current byte value
+	ror	al, cl
+	mov	bl, al
+	and	al, dl
+	and	bl, dh
+if rev_vid
+	not	al
+	not	bl
+endif
+	stosb
+	mov	[si], bl
+	inc	si
+	inc	ah
+	dec	bp
+	jnz	in_rot_in_loop
+	xor	ah, ah
+	shr	dl, 1			;move the table one mask over 1 bit
+	mov 	dh, dl
+	not	dh
+	inc	cl			;increment the rotate count
+	dec	ch
+	jnz	in_rot_out_loop
+	pop	bp
+	pop	es
+	pop	ds
+	ret
+
+;
+;*************************
+; CLC_DDA
+; entry
+;	4[bp] = actual size
+;	6[bp] = requested size
+;
+; exit
+;	ax = dda_inc
+;************************** 
+CLC_DDA:
+	push	bp
+	mov	bp,sp
+	mov	dx, 6[bp]
+	mov	bx, 4[bp]
+	xor	ax, ax
+	cmp	dx, bx			; if dx less than bx then scale down
+	jle	clc_dda_small
+	mov	T_SCLSTS, 1
+	sub	dx, bx			; dx = req - act
+	cmp	dx, bx
+	jge	CLC_DDA_BIG
+	div	bx			; ax = dda_inc
+	pop	bp
+	ret
+CLC_DDA_BIG:
+	mov	ax, 0ffffh		; return dda = 2X
+	pop	bp
+	ret
+CLC_DDA_SMALL:
+	mov	T_SCLSTS, 0
+	and	dx, dx			; if requested size is 0 then make 1
+	jnz	clc_dda_small_ok
+	inc	dx
+clc_dda_small_ok:
+	div	bx
+	pop	bp
+	ret
+;**************************
+; ACT_SIZ
+; entry
+;	4[bp] = size to scale
+; exit
+;	ax = actual size
+;**************************
+ACT_SIZ:
+	push	bp
+	mov	bp, sp
+	mov	cx, 4[bp]
+	mov	dx, DDA_INC
+	cmp	dx, 0ffffh
+	jz	ACT_SIZ_DOUBLE
+	mov	bx, 32767		; bx = accumulator = 1/2
+	xor	ax, ax			; ax = new count
+	and	cx,cx
+	jz	ACT_SIZ_0
+	test	T_SCLSTS, 1
+	jz	ACT_SIZ_SMALL_LOOP	
+ACT_SIZ_LOOP:
+	add	bx, dx
+	jnc	ACT_SIZ_TIME1
+	inc	ax
+ACT_SIZ_TIME1:
+	inc	ax
+	loop	ACT_SIZ_LOOP
+ACT_SIZ_0:
+	pop	bp
+	ret
+ACT_SIZ_DOUBLE:
+	mov	ax, cx
+	shl	ax, 1			; ax = size * 2
+	pop	bp
+	ret
+ACT_SIZ_SMALL_LOOP:
+	add	bx, dx
+	jnc	act_siz_small_1
+	inc	ax
+act_siz_small_1:
+	loop	ACT_SIZ_SMALL_LOOP
+	pop	bp
+	and	ax, ax			; if ax = 0 then make = 1
+	jnz	act_siz_small_2
+	inc	ax
+act_siz_small_2:
+	ret
+;**************************
+; CPY_HEAD
+;**************************
+cpy_head:
+	push	ds
+	les	di, cur_head
+	lds	si, cur_font
+	mov	cx, 56
+	rep	movsw
+	pop	ds
+	ret
+
+
+;**************************
+;  inc_lfu
+;**************************
+inc_lfu:
+	les	di, act_font
+	inc 	es: word ptr 92[di]
+	jnc	inc_lfu_done
+	inc	es: word ptr 94[di]
+inc_lfu_done:
+	ret
+
+;*************************
+;  chk_fnt
+;*************************
+chk_fnt:
+;;; Not in SDCGA9
+;;;	test	fi_flags, 10h		;is this font not here!!!!!
+;;;	jz	chk_fnt_done
+	push	es
+	push	di
+	push	ax
+	push	bx
+	les	di, act_font
+	mov	bx, 66
+	add	bx, di	
+	mov	ax, es:[bx]
+	test	ax, 10h			; Font not here?
+	jz	chk_fnt_done
+	mov	ax, di
+	mov	bx, es
+	callf	dword ptr ftmgradd		;here we go	
+	and	fi_flags, 0ffefh	;enable the local font header
+	mov	ax, es:word ptr 70[di]
+	mov	poff_tbl+2, ax		;fix up the segment
+	mov	seg_htbl, ax		;fix up segment of horz off table
+	mov	ax, es:word ptr 78[di]
+	mov	FOFF+2, ax
+chk_fnt_done:
+	pop	bx
+	pop	ax
+	pop	di
+	pop	es
+	ret
+
+
+		dseg
+
+ftmgradd	dw 0,0		; DATA XREF: cseg:35B9w chk_fnt+19r
+					; ...

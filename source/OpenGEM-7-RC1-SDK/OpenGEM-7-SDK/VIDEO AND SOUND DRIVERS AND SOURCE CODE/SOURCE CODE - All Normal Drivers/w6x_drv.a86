@@ -1,0 +1,1338 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+; SD256: This is a stab at a 256-colour driver for GEM, initially based
+; on the disassembled source of SDPSC9.VGA. 
+;
+; New in this version: Attempts to make various aspects of the driver 
+; configurable by EQU directives, to support less memory-hungry resolutions
+;
+;integer array indexing equates
+	W_1	equ	word ptr 0
+	W_2	equ	word ptr 2
+	W_3	equ	word ptr 4
+	W_4	equ	word ptr 6
+	W_5	equ	word ptr 8
+	W_6	equ	word ptr 10
+	W_7	equ	word ptr 12
+	W_8	equ	word ptr 14
+	W_9	equ	word ptr 16
+	W_10	equ	word ptr 18
+
+		include	externs.a86
+		include	w6xregs.a86
+
+SCREEN  equ     10H                     ;interrupts to use for rom routine I/O
+KEYBD   equ     16H
+rev_vid_on      equ     70h             ;turn on reverse video bits
+rev_vid_off     equ     07h             ;turn off reverse video bits
+;
+read_cur_pos    equ     3                       ;bios rom calls for char I/O
+set_cur_pos     equ     2
+read_char       equ     8
+write_char      equ     9
+set_palette     equ     0bh
+get_character   equ     0                       ;keyboard read
+
+
+		public	true_yresmx, true_ysize
+		cseg
+
+		extrn	entry:near
+		extrn	cpi_load:near
+		extrn	mouse_port:byte, mouse_type:byte
+
+		extrn	v_nop:near, arb_corner:near, dr_recfl:near
+		extrn	check_ade:near, d_gtext:near
+		extrn	VESA_SLICE:word, s_slice:word, d_slice:word
+
+		public	INTIN, PTSIN, CONTRL, INTOUT, PTSOUT
+
+		public	CONCAT
+		public	MOUSE_LOCK, USERCUR, USERBUT, USERMOT
+		public	FIRST_MOTN, CONTRL_STATUS, KBD_MOUSE_STS
+		public	INIT_G, DINIT_G, CLEARMEM, TERM_CH
+		public	S_COLMAP
+		public	CHK_ESC
+		if not GSX
+		 public GSHIFT_S
+		 public	VEX_CURV, VEX_BUTV, VEX_MOTV
+		 public	TRAN_FM
+		 public	EX_TIMV
+		 public	XFM_UDFL
+		 public	XFM_CRFM
+		endif
+
+		public	RECTFILL
+		public	INCDI1024
+		public	I_COLMAP, GCHR_KEY
+		public	READ_INTIN, READ_PTSIN, WRITE_PTSIN
+		public	PLANE_LOOP_COUNT
+		public	YINC, MOUSBUF, MOUSBUF_PTR
+		public	CLIP, XMX_CLIP, XMN_CLIP, YMX_CLIP, YMN_CLIP
+		public	DEV_TAB, SIZ_TAB, INQ_TAB
+		public	X1,Y1,X2,Y2,GCURX,GCURY,BOX_OPTBL,MCLIPX,MCLIPY
+		public	WORD_MASK_TABLE, OLDUL, ORTBL, WRT_MODE
+		public	DXGEDY_TBL, DYGEDX_TBL, MHEIGHT, OLDMHT
+		public	PLYGN_BEZ, PATCNT, EPSILON1, FG_BP_1
+		public	PLYGN_RROT, BIT_MASK_TABLE
+		public	OLDSLICE, LSTLIN, MAP_COL
+		public	VEC_LEN_HIGH, VEC_LEN_LOW
+		public	HIDE_CNT, MOUSBUF, LN_MASK, MHT, FLIT_BEZ, FLIT_BEZ_OFF
+		public	DIS_CUR, ABLINE, HIDE_CUR, CLC_FLIT
+		public	SMUL_DIV, VEC_LEN
+
+		public	M_STAR, M_SQUARE, M_PLUS, M_CROSS, M_DMND, M_DOT
+
+		dseg
+		extrn	FLIP_Y:word, patptr:word, patmsk:word
+		extrn	xrad:word, yrad:word, xc:word, yc:word
+		extrn	fill_int:word,start:word
+		extrn	intin_ptr:dword,ptsin_ptr:dword,contrl_ptr:dword
+		extrn	line_color:word,line_index:word,line_beg:word
+		extrn	line_end:word,line_width:word
+		extrn	bez_flag:word, beg_ang:word,end_ang:word
+		extrn	del_ang:word,fill_per:word,fill_qper:word
+		extrn	mark_qc:word,write_qm:word,mark_scale:word
+		extrn	fill_style:word,line_qc:word,write_qm:word
+		extrn	line_qw:word,line_qi:word,fill_qi:word
+		extrn	fill_qc:word,fill_miny:word,fill_maxy:word
+		extrn	mark_color:word,mark_index:word,xfm_mode:word
+		extrn	loca_mode:word,val_mode:word,chc_mode:word
+		extrn	str_mode:word,fill_color:word,mark_qi:word
+		extrn	mark_height:word,fill_index:word,s_patmsk:word
+		extrn	s_begsty:word,es_endsty:word,s_patptr:word
+		extrn	s_patmsk:word,s_nxtpat:word,s_fill_per:word
+		extrn	q_circle:word,num_qc_lines:word,n_steps:word
+		extrn	angle:word, NEXT_PAT:word, SOLID:word
+		extrn	DITHRMSK:word, DITHER:word
+		extrn	mous_col_fg:byte, mous_col_bg:byte
+		extrn	mxhot:word, myhot:word, mmask:word
+		extrn	ud_patrn:word, udpt_np:word
+		extrn	mous_ci_mask:word, mous_ci_data:word
+		extrn	rot_case:word, xacc_dda:word, char_del:word
+		extrn	r_off:word, l_off:word, mono_sta:word
+		extrn	destx:word, desty:word
+
+		extrn	cur_font:dword, cur_head:dword, act_font:dword
+		extrn	T_SCLSTS:word, DDA_INC:word, special:word
+		extrn	actdely:word, width:word, text_bp:word, weight:word
+;;;		extrn	SIZ_TAB:word,DEV_TAB:word,xmx_clip:word,ymx_clip:word
+;;;		extrn	ymn_clip:word,xmn_clip:word,xmx_clip:word,clip:word
+;;;		extrn	MAP_COL:word,NEXT_PAT:word,hide_cnt:word
+;;;		extrn	X1:word,X2:word,Y1:word,Y2:word,gcurx:word,gcury:word
+;;;		extrn	line_sty:word,LN_MASK:word,solid:word,wrt_mode:word
+;;;		extrn	hollow:word,dither:word,dithrmsk:word,oemmskpa:word
+;;;		extrn	oempat:word,oemmskpa:word,hat_0_ms:word,hatch0:word
+;;;		extrn	hat_1_ms:word,hatch1:word,ud_patrn:word
+;;;		extrn	fg_bp_1:word,plygn_bez:word,lstlin:word,plygn_rrot:byte
+		extrn	dseg_seg:word,end_dseg:word
+		extrn	txtblt_rrot_table_1:word
+
+ibmvdi	equ	false
+pc1512	equ	false
+
+		cseg
+		jmp	 entry
+;
+		public	VID_SEG
+VID_SEG		dw	0
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+INIT_G:
+		pushf	
+		mov	ax, cs
+		mov	word ptr usermot+2, ax
+		mov	word ptr userbut+2, ax
+		mov	word ptr usercur+2, ax
+		mov	ax, offset umotvec
+		mov	word ptr usermot, ax
+		mov	ax, offset ubutvec
+		mov	word ptr userbut, ax
+		mov	ax, offset mov_cur
+		mov	word ptr usercur, ax
+		popf	
+
+escfn2:					; CODE XREF: chk_esc+19u
+					; DATA XREF: dseg:0417o
+		cmp	dispmode, 0
+		jnz	escfn2_ok
+		retn	
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+escfn2_ok:				; CODE XREF: INIT_G+24j
+		mov	dispmode, 0
+		push	ds
+		mov	ax, 0
+		mov	ds, ax
+
+		mov	bx, 410h
+		mov	dl, [bx]
+		mov	al, dl
+		and	al, 0CFh
+		or	al, 10h
+		mov	[bx], al
+		pop	ds
+
+		mov	mode_save, dl
+		if VESA_MULTISEG
+;
+; Check if we have a VESA BIOS that supports this mode.
+;
+		 mov	ax,ds
+		 mov	es,ax
+		 mov	ax,4F00h
+		 mov	di, offset PTSIN
+		 int	10h
+		 cmp	ax,004Fh
+		 jz	have_vbe
+novbex:		 mov	dx,offset novbe
+diewith:	 mov	ah,9
+		 int	21h
+		 mov	ax,0
+		 retn 
+;
+nowdwx:		mov	dx, offset nowdw
+		jmps	diewith
+;
+have_vbe:	 jmps	vbe1
+		 db	'temp'
+vbe1:		 mov	al, 80h
+		 cmp	al, 80h
+		 jnc	probeit
+		 cmp	al, 94
+		 jz	probe400
+		 mov	ax, 4F01h	;Forced into 640x480
+		 mov	cx, VID_MODE
+		 mov	di, offset PTSIN
+		 int	10h
+		 cmp	ax, 004Fh
+		 jz	havemode
+		 jmp	novbex
+
+probeit:	 mov	ax,4F01h	;Probe 640x480, then 640x400
+		 mov	cx,VID_MODE
+		 mov	di,offset PTSIN
+		 int	10h
+		 cmp	ax,004Fh
+		 jz	havemode
+;
+; Can't do 640x480: try 640x400
+;
+probe400:	 mov	cx, 198		;Forced into 640x400
+		 mov	true_ysize, cx
+		 mov	cx, 399
+		 mov	true_yresmx, cx
+		 mov	ax, 4F01h
+		 mov	cx,VID_MODE-1
+		 mov	di, offset PTSIN
+		 int	10h
+		 cmp	ax, 004Fh
+		 jnz	novbex
+havemode:	 mov	ax,word ptr PTSIN+8	;Video segment, window A
+		 and	ax,ax
+		 jz	novbex
+		 mov	cs:VID_SEG,ax
+;
+; Work out how to position the window at 4k intervals.
+;
+		mov	bx, 15
+		mov	ax, word ptr PTSIN+4	;Window granularity
+		or	ax, ax
+		jz	nowdwx
+calcmulti:	cmp	ax, 4
+		jz	havemulti
+		jnc	nowdwx	
+		add	bx, bx
+		add	ax, ax
+		jmps	calcmulti	
+
+havemulti:	mov	cs:VID_MULTI, bx
+;
+; And select the mode. Unfortunately DOSEMU has no Window B, so we can't
+; do screen-to-screen blits through two windows. 
+;
+		 mov	ax, true_yresmx
+		 mov	bx, VID_MODE-1
+		 cmp	ax, 399
+		 jz	setmd1
+		 mov	bx, VID_MODE
+setmd1: 	 mov	ax, 4F02h
+		 mov	di, offset PTSIN
+		 int	10h		; - VIDEO - SET	VIDEO MODE
+		else
+		 mov	ah, 0
+		 mov	al, VID_MODE
+		 int	10h		; - VIDEO - SET	VIDEO MODE
+		endif	; AL = mode
+		mov	ax, true_yresmx
+		mov	word ptr DEV_TAB + 2, ax
+		mov	ax, true_ysize	
+		mov	word ptr DEV_TAB + 8, ax
+		call	init_lut
+		
+
+;;; This is VESA, we ought not to be hammering the hardware.
+;;;		mov	dx, 3C4h
+;;;		mov	al, 2
+;;;		out	dx, al		; EGA: sequencer address reg
+					; map mask: data bits 0-3 enable writes	to bit planes 0-3
+;;;		mov	dx, 3CEh
+;;;		mov	al, 4
+;;;		out	dx, al		; EGA: graph 1 and 2 addr reg:
+					; read map select.
+					; Data bits 0-2	select map # for read mode 00.
+		call	CLEARMEM
+		mov	bl, 1
+		call	mouse_function
+		mov	bl, 2
+		call	mouse_function
+		mov	bl, 1
+		call	mouse_function
+		mov	ax,1
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+init_lut:
+		if	VESA_MULTISEG
+		 push	ds
+		 pop	es
+;
+; Program the hardware.
+;
+		 mov	ax,4F08h
+		 mov	bx,0600h
+		 int	10h		;Set standard 6-bit palette
+;
+; If we are faking a limited colour range, then fill the palette with repeats
+; of the colour range we've chosen
+;
+		 if	num_planes LT 8
+		  mov	si,offset vesa_col_table
+		  mov	di,offset vesa_col_table + 4*COL_SETS
+		  mov	cx,COL_SETS
+		  cld
+		  rep	movsb
+		 endif
+
+		 mov	ax,4F09h
+		 mov	bl,0		;Set palette
+		 mov	cx,256		;Always set up 256 colours, not
+					;MAX_COL
+		 mov	dx,0		;256 entries starting at 0
+		 mov	di,offset vesa_col_table
+		 int	10h		;Load the DAC
+;
+; Workaround: Cirrus does not seem to support the VESA palette load
+;
+		 mov	di, 256
+		 mov	bx, 0
+		 mov	si, offset vesa_col_table
+vga_init_lut:	
+		 mov	ax, 1010h
+		 mov	dh, 2[si]
+		 mov	ch, 1[si]
+		 mov	cl, [si]
+		 int	10h
+		 inc	bx
+		 add	si, 4
+		 dec	di
+		 jnz	vga_init_lut
+
+;
+; Initialise the colour request and colour value tables
+;
+		 mov	si,offset vesa_col_table
+		 mov	di,offset req_col_tbl
+		 mov	cx,256
+irq_col: 	 lodsb			;Blue
+		 push	di
+		 push	si	
+		 mov	ah,0
+		 mov	bx,63
+		 push	bx
+		 push	ax
+		 mov	bx,999
+		 push	bx
+		 call	SMUL_DIV
+		 add	sp,6
+		 pop	si
+		 pop	di
+		 mov	4[di],ax	
+		 lodsb			;Green
+		 push	di
+		 push	si
+		 mov	ah,0
+		 mov	bx,63
+		 push	bx
+		 push	ax
+		 mov	bx,999
+		 push	bx
+		 call	SMUL_DIV
+		 add	sp,6
+		 pop	si
+		 pop	di
+		 mov	2[di],ax	
+		 lodsb			;Red
+		 inc	si
+		 push	di
+		 push	si
+		 mov	ah,0
+		 mov	bx,63
+		 push	bx
+		 push	ax
+		 mov	bx,999
+		 push	bx
+		 call	SMUL_DIV
+		 add	sp,6
+		 pop	si
+		 pop	di
+		 mov	[di],ax
+		 add	di,6
+		 loop	irq_col
+
+		 mov	si,offset req_col_tbl
+		 mov	di,offset act_col_tbl
+		 mov	cx,768
+		 rep	movsw
+
+		else
+
+		 mov	dx, offset init_col_table
+		 mov	ah, 10h
+		 mov	al, 2
+		 push	ds
+		 push	ds
+		 pop	es
+ 
+ 		 int	10h
+		 pop	ds
+		 mov	cx, 10h
+		 mov	si, offset init_col_table
+		 mov	di, offset vga_col_table
+ 
+loc_0_38A7:				; CODE XREF: init_lut+31j
+		 push	cx
+		 dec	cx
+		 push	cx
+		 mov	bx, cx
+		 shl	bx, 1
+		 add	bx, cx
+		 mov	dh, [bx+di]
+		 mov	ch, 1[bx+di]
+		 mov	cl, 2[bx+di]
+		 pop	bx
+		 mov	bl, [bx+si]
+		 mov	ah, 10h
+		 mov	al, 10h
+		 int	10h	
+		 pop	cx
+		 loop	loc_0_38A7
+		endif			;VESA
+
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+dinit_g:
+					; DATA XREF: ...
+		cmp	dispmode, 0
+		jz	escfn3_ok
+		retn	
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+escfn3_ok:				; CODE XREF: dinit_g+5j
+		mov	bl, 2
+		call	mouse_function
+		mov	dispmode, 1
+		mov	dl, mode_save
+		push	ds
+		mov	ax, 0
+		mov	ds, ax
+
+		mov	bx, 410h
+		mov	[bx], dl
+		mov	ah, 0
+		mov	al, 3
+		int	10h		; - VIDEO - SET	VIDEO MODE
+					; AL = mode
+		pop	ds
+
+		mov	attribute, 7
+		mov	ah, 2
+		xor	dx, dx
+		mov	bh, dh
+		int	10h		; - VIDEO - SET	CURSOR POSITION
+					; DH,DL	= row, column (0,0 = upper left)
+					; BH = page number 
+		mov	ah, 9
+		xor	bh, bh
+		mov	cx, 2000
+		mov	al, 20h
+		mov	bl, 7
+		int	10h		; - VIDEO - WRITE ATTRIBUTES/CHARACTERS	AT CURSOR POSITION
+					; AL = character, BH = display page
+					; BL = attributes of character (alpha modes) or	color (graphics	modes)
+					; CX = number of times to write	character
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+I_COLMAP:
+		mov	bx, INTIN
+		cmp	bx, 0
+		jge	loc_0_3914
+		jmps	loc_0_3950
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+loc_0_3914:				; CODE XREF: I_COLMAP+7j
+		cmp	bx, num_colors - 1
+		jle	loc_0_391B
+		jmps	loc_0_3950
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+loc_0_391B:				; CODE XREF: I_COLMAP+Ej
+		shl	bx, 1
+		mov	bx, MAP_COL[bx]
+		mov	di, bx
+		shl	di, 1
+		shl	di, 1
+		add	di, bx
+		add	di, bx
+		mov	si, offset INTOUT+2
+		mov	cx, 3
+		mov	INTOUT,	bx
+		mov	bx, offset req_col_tbl
+		test	INTIN+2, 0FFFFh
+		jz	loc_0_3943
+		mov	bx, offset act_col_tbl
+
+loc_0_3943:				; CODE XREF: I_COLMAP+35j
+					; I_COLMAP+44j
+		mov	ax, [bx+di]
+		mov	[si], ax
+		add	di, 2
+		add	si, 2
+		loop	loc_0_3943
+		retn	
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+loc_0_3950:				; CODE XREF: I_COLMAP+9j
+					; I_COLMAP+10j
+		mov	INTOUT,	0FFFFh
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+S_COLMAP:
+					; DATA XREF: dseg:0134o
+		mov	bx, INTIN
+		cmp	bx, 0
+		jge	loc_0_3963
+		jmp	locret_0_39C0
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+loc_0_3963:				; CODE XREF: S_COLMAP+7j
+		cmp	bx, 0FFh
+		jle	loc_0_396B
+		jmp	locret_0_39C0
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+loc_0_396B:				; CODE XREF: S_COLMAP+Fj
+		shl	bx, 1
+		mov	bx, MAP_COL[bx]
+		push	bx
+		mov	di, bx
+		shl	di, 1
+		shl	di, 1
+		add	di, bx
+		add	di, bx
+		xor	cx, cx
+		mov	dx, INTIN+2
+		call	adjust_ink
+		mov	cs:byte_0_39C3,	al
+		mov	dx, INTIN+4
+		add	di, 2
+		call	adjust_ink
+		mov	cs:byte_0_39C2,	al
+		mov	dx, INTIN+6
+		add	di, 2
+		call	adjust_ink
+		mov	cs:byte_0_39C1,	al
+;;;		if	VESA_MULTISEG
+;;;		 pop	dx		;Register number
+;;;		 push	es
+;;;		 mov	ax,cs
+;;;		 mov	es,ax
+;;;		 mov	ax,4F09h	;Set palette
+;;;		 mov	bl,0		;Set primary palette
+;;;		 mov	cx,1		;Set 1 register
+;;;		 mov	di,offset byte_0_39C1
+;;;		 int	10h
+;;;		 pop	es
+;;;		else
+		 mov	ah, 10h
+		 mov	al, ah
+		 pop	bx
+	;;	 mov	bl, init_col_table[bx]
+		 mov	ch, cs:byte_0_39C2
+		 mov	cl, cs:byte_0_39C3
+		 mov	dh, cs:byte_0_39C1
+		 int	10h
+;;;		endif
+		retn	
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+locret_0_39C0:				; CODE XREF: S_COLMAP+9j S_COLMAP+11j
+		retn	
+
+
+;ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+byte_0_39C1	db 0			; DATA XREF: S_COLMAP+2Ew S_COLMAP+61r
+byte_0_39C2	db 0			; DATA XREF: S_COLMAP+3Cw S_COLMAP+57r
+byte_0_39C3	db 0			; DATA XREF: S_COLMAP+4Aw S_COLMAP+5Cr
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+adjust_ink:
+					; ...
+		mov	req_col_tbl[di], dx
+		push	di
+		mov	ax, 1000
+		push	ax
+		push	dx
+		mov	ax, 64
+		push	ax
+		call	SMUL_DIV
+		add	sp, 6
+		push	ax
+		mov	bx, 64
+		push	bx
+		push	ax
+		mov	bx, 64
+		push	bx
+		call	SMUL_DIV
+		add	sp, 6
+		pop	bx
+		pop	di
+		mov	act_col_tbl[di], ax
+		mov	ax, bx
+		cmp	al, 63
+		jb	locret_0_39F6
+		mov	al, 63
+
+locret_0_39F6:				; CODE XREF: adjust_ink+2Ej
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+		if not GSX
+TRAN_FM:
+					; DATA XREF: dseg:017Co
+		push	bp
+		push	es
+		push	ds
+		les	di, contrl_ptr
+
+		mov	ax, es:14[di]
+		mov	bx, es:16[di]
+		mov	dx, es:18[di]
+		mov	bp, es:20[di]
+		mov	es, bx
+		mov	di, ax
+		mov	ax, es:12[di]
+		push	ax
+		call	sub_0_3A92
+		call	sub_0_3A6A
+		call	sub_0_3A59
+		pop	bx
+
+loc_0_3A21:				; CODE XREF: TRAN_FM+3Cj
+		push	si
+		push	di
+		push	bx
+		push	cx
+
+loc_0_3A25:				; CODE XREF: TRAN_FM+32j
+		lodsw
+		xchg	ah, al
+		stosw
+		loop	loc_0_3A25
+		pop	cx
+		pop	bx
+		pop	di
+		pop	si
+		call	sub_0_3A39
+		dec	bx
+		jnz	loc_0_3A21
+		pop	ds
+		pop	es
+		pop	bp
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+sub_0_3A39:
+		push	cx
+		mov	ax, cx
+		mov	cl, 3
+		shr	ax, cl
+		mov	bp, es
+		add	bp, ax
+		mov	es, bp
+		mov	bp, ds
+		add	bp, ax
+		mov	ds, bp
+		pop	cx
+		mov	ax, cx
+		and	ax, 7
+		shl	ax, 1
+		add	si, ax
+		add	di, ax
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+sub_0_3A59:
+		mov	bp, cx
+		shr	bp, 1
+		shr	bp, 1
+		shr	bp, 1
+		mov	dx, cx
+		shl	dx, 1
+		and	dx, 0Fh
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+sub_0_3A6A:
+		mov	ds, bp
+		mov	si, dx
+		not	bx
+		and	bx, 1
+		mov	10[si], bx
+		mov	ax, es:2[di]
+		mov	di, es:[di]
+		mov	es, ax
+		mov	ax, 2[si]
+		mov	si, [si]
+		mov	ds, ax
+		xchg	si, di
+		mov	ax, es
+		mov	dx, ds
+		mov	es, dx
+
+		mov	ds, ax
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+sub_0_3A92:
+		mov	bx, es:10[di]
+		mov	ax, es:8[di]
+		mov	cx, es:6[di]
+		push	dx
+		mul	cx
+		pop	dx
+		mov	cx, ax
+		and	bx, bx
+		retn	
+
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+ex_timv:
+					; DATA XREF: dseg:018Co
+		pushf	
+		cli	
+		push	es
+		push	ds
+		les	di, contrl_ptr
+
+		xor	ax, ax
+		mov	ds, ax
+
+		mov	si, 70h
+		mov	ax, [si]
+		mov	es:18[di], ax
+		mov	ax, 2[si]
+		mov	es:20[di], ax
+		mov	ax, es:14[di]
+		mov	[si], ax
+		mov	ax, es:16[di]
+		mov	2[si],	ax
+		pop	ds
+
+		pop	es
+		popf	
+		mov	ax, 1
+		mov	CONTRL+8, ax
+		mov	ax, 55
+		mov	INTOUT,	ax
+		retn	
+
+		endif
+
+
+;ÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛÛ
+
+;		S u b r	o u t i	n e
+
+;
+; Given BX = X and AX=Y, return DI=address. It would also return BL=pixel
+; mask, except that in a packed-pixel mode we don't have one.
+;
+concat:
+
+		mov	dx, 0
+		mov	cx, 60h		; Lines per slice
+		div	cx		; AX = slice to use. DX = line number
+					; within that slice
+		cmp	ax, cs:VESA_SLICE
+		jz	concat0
+		mov	cs:VESA_SLICE, ax
+		call	setslice	
+concat0:	mov	ax, dx		; AX = line number. BX = X-coord.
+		mov	cx, xresmx+1
+		mul	cx		; AX = offset in video RAM
+		mov	di, ax		; DI = start of line
+
+		and	bx, 3FFh	; Add on X-coord.
+		add	di, bx
+		retn	
+
+eject
+
+VID_MULTI	dw	0		;Window multiplier
+LAST_SLICE	dw	0
+
+setdslice:	push	ax
+		mov	ax,cs:d_slice
+		jmps	slset
+
+setsslice:	push	ax
+		mov	ax,cs:s_slice
+		jmps	slset
+;
+setslice:	push	ax
+		mov	ax,cs:VESA_SLICE
+slset:		cmp	ax,cs:LAST_SLICE
+		jz	no_set
+		mov	cs:LAST_SLICE, ax
+		push	bx
+		push	cx
+		push	dx
+		mul	cs:VID_MULTI
+		mov	dx,ax
+		mov	bx,0		; Set window A address
+		mov	ax,4F05h
+		int	10h
+		pop	dx
+		pop	cx
+		pop	bx
+no_set:		pop	ax
+		ret 
+
+include	vesadvsp.a86
+
+if mouse
+cseg
+include imouse.a86
+endif
+cseg
+include 256mmre1.a86
+include 256mmre2.a86
+dseg
+include w6xdev.a86
+
+		dseg
+		extrn	system6x6_hdr:word
+		extrn	system8x16_hdr:word
+
+		extrn	contrl_ptr:dword, intin_ptr:dword, ptsin_ptr:dword
+		extrn	intout_ptr:dword, ptsout_ptr:dword
+		extrn	FLIP_Y:word, XFM_MODE:word
+
+dispmode	dw 1			; DATA XREF: INIT_G+1Fr INIT_G+27w
+					; ...
+mode_save	db 0			; DATA XREF: INIT_G+41w dinit_g+13r
+
+true_yresmx	dw	479
+true_ysize	dw	165
+
+act_col_tbl	rw	768
+req_col_tbl	rw	768
+
+		if	VESA_MULTISEG
+		 if GSX
+vesa_col_table	db  0, 0, 0,0		;  0: Black
+		 else
+vesa_col_table	db 63,63,63,0		;  0: White
+		 endif
+		db  0, 0,63,0		;  1: Red
+		db  0,63, 0,0		;  2: Green
+		db  0,63,63,0		;  3: Yellow
+		db 63, 0, 0,0		;  4: Blue
+		db 63, 0,63,0		;  5: Magenta
+		db 63,63, 0,0		;  6: Cyan
+		db 42,42,42,0		;  7: Light grey
+		db  2, 2, 2,0		;  8: Grey 0
+		db  4, 4, 4,0		;  9: Grey 1
+		db  6, 6, 6,0		; 10: Grey 2
+		db  8, 8, 8,0		; 11: Grey 3
+		db 10,10,10,0		; 12: Grey 4
+		db 13,13,13,0		; 13: Grey 5
+		db 16,16,16,0		; 14: Grey 6
+		db 19,19,19,0		; 15: Grey 7
+		db 22,22,22,0		; 16: Grey 8
+		db 25,25,25,0		; 17: Grey 9
+		db 28,28,28,0		; 18: Grey 10
+		db 31,31,31,0		; 19: Grey 11
+		db  0, 0, 0,0		; 20: Colour cube
+		db  0, 0,13,0		; 21: Colour cube
+		db  0, 0,26,0		; 22: Colour cube
+		db  0, 0,37,0		; 23: Colour cube
+		db  0, 0,50,0		; 24: Colour cube
+		db  0, 0,63,0		; 25: Colour cube
+		db  0,13, 0,0		; 26: Colour cube
+		db  0,13,13,0		; 27: Colour cube
+		db  0,13,26,0		; 28: Colour cube
+		db  0,13,37,0		; 29: Colour cube
+		db  0,13,50,0		; 30: Colour cube
+		db  0,13,63,0		; 31: Colour cube
+		db  0,26, 0,0		; 32: Colour cube
+		db  0,26,13,0		; 33: Colour cube
+		db  0,26,26,0		; 34: Colour cube
+		db  0,26,37,0		; 35: Colour cube
+		db  0,26,50,0		; 36: Colour cube
+		db  0,26,63,0		; 37: Colour cube
+		db  0,37, 0,0		; 38: Colour cube
+		db  0,37,13,0		; 39: Colour cube
+		db  0,37,26,0		; 40: Colour cube
+		db  0,37,37,0		; 41: Colour cube
+		db  0,37,50,0		; 42: Colour cube
+		db  0,37,63,0		; 43: Colour cube
+		db  0,50, 0,0		; 44: Colour cube
+		db  0,50,13,0		; 45: Colour cube
+		db  0,50,26,0		; 46: Colour cube
+		db  0,50,37,0		; 47: Colour cube
+		db  0,50,50,0		; 48: Colour cube
+		db  0,50,63,0		; 49: Colour cube
+		db  0,63, 0,0		; 50: Colour cube
+		db  0,63,13,0		; 51: Colour cube
+		db  0,63,26,0		; 52: Colour cube
+		db  0,63,37,0		; 53: Colour cube
+		db  0,63,50,0		; 54: Colour cube
+		db  0,63,63,0		; 55: Colour cube
+
+		db 13, 0, 0,0		; 56: Colour cube
+		db 13, 0,13,0		; 57: Colour cube
+		db 13, 0,26,0		; 58: Colour cube
+		db 13, 0,37,0		; 59: Colour cube
+		db 13, 0,50,0		; 60: Colour cube
+		db 13, 0,63,0		; 61: Colour cube
+		db 13,13, 0,0		; 62: Colour cube
+		db 13,13,13,0		; 63: Colour cube
+		db 13,13,26,0		; 64: Colour cube
+		db 13,13,37,0		; 65: Colour cube
+		db 13,13,50,0		; 66: Colour cube
+		db 13,13,63,0		; 67: Colour cube
+		db 13,26, 0,0		; 68: Colour cube
+		db 13,26,13,0		; 69: Colour cube
+		db 13,26,26,0		; 70: Colour cube
+		db 13,26,37,0		; 71: Colour cube
+		db 13,26,50,0		; 72: Colour cube
+		db 13,26,63,0		; 73: Colour cube
+		db 13,37, 0,0		; 74: Colour cube
+		db 13,37,13,0		; 75: Colour cube
+		db 13,37,26,0		; 76: Colour cube
+		db 13,37,37,0		; 77: Colour cube
+		db 13,37,50,0		; 78: Colour cube
+		db 13,37,63,0		; 79: Colour cube
+		db 13,50, 0,0		; 80: Colour cube
+		db 13,50,13,0		; 81: Colour cube
+		db 13,50,26,0		; 82: Colour cube
+		db 13,50,37,0		; 83: Colour cube
+		db 13,50,50,0		; 84: Colour cube
+		db 13,50,63,0		; 85: Colour cube
+		db 13,63, 0,0		; 86: Colour cube
+		db 13,63,13,0		; 87: Colour cube
+		db 13,63,26,0		; 88: Colour cube
+		db 13,63,37,0		; 89: Colour cube
+		db 13,63,50,0		; 90: Colour cube
+		db 13,63,63,0		; 91: Colour cube
+
+		db 26, 0, 0,0		; 92: Colour cube
+		db 26, 0,13,0		; 93: Colour cube
+		db 26, 0,26,0		; 94: Colour cube
+		db 26, 0,37,0		; 95: Colour cube
+		db 26, 0,50,0		; 96: Colour cube
+		db 26, 0,63,0		; 97: Colour cube
+		db 26,13, 0,0		; 98: Colour cube
+		db 26,13,13,0		; 99: Colour cube
+		db 26,13,26,0		;100: Colour cube
+		db 26,13,37,0		;101: Colour cube
+		db 26,13,50,0		;102: Colour cube
+		db 26,13,63,0		;103: Colour cube
+		db 26,26, 0,0		;104: Colour cube
+		db 26,26,13,0		;105: Colour cube
+		db 26,26,26,0		;106: Colour cube
+		db 26,26,37,0		;107: Colour cube
+		db 26,26,50,0		;108: Colour cube
+		db 26,26,63,0		;109: Colour cube
+		db 26,37, 0,0		;110: Colour cube
+		db 26,37,13,0		;111: Colour cube
+		db 26,37,26,0		;112: Colour cube
+		db 26,37,37,0		;113: Colour cube
+		db 26,37,50,0		;114: Colour cube
+		db 26,37,63,0		;115: Colour cube
+		db 26,50, 0,0		;116: Colour cube
+		db 26,50,13,0		;117: Colour cube
+		db 26,50,26,0		;118: Colour cube
+		db 26,50,37,0		;119: Colour cube
+		db 26,50,50,0		;120: Colour cube
+		db 26,50,63,0		;121: Colour cube
+		db 26,63, 0,0		;122: Colour cube
+		db 26,63,13,0		;123: Colour cube
+		db 26,63,26,0		;124: Colour cube
+		db 26,63,37,0		;125: Colour cube
+		db 26,63,50,0		;126: Colour cube
+		db 26,63,63,0		;127: Colour cube
+
+		db 37, 0, 0,0		;128: Colour cube
+		db 37, 0,13,0		;129: Colour cube
+		db 37, 0,26,0		;130: Colour cube
+		db 37, 0,37,0		;131: Colour cube
+		db 37, 0,50,0		;132: Colour cube
+		db 37, 0,63,0		;133: Colour cube
+		db 37,13, 0,0		;134: Colour cube
+		db 37,13,13,0		;135: Colour cube
+		db 37,13,26,0		;136: Colour cube
+		db 37,13,37,0		;137: Colour cube
+		db 37,13,50,0		;138: Colour cube
+		db 37,13,63,0		;139: Colour cube
+		db 37,26, 0,0		;140: Colour cube
+		db 37,26,13,0		;141: Colour cube
+		db 37,26,26,0		;142: Colour cube
+		db 37,26,37,0		;143: Colour cube
+		db 37,26,50,0		;144: Colour cube
+		db 37,26,63,0		;145: Colour cube
+		db 37,37, 0,0		;146: Colour cube
+		db 37,37,13,0		;147: Colour cube
+		db 37,37,26,0		;148: Colour cube
+		db 37,37,37,0		;149: Colour cube
+		db 37,37,50,0		;150: Colour cube
+		db 37,37,63,0		;151: Colour cube
+		db 37,50, 0,0		;152: Colour cube
+		db 37,50,13,0		;153: Colour cube
+		db 37,50,26,0		;154: Colour cube
+		db 37,50,37,0		;155: Colour cube
+		db 37,50,50,0		;156: Colour cube
+		db 37,50,63,0		;157: Colour cube
+		db 37,63, 0,0		;158: Colour cube
+		db 37,63,13,0		;159: Colour cube
+		db 37,63,26,0		;160: Colour cube
+		db 37,63,37,0		;161: Colour cube
+		db 37,63,50,0		;162: Colour cube
+		db 37,63,63,0		;163: Colour cube
+
+		db 50, 0, 0,0		;164: Colour cube
+		db 50, 0,13,0		;165: Colour cube
+		db 50, 0,26,0		;166: Colour cube
+		db 50, 0,37,0		;167: Colour cube
+		db 50, 0,50,0		;168: Colour cube
+		db 50, 0,63,0		;169: Colour cube
+		db 50,13, 0,0		;170: Colour cube
+		db 50,13,13,0		;171: Colour cube
+		db 50,13,26,0		;172: Colour cube
+		db 50,13,37,0		;173: Colour cube
+		db 50,13,50,0		;174: Colour cube
+		db 50,13,63,0		;175: Colour cube
+		db 50,26, 0,0		;146: Colour cube
+		db 50,26,13,0		;177: Colour cube
+		db 50,26,26,0		;178: Colour cube
+		db 50,26,37,0		;179: Colour cube
+		db 50,26,50,0		;180: Colour cube
+		db 50,26,63,0		;181: Colour cube
+		db 50,37, 0,0		;182: Colour cube
+		db 50,37,13,0		;183: Colour cube
+		db 50,37,26,0		;184: Colour cube
+		db 50,37,37,0		;185: Colour cube
+		db 50,37,50,0		;186: Colour cube
+		db 50,37,63,0		;187: Colour cube
+		db 50,50, 0,0		;188: Colour cube
+		db 50,50,13,0		;189: Colour cube
+		db 50,50,26,0		;190: Colour cube
+		db 50,50,37,0		;191: Colour cube
+		db 50,50,50,0		;192: Colour cube
+		db 50,50,63,0		;193: Colour cube
+		db 50,63, 0,0		;194: Colour cube
+		db 50,63,13,0		;195: Colour cube
+		db 50,63,26,0		;196: Colour cube
+		db 50,63,37,0		;197: Colour cube
+		db 50,63,50,0		;198: Colour cube
+		db 50,63,63,0		;199: Colour cube
+
+		db 63, 0, 0,0		;200: Colour cube
+		db 63, 0,13,0		;201: Colour cube
+		db 63, 0,26,0		;202: Colour cube
+		db 63, 0,37,0		;203: Colour cube
+		db 63, 0,50,0		;204: Colour cube
+		db 63, 0,63,0		;205: Colour cube
+		db 63,13, 0,0		;206: Colour cube
+		db 63,13,13,0		;207: Colour cube
+		db 63,13,26,0		;208: Colour cube
+		db 63,13,37,0		;209: Colour cube
+		db 63,13,50,0		;210: Colour cube
+		db 63,13,63,0		;211: Colour cube
+		db 63,26, 0,0		;212: Colour cube
+		db 63,26,13,0		;213: Colour cube
+		db 63,26,26,0		;214: Colour cube
+		db 63,26,37,0		;215: Colour cube
+		db 63,26,50,0		;216: Colour cube
+		db 63,26,63,0		;217: Colour cube
+		db 63,37, 0,0		;218: Colour cube
+		db 63,37,13,0		;219: Colour cube
+		db 63,37,26,0		;220: Colour cube
+		db 63,37,37,0		;221: Colour cube
+		db 63,37,50,0		;222: Colour cube
+		db 63,37,63,0		;223: Colour cube
+		db 63,50, 0,0		;224: Colour cube
+		db 63,50,13,0		;225: Colour cube
+		db 63,50,26,0		;226: Colour cube
+		db 63,50,37,0		;227: Colour cube
+		db 63,50,50,0		;228: Colour cube
+		db 63,50,63,0		;229: Colour cube
+		db 63,63, 0,0		;230: Colour cube
+		db 63,63,13,0		;231: Colour cube
+		db 63,63,26,0		;232: Colour cube
+		db 63,63,37,0		;233: Colour cube
+		db 63,63,50,0		;234: Colour cube
+		db 63,63,63,0		;235: Colour cube
+		db 32,32,32,0		;236: Grey 12
+		db 35,35,35,0		;237: Grey 13
+		db 38,38,38,0		;238: Grey 14
+		db 41,41,41,0		;239: Grey 16
+		db 44,44,44,0		;240: Grey 17
+		db 47,47,47,0		;241: Grey 18
+		db 50,50,50,0		;242: Grey 19
+		db 53,53,53,0		;243: Grey 20
+		db 55,55,55,0		;244: Grey 21
+		db 57,57,57,0		;245: Grey 22
+		db 59,59,59,0		;246: Grey 23
+		db 61,61,61,0		;247: Grey 24
+		db 21,21,21,0		;248: Dark grey
+		db  0, 0,42,0		;249: Dark red
+		db  0,42, 0,0		;250: Dark green
+		db  0,42,42,0		;251: Dark yellow
+		db 42, 0, 0,0		;252: Dark blue
+		db 42, 0,42,0		;253: Dark magenta
+		db 42,42, 0,0		;254: Dark cyan
+		if GSX
+		db 63,63,63,0		;255: white
+		else
+		db  0, 0, 0,0		;255: Black
+		endif
+;
+; The first 16 colours are standard GEM issue.
+;
+MAP_COL		dw 0			;White -> 0
+		dw 0FFh			;Black -> 0FFh (from white -> 0)
+		dw 1			;Red   -> 1
+		dw 2			;Green -> 2
+		dw 4			;Blue  -> 4
+		dw 6			;Cyan  -> 6
+		dw 3			;Yellow-> 3
+		dw 5			;Magenta->5
+		dw 7			;Grey   ->8
+		dw 248			;DGrey  ->248
+		dw 249			;Dark red
+		dw 250			;Dark green
+		dw 252			;Dark blue
+		dw 254			;Dark cyan
+		dw 251			;Dark yellow
+		dw 253			;Dark magenta
+;
+; The next 24 colours are a grey scale.
+;
+		dw   8,  9, 10, 11,12,  13, 14, 15, 16, 17, 18, 19
+		dw 236,237,238,239,240,241,242,243,244,245,246,247
+;
+; The last 216 are a 6x6x6 colour cube.
+;
+		dw  20, 21, 22, 23, 24, 25	;First block: B=0
+		dw  26, 27, 28, 29, 30, 31 
+		dw  32, 33, 34, 35, 36, 37 
+		dw  38, 39, 40, 41, 42, 43
+		dw  44, 45, 46, 47, 48, 49
+		dw  50, 51, 52, 53, 54, 55
+	
+		dw  56, 57, 58, 59, 60, 61 	;Second block: B=13
+		dw  62, 63, 64, 65, 66, 67 
+		dw  68, 69, 70, 71, 72, 73
+		dw  74, 75, 76, 77, 78, 79
+		dw  80, 81, 82, 83, 84, 85
+		dw  86, 87, 88, 89, 90, 91 
+
+		dw  92, 93, 94, 95, 96, 97 	;Third block: B=26
+		dw  98, 99,100,101,102,103
+		dw 104,105,106,107,108,109
+		dw 110,111,112,113,114,115
+		dw 116,117,118,119,120,121 
+		dw 122,123,124,125,126,127 
+
+		dw 128,129,130,131,132,133	;Fourth block: B=37
+		dw 134,135,136,137,138,139
+		dw 140,141,142,143,144,145
+		dw 146,147,148,149,150,151 
+		dw 152,153,154,155,156,157 
+		dw 158,159,160,161,162,163
+
+		dw 164,165,166,167,168,169	;Fifth block: B=50
+		dw 170,171,172,173,174,175
+		dw 176,177,178,179,180,181 
+		dw 182,183,184,185,186,187 
+		dw 188,189,190,191,192,193
+		dw 194,195,196,197,198,199
+
+		dw 200,201,202,203,204,205	;Sixth block: B=63
+		dw 206,207,208,209,210,211 
+		dw 212,213,214,215,216,217 
+		dw 218,219,220,221,222,223
+		dw 224,225,226,227,228,229
+		dw 230,231,232,233,234,235
+
+novbe		db	'VESA 640x480 mode not available.',13,10,'$'	
+nowdw		db	'VESA window granularity is not 4k.',13,10,'$'
+		else
+
+act_col_tbl	dw 1000, 1000, 1000
+		dw 1000,    0,    0
+		dw    0, 1000,    0
+		dw 1000, 1000, 	  0
+		dw    0,    0, 1000
+		dw 1000,    0, 1000
+		dw    0, 1000, 1000
+		dw  666,  666,  666
+		dw  333,  333,  333
+		dw  333,    0,    0
+		dw    0,  333,    0
+		dw  333,  333,    0
+		dw    0,    0,  333
+		dw  333,    0,  333
+		dw    0,  333,  333
+		dw    0,    0,    0
+
+req_col_tbl	dw 1000, 1000, 1000
+		dw 1000,    0,    0
+		dw    0, 1000,    0
+		dw 1000, 1000, 	  0
+		dw    0,    0, 1000
+		dw 1000,    0, 1000
+		dw    0, 1000, 1000
+		dw  666,  666,  666
+		dw  333,  333,  333
+		dw  333,    0,    0
+		dw    0,  333,    0
+		dw  333,  333,    0
+		dw    0,    0,  333
+		dw  333,    0,  333
+		dw    0,  333,  333
+		dw    0,    0,    0
+init_col_table	db 3Fh,	24h, 12h, 36h
+		db   9, 2Dh, 1Bh, 7
+		db 38h,  4,   2,  6
+		db 1,	 5,   3,  0,0
+
+vga_col_table	db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63, 0		;Yellow
+		db  0, 0,63		;Blue
+		db 63, 0,63		;Magenta
+		db  0,63,63		;Cyan
+		db 42,42,42		;Light grey
+		db 21,21,21		;Dark grey
+		db 42, 0, 0		;Dark red
+		db  0,42, 0		;Dark green
+		db 42,42, 0		;Dark yellow
+		db  0, 0,42		;Dark blue
+		db 42, 0,42		;Dark magenta
+		db  0,42,42		;Dark cyan
+		db  0, 0, 0		;Black
+MAP_COL		dw 0, 0Fh, 1, 2, 4, 6, 3, 5, 7,	8, 9, 0Ah, 0Ch,	0Eh, 0Bh, 0Dh
+		endif
+					; cseg:04B1o ...
+CONTRL		rw	CONTRL_SIZE
+INTIN		rw	INTIN_SIZE
+PTSOUT		rw	PTSOUT_SIZE
+
+		include	date.a86
+		db	' VESA 1024x768x256 colour driver'
+		include	copyrt.a86
+		rs	offset PTSIN + 2 * PTSIN_SIZE + 4 - offset $
+
+INTOUT		rw INTOUT_SIZE
+					; ...

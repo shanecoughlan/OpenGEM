@@ -1,0 +1,175 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software _code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+		cseg
+
+		public	Isin, Icos
+
+Isin:
+					; gdp_rbox+D0p ...
+		push	bp
+		sub	sp, 0Eh
+		mov	bp, sp
+
+Isin1:				; CODE XREF: Isin+13j
+		mov	ax, 18[bp]
+		cmp	ax, 3600
+		jle	Isin2
+		sub	word ptr 18[bp], 3600
+		jmps	Isin1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin2:				; CODE XREF: Isin+Cj
+		mov	ax, 18[bp]
+		mov	bx, 900
+		cwd	
+		idiv	bx
+		mov	word ptr 4[bp], 1
+		mov	12[bp], ax
+		jmps	Isin9
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin3:				; CODE XREF: Isin+61u
+					; DATA XREF: Isin+4Eo
+		jmps	Isin10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin4:				; CODE XREF: Isin+61u
+					; DATA XREF: Isin+50o
+		mov	ax, 1800
+		sub	ax, 18[bp]
+		mov	18[bp], ax
+		jmps	Isin10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin5:				; CODE XREF: Isin+61u
+					; DATA XREF: Isin+52o
+		sub	word ptr 18[bp], 1800
+		jmps	Isin10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin6:				; CODE XREF: Isin+61u
+					; DATA XREF: Isin+54o
+		mov	ax, 3600
+		sub	ax, 18[bp]
+		mov	18[bp], ax
+		jmps	Isin10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin7:				; CODE XREF: Isin+61u
+					; DATA XREF: Isin+56o
+		sub	word ptr 18[bp], 3600
+		jmps	Isin10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+Isin8	dw offset Isin3	; DATA XREF: Isin+61o
+		dw offset Isin4
+		dw offset Isin5
+		dw offset Isin6
+		dw offset Isin7
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin9:				; CODE XREF: Isin+26j
+		mov	si, ax
+		cmp	si, 5
+		jnb	Isin10
+		shl	si, 1
+		jmp	cs:Isin8[si]
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+Isin10:				; CODE XREF: Isin+28j
+					; Isin+33j ...
+		mov	ax, 18[bp]
+		mov	bx, 0Ah
+		cwd	
+		idiv	bx
+		mov	6[bp],	ax
+		mov	ax, 18[bp]
+		cwd	
+		idiv	bx
+		mov	ax, 6[bp]
+		shl	ax, 1
+		mov	si, ax
+		mov	bx, sin_tbl[si]
+		test	dx, dx
+		mov	0[bp],	ax
+		mov	8[bp],	dx
+		mov	10[bp], bx
+		jz	Isin11
+		mov	ax, sin_tbl+2[si]
+		sub	ax, bx
+		imul	dx
+		mov	cx, 0Ah
+		cwd	
+		idiv	cx
+		add	10[bp], ax
+
+Isin11:				; CODE XREF: Isin+8Ej
+		cmp	word ptr 12[bp], 1
+		jle	Isin12
+		neg	word ptr 10[bp]
+
+Isin12:				; CODE XREF: Isin+A5j
+		mov	ax, 10[bp]
+		add	sp, 0Eh
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+Icos:
+					; gdp_rbox+B6p ...
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, 6[bp]
+		add	ax, 900
+		cmp	ax, 3600
+		mov	6[bp],	ax
+		jle	Icos1
+		sub	word ptr 6[bp], 3600
+
+Icos1:				; CODE XREF: Icos+12j
+		push	word ptr 6[bp]
+		call	Isin
+		mov	sp, bp
+		add	sp, 2
+		pop	bp
+		retn	
+
+		dseg
+
+sin_tbl	dw 0, 572, 1144, 1716, 2286, 2856, 3425, 3993, 4560, 5126, 5690, 6252
+					; DATA XREF: Isin+7Fo
+					; Isin+90o
+		dw 6813, 7371, 7927, 8481, 9032, 9580, 10126, 10668, 11207, 11743, 12275
+		dw 12803, 13328, 13848,	14364, 14876, 15383, 15886, 16383, 16876, 17364
+		dw 17846, 18323, 18794,	19260, 19720, 20173, 20621, 21062, 21497, 21925
+		dw 22347, 22762, 23170,	23571, 23964, 24351, 24730, 25101, 25465, 25821
+		dw 26169, 26509, 26841,	27165, 27481, 27788, 28087, 28377, 28659, 28932
+		dw 29196, 29451, 29697,	29934, 30162, 30381, 30591, 30791, 30982, 31163
+		dw 31335, 31498, 31650,	31794, 31927, 32051, 32165, 32269, 32364, 32448
+		dw 32523, 32587, 32642,	32687, 32722, 32747, 32762, 32767, 32767
+
+		end

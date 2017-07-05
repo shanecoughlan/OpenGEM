@@ -1,0 +1,162 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1984, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+		dseg
+
+		public	DEV_TAB, SIZ_TAB, INQ_TAB, INQ_PTS
+		public	CLIP, XMN_CLIP, XMX_CLIP, YMN_CLIP, YMX_CLIP
+		public	m_dot, m_plus, m_star, m_square, m_cross, m_dmnd
+
+;
+; Device tables.
+;
+DEV_TAB		dw	xresmx		;1	x resolution
+		dw	yresmx		;2	y resolution
+		dw	0		;3	0=exact,1=not exact
+		dw	xsize		;4	width of pixel
+		dw	ysize		;5	height of pixel
+		dw	0		;6	character sizes
+		dw	8		;7	linestyles
+		dw	40		;8	linewidths
+		dw	8		;9	marker types
+		dw	8		;10	marker size
+		dw	0		;11	text font
+		dw	24		;12	area patterns
+		dw	12		;13	crosshatch patterns
+		dw	num_colors	;14	colors at one time
+		dw	10		;15	number of GDP's
+		dw	1		;16	GDP bar
+		dw	2		;17	GDP arc
+		dw	3		;18	GDP pie
+		dw	4		;19	GDP circle
+		dw	5		;20	GDP ellipse
+		dw	6		;21	GDP elliptical arc
+		dw	7		;22	GDP elliptical pie
+		dw	8 		;23	GDP rounded rectangle
+		dw	9 		;24	GDP filled rounded rectangle
+		dw	10		;25	GDP justified text
+;GDP attributes
+		dw	3		;26	GDP #1
+		dw	0		;27	GDP #2
+		dw	3		;28	GDP #3
+		dw	3		;29	GDP #4
+		dw	3		;30	GDP #5
+		dw	0		;31	GDP #6
+		dw	3		;32	GDP #7
+		dw	0 		;33	GDP #8
+		dw	3 		;34	GDP #9
+		dw	2 		;35	GDP #10
+		dw	0		;36	Color capability
+		dw	1		;37	Text Rotation
+		dw	1		;38	Polygonfill
+		dw	0		;39	Cell Array
+		dw	4		;40	Pallette size
+if mouse
+		dw	2		;41	# of locator devices return 2
+else
+		dw	1		;41	return 1
+endif
+		dw	1		;42	# of valuator devices
+		dw	1		;43	# of choice devices
+		dw	1		;44	# of string devices
+		dw	2		;45	Workstation Type 2 = out/in
+;
+;size_table
+;returns text,line and marker sizes in device coordinates
+;
+SIZ_TAB		dw	0		;1  min char width
+		dw	0		;2  min char height
+		dw	0		;3  max char width
+		dw	0		;4  max char height
+		dw	1		;5  min line width
+		dw	0		;6  -- not used
+		dw	40		;7  max line width
+		dw	0		;8  -- not used
+		dw	15		;9  min marker width
+		dw	11		;10 min marker height
+		dw	120		;11 max marker width
+		dw	88		;12 max marker height
+INQ_TAB		dw	4		; 0  type of alpha/graphic controllers
+		dw	1		; 1  number of background colors
+		dw	1		; 2  text styles supported
+		dw	0		; 3  scale rasters = false
+		dw	num_planes	; 4  number of planes
+		dw	0		; 5  video lookup table
+		dw	50		; 6  performance factor
+		dw	0		; 7  contour fill capability
+		dw	1		; 8  character rotation capability
+		dw	4		; 9  number of writing modes
+		dw	2		; 10 highest input mode
+		dw	1		; 11 text alignment flag
+		dw	0		; 12 Inking capability
+		dw	0		; 13 rubber banding
+		dw	05DAh		; 14 maximum vertices
+		dw	INTIN_SIZE	; 15 maximum intin size
+		dw	3		; 16 number of buttons on mouse
+		dw	0		; 17 styles for wide lines
+		dw	0		; 18 writing modes for wide lines
+CLIP		rw	1		; 19 clipping flag
+		rw	6		; 20-25 unknown
+		dw	offscreen_size, 0
+					; 26-27 size of backing buffer
+
+INQ_PTS		rw	0		; INQ_PTS[0] = XMN_CLIP
+XMN_CLIP	rw	1		; 0  upper left x
+YMN_CLIP	rw	1		; 1  upper left y
+XMX_CLIP	rw	1		; 2  lower right x
+YMX_CLIP	rw	1		; 3  lower right y
+		rw	8
+;
+; Marker definitions.
+;
+m_dot		dw	1		; number of polylines
+		dw	2		; segments in polyline
+		dw	0, 0, 0, 0
+
+m_plus		dw	2		; number of polylines
+		dw	2		; segments in polyline
+		dw	0, -2, 0, 2
+		dw	2		; segments in polyline
+		dw	-5, 0, 5, 0
+
+m_star		dw	3		; number of polylines
+		dw	2		; segments in polyline
+		dw	-5, 0, 5, 0
+		dw	2		; segments in polyline
+		dw	-2, 2, 2, -2
+		dw	2		; segments in polyline
+		dw	-2, -2, 2, 2
+
+m_square	dw	1		; number of polylines
+		dw	5		; segments in polyline
+		dw	-5, -2, 5, -2, 5, 2, -5, 2, -5, -2
+
+m_cross		dw	2		; number of polylines
+		dw	2		; segments in polyline
+		dw	-5, -2, 5, 2
+		dw	2		; segments in polyline
+		dw	-5, 2, 5, -2
+
+m_dmnd		dw	1		; number of polylines
+		dw	5		; segments in polyline
+		dw	-5, 0, 0, -2, 5, 0, 0, 2, -5, 0
+;
+

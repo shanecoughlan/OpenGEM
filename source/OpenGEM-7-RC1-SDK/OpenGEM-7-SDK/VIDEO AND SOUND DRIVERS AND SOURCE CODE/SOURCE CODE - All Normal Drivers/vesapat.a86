@@ -1,0 +1,416 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+;
+; This diverges from the standard hirespat by having separate mouse colour
+; forward and background colour bytes rather than cramming them into mous_col.
+;
+
+	dseg
+public	dither,hatch0,hatch1,oempat,ud_patrn,hollow,solid
+public	oemmskpa,hat_0_ms,hat_1_ms,dithrmsk,udpatmsk,line_sty,ud_lstyl
+public	udpt_np, NEXT_PAT, udpt_8bit
+public	mxhot,myhot,mmask
+public	mous_col_fg,mous_col_bg,mous_ci_mask,mous_ci_data
+;
+;	Display routine assumes that the mouse form definition
+;	follows the mouse mask data definition
+mous_col_fg	db	1
+mous_col_bg	db	0
+;;;mous_col_map	db	10101010b	; dmdmdmdm pel index bits white/black
+;;;mous_col	db	0	
+;
+mxhot		dw	3		; mouse form hot spot
+myhot		dw	1
+mous_plct	dw	1
+mous_ci_mask	dw	0
+mous_ci_data	dw	1
+mmask				dw	3000h, 3800h, 3c00h, 3e00h
+				dw	3f00h, 3f80h, 3fc0h, 3fe0h
+				dw	3ff0h, 3ff8h, 33d8h, 03c0h
+				dw	01e0h, 01e0h, 01e0h, 0000h
+;	mouse form definiton must follow mouse mask data (16 words)
+mform	dw	00000h, 01000h, 01800h, 01c00h, 01e00h, 01f00h, 01f80h, 01fc0h
+	dw	01b60h, 01310h, 00180h, 00180h, 000c0h, 000c0h, 00000h, 00000h 
+;
+line_sty	dw	0FFFFh,0FFF0h,0C0C0h,0FF18h,0FF00h,0F191h
+ud_lstyl	dw	0
+;
+;**********
+;pattern fills 
+;
+;**********
+udpatmsk dw	000fh	;mask off sixteen scans
+;
+;user defined fill pattern data block
+;
+NEXT_PAT	dw	0
+udpt_np dw	0
+ud_patrn dw	0
+	dw	0
+	dw	3ffch
+	dw	2004h
+	dw	2004h
+	dw	2e74h
+	dw	2e54h
+	dw	2e54h
+	dw	2e54h
+	dw	2e54h
+	dw	2e74h
+	dw	2004h
+	dw	2004h
+	dw	3ffch
+	dw	0
+	dw	0
+if num_planes gt 1
+temp equ	num_planes -1 
+temp1 equ	16 * temp
+	rw	temp1		;reserve space for other planes of data
+endif
+
+udpt_8bit rw	16 * num_planes
+
+oemmskpa	dw	07h
+;brick
+oempat	dw	0ffffh
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	0ffffh
+	dw	0808h
+	dw	0808h
+	dw	0808h
+;diagonal bricks
+	dw	2020h
+	dw	4040h
+	dw	8080h
+	dw	4141h
+	dw	2222h
+	dw	1414h
+	dw	0808h
+	dw	1010h
+;grass
+	dw	0000h
+	dw	0000h
+	dw	1010h
+	dw	2828h
+	dw	0000h
+	dw	0000h
+	dw	0101h
+	dw	8282h
+;trees
+	dw	0202h
+	dw	0202h
+	dw	0aaaah
+	dw	5050h
+	dw	2020h
+	dw	2020h
+	dw	0aaaah
+	dw	0505h
+;dashed x's
+	dw	4040h
+	dw	8080h
+	dw	0000h
+	dw	0808h
+	dw	0404h
+	dw	0202h
+	dw	0000h
+	dw	2020h
+;cobble stone
+	dw	6606h
+	dw	0c6c6h
+	dw	0d8d8h
+	dw	01818h
+	dw	08181h
+	dw	8db1h
+	dw	0c33h
+	dw	06000h
+;sand
+	dw	0000h
+	dw	0000h
+	dw	0400h
+	dw	0000h
+	dw	0010h
+	dw	0000h
+	dw	8000h
+	dw	0000h
+;rough weave
+	dw	0f8f8h
+	dw	06c6ch
+	dw	0c6c6h
+	dw	08f8fh
+	dw	01f1fh
+	dw	03636h
+	dw	06363h
+	dw	0f1f1h
+;quilt	
+	dw	0aaaah
+	dw	00000h
+	dw	08888h
+	dw	01414h
+	dw	02222h
+	dw	04141h
+	dw	08888h
+	dw	00000h
+;patterned cross
+	dw	00808h
+	dw	00000h
+	dw	0aaaah
+	dw	00000h
+	dw	00808h
+	dw	00000h
+	dw	08888h
+	dw	00000h
+;balls
+	dw	07777h
+	dw	09898h
+	dw	0f8f8h
+	dw	0f8f8h
+	dw	07777h
+	dw	08989h
+	dw	08f8fh
+	dw	08f8fh
+;vertical scales
+	dw	08080h
+	dw	08080h
+	dw	04141h
+	dw	03e3eh
+	dw	00808h
+	dw	00808h
+	dw	01414h
+	dw	0e3e3h
+;diagonal scales
+	dw	08181h
+	dw	04242h
+	dw	02424h
+	dw	01818h
+	dw	00606h
+	dw	00101h
+	dw	08080h
+	dw	08080h
+;checker board
+	dw	0f0f0h
+ 	dw	0f0f0h
+  	dw	0f0f0h
+   	dw	0f0f0h
+    	dw	00f0fh
+     	dw	00f0fh
+      	dw	00f0fh
+        dw	00f0fh
+;filled diamond
+	dw	00808h
+	dw	01c1ch
+	dw	03e3eh
+	dw	07f7fh
+	dw	0ffffh
+	dw	07f7fh
+	dw	03e3eh
+	dw	01c1ch
+;herringbone
+	dw	01111h
+	dw	02222h
+	dw	04444h
+	dw	0ffffh
+	dw	08888h
+	dw	04444h
+	dw	02222h
+	dw	0ffffh
+;
+;dither pattern
+;
+dithrmsk dw	0003	;mask all but four scans
+dither	dw	0
+;intensity level two
+	dw	4444h,0000h,1111h
+;intensity level four
+	dw	0000h,5555h,0000h,5555h
+;intensity level six
+	dw	8888h,5555h,2222h,5555h
+;intensity level eight
+	dw	0aaaah,5555h,0aaaah,5555h
+;intensity level ten
+	dw	0aaaah,0ddddh,0aaaah,7777h
+;intensity level twelve
+	dw	0aaaah,0ffffh,0aaaah,0ffffh
+;intensity level fourteen
+	dw	0eeeeh,0ffffh,0bbbbh,0ffffh
+;intensity level sixteen
+	dw	0ffffh,0ffffh,0ffffh,0ffffh
+;
+hat_0_ms dw	0007h	;mask all but eight scans
+;narrow +45 deg
+hatch0	dw	0101h
+	dw	0202h
+	dw	0404h
+	dw	0808h
+	dw	1010h
+	dw	2020h
+	dw	4040h
+	dw	8080h
+;medium spaced thick 45 deg
+	dw	6060h
+	dw	0c0c0h
+	dw	8181h
+	dw	0303h
+	dw	0606h
+	dw	0c0ch
+	dw	1818h
+	dw	3030h
+;medium +-45 deg
+	dw	4242h
+	dw	8181h
+	dw	8181h
+	dw	4242h
+	dw	2424h
+	dw	1818h
+ 	dw	1818h
+	dw	2424h
+;medium spaced vertical
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+;medium spaced horizontal
+	dw	0ffffh
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+;medium spaced cross
+	dw	0ffffh
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+	dw	8080h
+hat_1_ms dw	000fh	;mask all but eight scans
+;wide +45 deg
+hatch1	dw	0001h
+	dw	0002h
+	dw	0004h
+	dw	0008h
+	dw	0010h
+	dw	0020h
+	dw	0040h
+	dw	0080h
+	dw	0100h
+	dw	0200h
+	dw	0400h
+	dw	0800h
+	dw	1000h
+	dw	2000h
+	dw	4000h
+	dw	8000h
+;widely spaced thick 45 deg
+	dw	08003h
+	dw	0007h
+	dw	000eh
+	dw	001ch
+	dw	0038h
+	dw	0070h
+	dw	00e0h
+	dw	01c0h
+	dw	0380h
+	dw	0700h
+	dw	0e00h
+	dw	1c00h
+	dw	3800h
+	dw	7000h
+	dw	0e000h
+	dw	0c001h
+;widely +- 45 deg
+	dw	8001h
+	dw	4002h
+	dw	2004h
+	dw	1008h
+	dw	0810h
+	dw	0420h
+	dw	0240h
+	dw	0180h
+	dw	0180h
+	dw	0240h
+	dw	0420h
+	dw	0810h
+	dw	1008h
+	dw	2004h
+	dw	4002h
+	dw	8001h
+;widely spaced vertical
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+;widely spaced horizontal
+	dw	0ffffh
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+	dw	0
+;widely spaced horizontal/vert cross
+	dw	0ffffh
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+	dw	8000h
+hollow	dw	0
+solid	dw	0ffffh

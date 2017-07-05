@@ -1,0 +1,2150 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+;History
+;Fix #	Name	Date	Description
+;1	DH	5/29/85	Line shortening routine in Tennis used wrong polarity
+;			for LSTLIN flag
+;2	DH	5/29/85	Added line shortening into xline
+;	n = vec_len(delta_x, delta_y);
+;
+if mono_port
+next_seg_lnpg:
+	sub	di, true_plane_size			;wrap back to 0 offset base
+	push	dx
+	push	ax
+	mov	dx, plane_sel_port
+	mov	al, ss:current_bank
+	add	al, ss:port_dir
+	out	dx, al
+	mov	ss:current_bank, al
+	pop	ax
+	pop	dx
+	ret
+endif
+if mono_mem
+next_seg_lnpg:
+	push	ax
+	mov	al, ss:current_bank
+	mov	ah, ss:port_dir
+	cmp	ah, 1
+	jnz	next_seg_lnpg_up
+	sub	di, true_plane_size
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	next_seg_lnpg_downok
+	mov	al, 0c0h
+	call	dest_add
+next_seg_lnpg_downok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+	pop	ax
+	ret
+next_seg_lnpg_up:
+	add	di, true_plane_size
+	cmp	al, 0c0h			;at first bank?
+	jz	next_seg_lnpg_upwrap
+	dec	al
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+	pop	ax
+	ret
+next_seg_lnpg_upwrap:
+	mov	al, 0c6h
+	sub	di, bytes_line
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+	pop	ax
+	ret
+
+endif	
+
+
+;****************************************************************
+;Subroutine	abline						*
+;    Entry:	X1-coordinate					* 
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		Y2-coordinate					*
+;    Purpose:							*
+;		This routine will draw a line from (x1,y1) to	*
+;		(x2,y2) using Bresenham's algorithm.		*
+;								*
+;								*
+;    Variables: for Bresenham's algorithm defined for		*
+;		delta y > delta x after label "ckslope".	*
+;		delta y <= delta x				*
+;****************************************************************
+ABLINE:	push	bp
+	if	manual_update
+	 call	touch_x1y1
+	endif
+	call	do_line
+	mov	LN_MASK,ax		;restore the mask
+	pop	bp
+	ret
+do_line: 
+if mono_multisegs
+;
+else
+	mov	ax, graph_plane
+	mov	es, ax		; init the segment register
+endif
+do_line_1:
+	mov	cx,x2
+	sub	cx,x1			;is line vertical?
+notver: jc	swap			; if x1>x2 then swap pairs
+	push	cx			; save delta x
+	mov	bx, x1
+	mov	ax, y1		
+	call	concat			;get phys. address of initial (X1,Y1)
+	mov	si, offset ortbl	;or mask table address
+	add	si, bx			;   index into table
+	mov	bh,bl
+	mov	bl,[ si ]		;get initial OR table mask.
+	pop	cx
+	mov	dx,y2
+	sub	dx,y1			; is line horizontal?
+	jnz	nothor			; dx is delta y
+	jmp	xline_noswap
+swap:
+	push	cx
+	mov	bx, x2
+	mov	ax, y2		
+	call	concat			;get phys. address of initial (X1,Y1)
+	mov	si, offset ortbl	;or mask table address
+	add	si, bx			;   index into table
+	mov	bh,bl
+	mov	bl,[ si ]		;get initial OR table mask.
+	pop	cx
+	neg	cx
+	mov	dx,y1
+	sub	dx,y2			;dx is delta y
+	jnz	nothor
+	jmp	xline_swap		; xline must swap x1 x2
+nothor: 
+	mov	yinc, 2
+	mov	ax,true_to_first
+	mov	wrap_around,ax
+if mono_port or mono_mem
+	mov	port_dir, 1
+endif
+if mono_xrxfp
+	mov	wrap_around, graph_plane_high
+endif
+if mono_multisegs
+	mov	wrap_around, seg_high
+endif	
+	jnc	abnorm			;is delta y positive
+	neg	dx			; make delta y positive
+	mov	yinc, -2
+	mov	ax,true_to_last
+	mov	wrap_around,ax
+if mono_port or mono_mem
+	mov	port_dir, -1
+endif
+if mono_xrxfp
+	mov	wrap_around, graph_plane
+endif
+if mono_multisegs
+	mov	wrap_around, seg_low
+endif	
+abnorm:
+					;BL - contains OR table mask
+					;DI - Physical Address
+					;ES - graphics segment address
+	cmp	cx, dx			;if dx - dy is negative
+	jnc	dxgedy
+	jmp	dygtdx			;   then dy > dx.
+dxgedy: 	
+	mov	ax,cx
+	inc	cx
+	call	tennis
+	shl	dx, 1			;e1 := 2dy
+	mov	si, dx			;e1 stored in si
+	sub	dx, ax			;epsilon := dx = (2dy -dx)
+	mov	bp, dx			;e2 is stored in bp
+	sub	bp, ax			;e2 := (2dy - 2dx)
+;
+	mov	plane_loop_count, num_planes		; load up the plane count
+	mov	ax, 1			; set up the mask bit for plane/color
+	push	ax
+dxgedy_0:
+	pop	ax			; get ax back
+	push	bx			; save reg contents
+if (num_planes gt 1) and not( segment_access )
+	push	dx
+	mov	dx, plane_sel_port
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	mov	ax, bx
+	pop	dx
+endif	 
+	mov	bx, FG_BP_1
+	and	bx,ax
+	mov	TMP_FG_BP, bx
+	shl	ax, 1			; move the bit mask over one
+	pop	bx
+	push	ax			; save the mask
+	push	LN_MASK
+	push	bx			; save the mask
+	push	cx
+	push	dx
+	push	si
+	push	di
+	call	dxgedy_2
+	pop	di
+	pop	si
+	pop	dx
+	pop	cx
+	pop	bx
+	pop	LN_MASK
+if (num_planes gt 1) and segment_access
+	push	ax
+	mov	ax, es			; 
+	add	ax, next_plane
+	mov	es, ax			; point to the next plane
+	pop	ax
+endif
+	dec	plane_loop_count	; is line done
+	jnz	dxgedy_0
+	pop	LN_MASK			; ax contains the rotated mask
+	ret
+dxgedy_2:
+;
+	mov	ax,LN_MASK
+	cmp	WRT_MODE,0
+	je	replace_dxge
+	cmp	WRT_MODE,1
+	je	its_or_dxge
+	cmp	WRT_MODE,2
+	je	xor_dxge
+	jmp	not_dxge
+its_or_dxge:
+	jmp	or_dxge
+;
+replace_dxge:
+	rol	ax,1
+if rev_vid
+	jnc	rep_dxge_not_1
+	cmp	TMP_FG_BP,0
+	je	rep_dxge_not_1
+	not	bl
+	and	es:[di],bl
+	not	bl
+	jmps	rep_dxge_bp_done
+rep_dxge_not_1:
+	or	es:[di],bl
+rep_dxge_bp_done:
+
+else
+	jnc	rep_dxge_not_1
+	cmp	TMP_FG_BP,0
+	je	rep_dxge_not_1
+	or	es:[di],bl
+	jmps	rep_dxge_bp_done
+rep_dxge_not_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+rep_dxge_bp_done:
+endif
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	rep_dxge_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	rep_dxge_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	rep_dxge_incdi_done
+	add	di, 30
+endif
+rep_dxge_incdi_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	rep_dxge_same1		;   then do not incr. x.
+	add	dx,bp			;epsilon = epsilon + e2
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	rep_dxge_yinc_done_xrxneg
+	add	di, yinc
+	jnc	rep_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	rep_dxge_yinc_done_xrx
+	mov	ax, graph_plane
+	call	dest_add
+	jmps	rep_dxge_yinc_done_xrx
+rep_dxge_yinc_done_xrxneg:
+	add	di, yinc
+	jc	rep_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	rep_dxge_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+rep_dxge_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	rep_dxge_yinc_seg
+	add	di, yinc
+	jnc	rep_dxge_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	rep_dxge_yinc_done
+rep_dxge_yinc_seg:
+	add	di, yinc
+	jc	rep_dxge_yinc_done
+	mov	es, wrap_around
+endif
+if not ( mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	rep_dxge_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	rep_dxge_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+endif
+rep_dxge_yinc_done:
+	loop	replace_dxge
+	ret
+rep_dxge_same1: 
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	replace_dxge
+	ret
+;
+xor_dxge:
+	rol	ax,1
+	jnc	xor_dxge_bp_done
+	xor	es:[di],bl
+xor_dxge_bp_done:
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	xor_dxge_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	xor_dxge_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	xor_dxge_incdi_done
+	add	di, 30
+endif
+xor_dxge_incdi_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	xor_dxge_same1		;   then do not incr. x.
+	add	dx,bp			;epsilon = epsilon + e2
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	xor_dxge_yinc_done_xrxneg
+	add	di, yinc
+	jnc	xor_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	xor_dxge_yinc_done_xrx
+	mov	ax, graph_plane
+	call	dest_add
+	jmps	xor_dxge_yinc_done_xrx
+xor_dxge_yinc_done_xrxneg:
+	add	di, yinc
+	jc	xor_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	xor_dxge_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+xor_dxge_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	xor_dxge_yinc_seg
+	add	di, yinc
+	jnc	xor_dxge_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	xor_dxge_yinc_done
+xor_dxge_yinc_seg:
+	add	di, yinc
+	jc	xor_dxge_yinc_done
+	mov	es, wrap_around
+endif
+if not (mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	xor_dxge_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	xor_dxge_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+   endif
+xor_dxge_yinc_done:
+	loop	xor_dxge
+	ret
+xor_dxge_same1:
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	xor_dxge
+	ret
+;
+not_dxge:
+	rol	ax,1
+if rev_vid
+	jc	not_dxge_bp_done
+	cmp	TMP_FG_BP,0
+	jne	not_dxge_not_bp_1
+	or	es:[di],bl
+	jmps	not_dxge_bp_done
+not_dxge_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+not_dxge_bp_done:
+
+else
+	jc	not_dxge_bp_done
+	cmp	TMP_FG_BP,0
+	je	not_dxge_not_bp_1
+	or	es:[di],bl
+	jmps	not_dxge_bp_done
+not_dxge_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+not_dxge_bp_done:
+endif
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	not_dxge_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	not_dxge_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	not_dxge_incdi_done
+	add	di, 30
+endif
+not_dxge_incdi_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	not_dxge_same1		;   then do not incr. x.
+	add	dx,bp			;epsilon = epsilon + e2
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	not_dxge_yinc_done_xrxneg
+	add	di, yinc
+	jnc	not_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	not_dxge_yinc_done_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	not_dxge_yinc_done_xrx
+not_dxge_yinc_done_xrxneg:
+	add	di, yinc
+	jc	not_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	not_dxge_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+not_dxge_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	not_dxge_yinc_seg
+	add	di, yinc
+	jnc	not_dxge_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	not_dxge_yinc_done
+not_dxge_yinc_seg:
+	add	di, yinc
+	jc	not_dxge_yinc_done
+	mov	es, wrap_around
+endif
+if not (mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	not_dxge_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	not_dxge_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+endif
+not_dxge_yinc_done:
+	loop	not_dxge
+	ret
+not_dxge_same1: 
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	not_dxge
+	ret
+;
+or_dxge:
+	rol	ax,1
+if rev_vid
+	jnc	or_dxge_bp_done
+	cmp	TMP_FG_BP,0
+	jne	or_dxge_not_bp_1
+	or	es:[di],bl
+	jmps	or_dxge_bp_done
+or_dxge_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+or_dxge_bp_done:
+
+else
+	jnc	or_dxge_bp_done
+	cmp	TMP_FG_BP,0
+	je	or_dxge_not_bp_1
+	or	es:[di],bl
+	jmps	or_dxge_bp_done
+or_dxge_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+or_dxge_bp_done:
+endif
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	or_dxge_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	or_dxge_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	or_dxge_incdi_done
+	add	di, 30
+endif
+or_dxge_incdi_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	or_dxge_same1		;   then do not incr. x.
+	add	dx,bp			;epsilon = epsilon + e2
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	or_dxge_yinc_done_xrxneg
+	add	di, yinc
+	jnc	or_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	or_dxge_yinc_done_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	or_dxge_yinc_done_xrx
+or_dxge_yinc_done_xrxneg:
+	add	di, yinc
+	jc	or_dxge_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	or_dxge_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+or_dxge_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	or_dxge_yinc_seg
+	add	di, yinc
+	jnc	or_dxge_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	or_dxge_yinc_done
+or_dxge_yinc_seg:
+	add	di, yinc
+	jc	or_dxge_yinc_done
+	mov	es, wrap_around
+endif
+if not (mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	or_dxge_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	or_dxge_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+endif
+or_dxge_yinc_done:
+	loop	or_dxge
+	ret
+or_dxge_same1: 
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	or_dxge
+	ret
+;
+dygtdx: 	
+	xchg	cx,dx			;make dx and dy same as above
+	mov	ax,cx			;dx=dx, ax=dy, cx=count
+	inc	cx
+	call	tennis
+	shl	dx, 1			;e1 := 2dx
+	mov	si, dx			;si is e1
+	sub	dx, ax			;epsilon := dx = (2dx - dy)
+	mov	bp, dx
+	sub	bp, ax			;e2 := (2dx - 2dy)	
+;
+	mov	plane_loop_count, num_planes		; load up the plane count
+	mov	ax, 1			; set up the mask bit for plane/color
+	push	ax
+dygedx_0:
+	pop	ax			; get ax back
+	push	bx			; save reg contents
+if (num_planes gt 1) and not( segment_access )
+	push	dx
+	mov	dx, plane_sel_port
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	mov	ax, bx
+	pop	dx
+endif	 
+	mov	bx, FG_BP_1
+	and	bx,ax
+	mov	TMP_FG_BP, bx
+	shl	ax, 1			; move the bit mask over one
+	pop	bx
+	push	ax			; save the mask
+	push	LN_MASK
+	push	bx			; save the mask
+	push	cx
+	push	dx
+	push	si
+	push	di
+	call	dygedx_2
+	pop	di
+	pop	si
+	pop	dx
+	pop	cx
+	pop	bx
+	pop	LN_MASK
+if (num_planes gt 1) and segment_access
+	push	ax
+	mov	ax, es			; 
+	add	ax, next_plane
+	mov	es, ax			; point to the next plane
+	pop	ax
+endif
+	dec	plane_loop_count	; is line done
+	jnz	dygedx_0
+	pop	LN_MASK			; ax contains the rotated mask
+	ret
+dygedx_2:
+	mov	ax,LN_MASK
+	cmp	WRT_MODE,0
+	je	replace_dygt
+	cmp	WRT_MODE,1
+	je	its_or_dygt
+	cmp	WRT_MODE,2
+	je	xor_dygt
+	jmp	not_dygt
+its_or_dygt:
+	jmp	or_dygt
+replace_dygt:
+	rol	ax,1
+if rev_vid
+	jnc	rep_dygt_not_1
+	cmp	TMP_FG_BP,0
+	je	rep_dygt_not_1
+	not	bl
+	and	es:[di],bl
+	not	bl
+	jmps	rep_dygt_bp_done
+rep_dygt_not_1:
+	or	es:[di],bl
+rep_dygt_bp_done:
+
+else
+	jnc	rep_dygt_not_1
+	cmp	TMP_FG_BP,0
+	je	rep_dygt_not_1
+	or	es:[di],bl
+	jmps	rep_dygt_bp_done
+rep_dygt_not_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+rep_dygt_bp_done:
+endif
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	rep_dygt_yinc_done_xrxneg
+	add	di, yinc
+	jnc	rep_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	rep_dygt_yinc_done_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	rep_dygt_yinc_done_xrx
+rep_dygt_yinc_done_xrxneg:
+	add	di, yinc
+	jc	rep_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	rep_dygt_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+rep_dygt_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	rep_dygt_yinc_seg
+	add	di, yinc
+	jnc	rep_dygt_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	rep_dygt_yinc_done
+rep_dygt_yinc_seg:
+	add	di, yinc
+	jc	rep_dygt_yinc_done
+	mov	es, wrap_around
+endif
+if not (mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	rep_dygt_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	rep_dygt_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+endif
+rep_dygt_yinc_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	rep_dygt_same1		;   then do not incr. x.
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	rep_dygt_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	rep_dygt_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	rep_dygt_incdi_done
+	add	di, 30
+endif
+rep_dygt_incdi_done:
+	add	dx,bp			;epsilon = epsilon + e2
+	loop	replace_dygt
+	ret
+rep_dygt_same1: 
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	replace_dygt
+	ret
+;
+xor_dygt:
+	rol	ax,1
+	jnc	xor_dygt_bp_done
+	xor	es:[di],bl
+xor_dygt_bp_done:
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	xor_dygt_yinc_done_xrxneg
+	add	di, yinc
+	jnc	xor_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	xor_dygt_yinc_done_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	xor_dygt_yinc_done_xrx
+xor_dygt_yinc_done_xrxneg:
+	add	di, yinc
+	jc	xor_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	xor_dygt_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+xor_dygt_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	xor_dygt_yinc_seg
+	add	di, yinc
+	jnc	xor_dygt_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	xor_dygt_yinc_done
+xor_dygt_yinc_seg:
+	add	di, yinc
+	jc	xor_dygt_yinc_done
+	mov	es, wrap_around
+endif
+if not (mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	xor_dygt_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	xor_dygt_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+endif
+xor_dygt_yinc_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	xor_dygt_same1		;   then do not incr. x.
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	xor_dygt_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	xor_dygt_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	xor_dygt_incdi_done
+	add	di, 30
+endif
+xor_dygt_incdi_done:
+	add	dx,bp			;epsilon = epsilon + e2
+	loop	xor_dygt
+	ret
+xor_dygt_same1: 
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	xor_dygt
+	ret
+;
+or_dygt:
+	rol	ax,1
+if rev_vid
+	jnc	or_dygt_bp_done
+	cmp	TMP_FG_BP,0
+	jne	or_dygt_not_bp_1
+	or	es:[di],bl
+	jmps	or_dygt_bp_done
+or_dygt_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+or_dygt_bp_done:
+
+else
+	jnc	or_dygt_bp_done
+	cmp	TMP_FG_BP,0
+	je	or_dygt_not_bp_1
+	or	es:[di],bl
+	jmps	or_dygt_bp_done
+or_dygt_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+or_dygt_bp_done:
+endif
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	or_dygt_yinc_done_xrxneg
+	add	di, yinc
+	jnc	or_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	or_dygt_yinc_done_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	or_dygt_yinc_done_xrx
+or_dygt_yinc_done_xrxneg:
+	add	di, yinc
+	jc	or_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	or_dygt_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+or_dygt_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	or_dygt_yinc_seg
+	add	di, yinc
+	jnc	or_dygt_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	or_dygt_yinc_done
+or_dygt_yinc_seg:
+	add	di, yinc
+	jc	or_dygt_yinc_done
+	mov	es, wrap_around
+endif
+if not (mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem 
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	or_dygt_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	or_dygt_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+   endif
+or_dygt_yinc_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	or_dygt_same1		;   then do not incr. x.
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	or_dygt_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	or_dygt_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	or_dygt_incdi_done
+	add	di, 30
+endif
+or_dygt_incdi_done:
+	add	dx,bp			;epsilon = epsilon + e2
+	loop	or_dygt
+	ret
+or_dygt_same1: 
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	or_dygt
+	ret
+;
+not_dygt:
+	rol	ax,1
+if rev_vid
+	jc	not_dygt_bp_done
+	cmp	TMP_FG_BP,0
+	jne	not_dygt_not_bp_1
+	or	es:[di],bl
+	jmps	not_dygt_bp_done
+not_dygt_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+not_dygt_bp_done:
+
+else
+	jc	not_dygt_bp_done
+	cmp	TMP_FG_BP,0
+	je	not_dygt_not_bp_1
+	or	es:[di],bl
+	jmps	not_dygt_bp_done
+not_dygt_not_bp_1:
+	not	bl
+	and	es:[di],bl
+	not	bl
+not_dygt_bp_done:
+endif
+if mono_xrxfp
+	test	yinc, 8000h		; is this a negative number
+	jnz	not_dygt_yinc_done_xrxneg
+	add	di, yinc
+	jnc	not_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	not_dygt_yinc_done_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	not_dygt_yinc_done_xrx
+not_dygt_yinc_done_xrxneg:
+	add	di, yinc
+	jc	not_dygt_yinc_done
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	not_dygt_yinc_done_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+not_dygt_yinc_done_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	yinc, 8000h		; is this a negative number
+	jnz	not_dygt_yinc_seg
+	add	di, yinc
+	jnc	not_dygt_yinc_done
+	mov	es, wrap_around		;get the data from cs:	
+	jmps	not_dygt_yinc_done
+not_dygt_yinc_seg:
+	add	di, yinc
+	jc	not_dygt_yinc_done
+	mov	es, wrap_around
+endif
+if not (mono_multisegs or mono_xrxfp )
+	call	yinc_add
+endif
+if mono_port or mono_mem
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	not_dygt_yinc_done
+	call	next_seg_lnpg
+endif
+if multiseg
+	cmp	di,true_plane_size		; gone past the edge of graphics?
+	jc	not_dygt_yinc_done
+	add	di,wrap_around		;add back in the number to wrap
+   endif
+not_dygt_yinc_done:
+	cmp	dx, 0			;if epsilon < 0
+	js	not_dygt_same1		;   then do not incr. x.
+if msb_first
+	ror	bl,1
+else	
+	rol	bl,1
+endif
+	jnc	not_dygt_incdi_done
+if byte_swap
+	dec	di
+	test	di,1
+	jz	not_dygt_incdi_done
+	add	di,4
+else
+	inc	di
+	test	di, 1
+	jnz	not_dygt_incdi_done
+	add	di, 30
+endif
+not_dygt_incdi_done:
+	add	dx,bp			;epsilon = epsilon + e2
+	loop	not_dygt
+	ret
+not_dygt_same1: 
+	add	dx,si			;epsilon := (epsilon + e1)
+	loop	not_dygt
+	ret
+;
+EJECT
+;******************************************************************************
+; xline
+;	Draw a horizontal line with pattern
+;
+;	Entry	X1,Y1 = left edge  inclusive
+;		X2,Y1 = right edge inclusive
+;		WRT_MODE = writing mode ( 0 - 3 )
+;
+;******************************************************************************
+xline_swap:			; must swap X1 X2 es already loaded and di ok
+	and	di, 0fffeh	; make sure on word boundary
+	mov	ax, X1
+	mov	bx, X2
+	mov	X1, bx
+	mov	X2, ax
+	push	X1
+	push	X2
+	push	patmsk
+	push	patptr
+	mov	patptr, offset LN_MASK
+	mov	patmsk, 0
+	push	NEXT_PAT
+	mov	NEXT_PAT, 0
+	cmp 	WRT_MODE, 2	; is it xor mode
+	jnz	xline_swap_doit
+	cmp	LSTLIN, 0
+	jnz	xline_swap_doit
+	inc	x1		; shorten the edge if xor mode
+	mov	bx, X1
+	mov	ax, Y1
+	call	concat
+	and	di, 0fffeh
+xline_swap_doit:		
+	call	BOX_FILL_LINE
+	pop	NEXT_PAT
+	pop	patptr
+	pop	patmsk
+	mov	ax, LN_MASK
+	pop	X1
+	pop	X2
+	ret
+xline_noswap:			; es ok di ok must push x1,x2,y1
+	and	di, 0fffeh
+	push	patmsk
+	push	patptr
+	mov	patptr, offset LN_MASK
+	mov	patmsk, 0
+	push	NEXT_PAT
+	mov	NEXT_PAT, 0
+	push	X2
+	cmp	WRT_MODE, 2
+	jnz	xline_noswap_doit
+	cmp	LSTLIN, 0
+	jnz	xline_noswap_doit
+	mov	ax, X1
+	cmp	ax, X2
+	jz	xline_noswap_doit
+	dec	X2
+xline_noswap_doit:
+	call	BOX_FILL_LINE
+	pop	X2
+	pop	NEXT_PAT
+	pop	patptr
+	pop	patmsk
+	mov	ax, LN_MASK
+	ret
+;
+EJECT
+;****************************************************************
+;DIS_CUR display the cursor					*
+;	Turn the cursor on for first time			*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+DIS_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli				;turn off interrupts while drawing first
+	mov	ax, HIDE_CNT
+	mov	bx, seg	HIDE_CNT	;load up the other segment
+	mov	ds, bx
+	mov	HIDE_CNT, ax
+	dec	HIDE_CNT
+	jg	dis_cur_1
+	mov	HIDE_CNT, 0		; don't allow negative
+;
+; New in ViewMAX: KBD_MOUSE_STS toggles pointer visibility for 
+; keyboard-only mouse
+;
+	cmp	mouse_type,0
+	jnz	dis_cur_0
+	test	KBD_MOUSE_STS, 0FFh
+	jz	dis_cur_1
+dis_cur_0:
+;
+; End of ViewMAX new bit
+;
+	mov	mouse_lock, 1
+	popf
+	call	mouson			;draw new x,y
+	pushf
+	cli
+	mov	mouse_lock, 0
+dis_cur_1:
+	mov	ax, HIDE_CNT
+	popf	
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+;****************************************************************
+;HIDE_CUR turn off the cursor					*
+;	Turn the cursor off					*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+HIDE_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli
+	mov	ax, HIDE_CNT
+	mov	bx, SEG HIDE_CNT
+	mov	ds, bx
+	mov	HIDE_CNT, ax
+	inc	HIDE_CNT
+	cmp	HIDE_CNT,1		;is cursor on
+	jnz	hide_cur_1
+;
+; New in ViewMAX: KBD_MOUSE_STS toggles pointer visibility for 
+; keyboard-only mouse
+;
+	cmp	mouse_type,0
+	jnz	hide_cur_0
+	test	KBD_MOUSE_STS, 0FFh
+	jz	dis_cur_1		;I think this is a typo for 
+					;hide_cur_1, but the code at
+					;the two labels is the same.
+hide_cur_0:
+;
+; End of ViewMAX new bit
+;
+	mov	mouse_lock, 1
+	popf
+	call	mousoff			;turn cursor off
+	pushf
+	cli
+	mov	mouse_lock, 0
+hide_cur_1:
+	mov	ax, HIDE_CNT
+	popf
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+;****************************************************************
+;move_cross							*
+;	Undraw old cross hair					*
+;								*
+;	Draw new cross hair					*	
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;		bx,cx are new x,y				*
+;	Exit	none						*
+;								*
+;****************************************************************
+MOV_CUR:
+	push	bp
+	push	ds
+	mov	ax,seg HIDE_CNT
+	mov	ds,ax
+	push	bx
+	push	cx			;save new x,y
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_1
+	call	mousoff			;undraw old x,y
+mov_cur_1:
+	pop	cx
+	pop	bx
+curon:
+	mov	gcurx,bx
+	mov	gcury,cx
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_2
+	call	mouson			;draw new x,y
+mov_cur_2:
+	pop	ds
+	pop	bp
+	retF
+EJECT
+;****************************************************************
+;clip_cross							*
+;	Routine will clip the x,y location to the current	*
+;	addressable space					*
+;								*
+;	Entry	reg pair bx = new cursor x			*
+;		reg pair cx = new cursor y			*
+;	Exit	none						*
+;								*
+;****************************************************************
+clip_cross:
+	mov	al, bh
+	rcl	al, 1			; test if new x is < 0.
+	jnc	clipx1
+	xor	bx, bx			;   yes, then clip at 0
+	jmps	clipy
+clipx1:
+	mov	ax, XRESMX
+	sub	ax, bx
+	jnc	clipy			; if newx <= xresmax then clip newy
+	mov	bx, XRESMX		;   else newx = XRESMX
+clipy:
+	mov	al, ch
+	rcl	al, 1			; test if new y is < 0.
+	jnc	clipy1			; if newy >= 0 then test if < yresmx
+	xor	cx, cx			;   else clip y at 0.
+	jmp	clipdn
+clipy1:
+	mov	ax, true_yresmx
+	sub	ax, cx
+	jnc	clipdn			; if newy <= yresmax then exit
+	mov	cx, true_yresmx		;   else newy = yresmx
+clipdn:
+	ret
+;
+rmax		dw	xresmx - 16
+wrmax		dw	xresmx - 31
+;
+;
+mouson:	mov	mclip, 0	; assume no clipping
+	mov	yclip, 0
+	mov	ax, gcurx	; input mouse x-coord.
+ 	sub	ax, mxhot	; new x (ax) = gcurx - mxhot
+ 	jge	mxbig
+	add	ax,16
+	mov	mclip, -1
+mxbig:	cmp	ax, rmax	; rmax = xres_max - 16
+ 	jle	mxok
+;	x starts too big,
+;	can't draw the full mouse form with out drawing outside the screen,
+;	adjust mx start to rmax, and draw the first word only
+ 	mov	mclip, 1	; set flag
+ 	and	ax, 0fh		; start X mod 16
+ 	add	ax, wrmax	; adjust the start byte position to inside
+				; screen area
+mxok:	mov	cx, ax
+	and	cx, 0fh		; x mod 16 = shift count for bit alignment
+	inc	cx		; this is for the intel loop instruction
+	mov	mshft, cx	; save the shift count
+;
+;
+	mov	dx, gcury	; Cursor y-coordinate coord (upper left)
+;+++++++++++++++++++++++++++++++;
+; 	mov	cx, true_yresmx	; Nop's for Raster Coord. space
+;	sub	cx, dx		;
+;	mov	dx, cx		; dx = y-coordinate swapped
+;+++++++++++++++++++++++++++++++;
+ 	sub	dx, myhot	; dx = my-start
+ 	jb	myclip
+	mov	bx, true_yresmx	; ymax - mystart = no. of scan lines from
+ 	sub	bx, dx		;         ystart to bottom of screen
+ 	jnl	setht		; y start too big ?
+ 	mov	bx, 1		; draw one scan line of mouse form at bottom
+ 	mov	dx, true_yresmx	; set my-start to bottom of screen
+	jmps    htok
+setht:	cmp	bx, mheight	; set the no. of scan lines to draw	
+ 	jl	htok		; mheight = max scan lines to draw
+ 	mov	bx, mheight	; set to max mouse form height (16 is default)
+	jmps	htok
+myclip:
+	mov	cx,mheight
+	add	dx,cx
+	jnl	setht1
+	mov	dx,1
+setht1:
+	mov	bx,dx
+	sub	cx,bx
+	shl	cx,1
+	mov	yclip,cx
+	xor	dx,dx
+htok:	inc	bx		; this is for intel loop instruction
+	mov	mht, bx		; vertical scan line loop count
+ 	mov	oldmht, bx	; save for move cursor
+;
+	if manual_update
+	push	ax
+	push	dx
+	push	ax
+	cmp	ax, 24
+	jg	tmouse1
+	xor	ax, ax
+tmouse1:
+	mov	old_MX1, ax
+	mov	old_MY1, dx
+	pop	ax
+	add	ax, 24
+	add	dx, 16
+	mov	old_MX2, ax
+	mov	old_MY2, dx
+	push	old_MY2
+	push	old_MX2
+	push	old_MY1
+	push	old_MX1
+	call	touch
+	add	sp,8
+	pop	dx
+	pop	ax
+endif			;manual_update
+;
+;	3 - Compute mouse form start address
+;		ax = x-coord
+;	    	dx = y-coord
+;
+	mov	bx, ax		; bx = X coord
+;	mov	ax,yresmx
+;	sub	ax, dx		; ax = Y coord
+	mov	ax,dx
+	call	concat		; compute physical screen address
+				; returns di:bx (ead:dad)
+	and	di, 0fffeh	; always draw 2 words, put address on
+				; word boundary
+	mov	oldul, di	; save old cursor address (upper left corner)
+	mov	si, di		; es:si has screen segment:offset
+if wy700
+	mov	al,cs:current_port	;save control port value
+	mov	cs:temp_port,al
+endif
+if mono_port or mono_mem
+	mov	al, current_bank
+	mov	oldbank, al	;save the bank of the mouse form
+endif
+if mono_multisegs or mono_xrxfp
+;
+	mov	oldulseg, es
+else
+	mov	ax, graph_plane
+	mov	es, ax		; init the segment register
+endif
+	mov	di, offset mmask	; di = address of mouse data mask
+                     		; di has mouse data mask address
+				; 16 words mouse mask followed by 16 words
+				; mouse form
+	add	di, yclip	; adjust for clipping (clipped -y rows)
+;
+;	4 - Display mouse
+;
+	call	mdraw
+	ret
+;
+if ( num_planes gt 1 ) and not (segment_access )
+mdraw:	
+	mov	al, mous_col_map			; get the two bit pel
+	mov	mous_col, al
+	lea	bx, mousbuf	; memory buffer area (32 words area)
+	mov	mousbuf_ptr,bx
+	mov	plane_loop_count, num_planes		; load up the plane count
+	mov	ax, 1			; set up the mask bit for plane/color
+mdraw_0:
+;   init the plane select port
+	mov	dx, plane_sel_port
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	mov	ax, bx
+	shl	ax, 1			; move the bit mask over one
+	push	ax
+	push	si
+	push	di
+	push	es
+	push	ds
+	mov	dx, mht		; vertical loop count
+	mov	ratht, dx
+	push	mousbuf_ptr
+	mov	bl, mous_col
+	and	bx, 3
+	shl	bx, 1
+	mov	bx, mous_jmp_tbl[bx]			; get the draw add
+	mov	mous_jmp,bx
+	shr	mous_col,1
+	shr	mous_col,1				; setup for next plane
+	sub	sp, 2		; save 1 word on stack
+	mov	bp, sp		; 2[bp] = mouse buffer offset address on stack
+;	setup es:di = mouse buffer pointer to use the stosw instruction
+	push	es
+	mov	ax, ds		; swap ds and es
+	pop	ds		; ds:si now point to screen mouse area
+	mov	es, ax		; es:[2[bp]] now point to memory mouse buffer
+	call	nextmy		; start mouse copy 
+	add	sp,4
+	pop	ds
+	pop	es
+	pop	di
+	pop	si
+	pop	ax
+	add	mousbuf_ptr,64
+;	add	di,64		; point to next mask/data set for screen
+	dec	plane_loop_count	; is line done
+	jnz	mdraw_0
+	ret
+;
+else
+mdraw:	
+	lea	bx, mousbuf	; memory buffer area (32 words area)
+	mov	mousbuf_ptr,bx
+	mov	plane_loop_count, num_planes		; load up the plane count
+	mov	al, mous_col_map			; get the two bit pel
+	mov	mous_col, al
+mdraw_0:
+	push	si
+	push	di
+	push	es
+	push	ds
+	mov	dx, mht		; vertical loop count
+	mov	ratht, dx
+	push	mousbuf_ptr
+	mov	bl, mous_col
+	and	bx, 3
+	shl	bx, 1
+	mov	bx, mous_jmp_tbl[bx]			; get the draw add
+	mov	mous_jmp,bx
+	shr	mous_col,1
+	shr	mous_col,1				; setup for next plane
+	sub	sp, 2		; save 1 word on stack
+	mov	bp, sp		; 2[bp] = mouse buffer offset address on stack
+;	setup es:di = mouse buffer pointer to use the stosw instruction
+	push	es
+	mov	ax, ds		; swap ds and es
+	pop	ds		; ds:si now point to screen mouse area
+	mov	es, ax		; es:[2[bp]] now point to memory mouse buffer
+	call	nextmy		; start mouse copy 
+	pop	ax
+	pop	ax
+ 	pop	ds
+ 	pop	es
+ 	pop	di
+ 	pop	si
+	add	mousbuf_ptr,64
+;	add	di,64		; point to next mask/data set for screen
+	mov	ax, es			; 
+	add	ax, next_plane
+	mov	es, ax			; point to the next plane
+	dec	plane_loop_count	; is line done
+	jnz	mdraw_0
+	ret
+endif
+;
+;	loop count = mouse height (ratht)
+;
+;	1 - copy from mouse area (screen) to mouse buffer (memory)
+;           (two words)
+; 
+mdlp:	mov	ax, [si]	; first word from mouse area
+	xchg	di, 2[bp]	; mouse buffer offset in [di]
+	stosw			; copy first word to buffer
+	mov	ax, 32[si]	; second word from mouse area
+	stosw			; old data on screen mouse area into mousbuf
+;
+;	2 - load and align mask	in ax,dx
+;
+	xchg	di, 2[bp]	; di has the pointer to mouse mask data	
+	mov	ax, es:[di]	; es = old ds, load mouse mask
+	sub	dx, dx		; set up 32 bits (2 words) mask
+;	not	dx		; mask = all 1's
+	mov	cx, es:mshft	; get the bit alignment shift count
+;	stc			; mask = 1's
+	clc			; mask = 0's
+;
+; Start with AX = mouse ptr 
+;
+	xchg	ah, al
+	jmps	rotmask
+;
+; Start with AX = mouse ptr 
+;
+rotlp:	;;rcr	ax, 1
+	;;rcr	dx, 1
+	rcl	ax, 1		;This is an Apricot, rotations go the other 
+	rcl	dx, 1		;way.
+rotmask:loop	rotlp		; ax,dx has correct mouse mask
+	xchg	ah, al
+	xchg	dh, dl
+;
+;	3 - load and align mouse form in ax,bx
+;
+	mov	[bp], ax	; save first mask word on stack
+	mov	ax, es:32[di]	; mouse form follows the mouse mask
+	add	di, 2		; update to next mouse data scan line
+	sub	bx, bx		; clear second word for mouse form data
+	mov	cx, es:mshft	; bit alignment shift count
+	xchg	ah, al
+	jmps	rotmous
+
+rotlp1:	;;shr	ax, 1		; shift mouse data (ax)
+	;;rcr	bx, 1		; carry into second word (bx)
+	shl	ax, 1
+	rcl	bx, 1	
+rotmous:loop	rotlp1		; ax:bx = mouse form aligned
+	xchg	ah, al
+	xchg	bh, bl
+	mov	cx, [bp]	; get first word of mask, cx:dx = mask aligned
+;
+;	4 - Take care of mouse clipping
+;
+	cmp	es:mclip, 0	; clipped ?
+	je	lmform		; mouse not clipped
+	jl	mkuse2		; negative clip
+;	mouse clipped to the right of the screen (xmax)
+;	The first word in mouse area should be unchanged,
+;	followed by the first part of mouse form (cx).
+	mov	dx, cx		; dump the second part of mask 
+	xor	cx, cx
+;	mov	cx, 0ffffh	; set mask to leave the first word unchanged
+	mov	bx, ax		; dump the second part of mouse form
+	xor	ax, ax		; leave the first word unchanged
+	jmp	lmform
+mkuse2:
+;	mouse clipped to the left of the screen (x=0)
+;	The first word in mouse area should be the second part (dx) of
+;	mouse form, leave the second word in mouse area unchanged
+	mov	cx, dx		; dump the first part of mouse mask
+;	mov	dx, 0ffffh	; leave the second word unchanged
+	xor	dx, dx
+	mov	ax, bx		; dump the first part of mouse form
+	xor	bx, bx		; second word mask
+;
+;	5 - Apply the mask (cx,dx) then copy mouse data (ax,bx) into mouse area
+;
+lmform:
+if not byte_swap	
+	xchg	ah, al		; this is for intel
+	xchg	bh, bl
+	xchg	ch, cl
+	xchg	dh, dl
+endif
+;
+	push	di
+	mov	di, es:mous_jmp
+	jmp	di
+
+mous_to_00:
+if not rev_vid
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 32[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	or	cx, [si]
+	or	dx, 32[si]
+	or	cx, ax
+	or	dx, bx
+endif
+	jmps	nextsmy
+;
+mous_to_01:
+if not rev_vid
+	or	cx, [si]
+	or	dx, 32[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 32[si]
+	or	cx, ax
+	or	dx, bx
+endif
+	jmps	nextsmy
+;
+mous_to_10:
+if rev_vid
+	or	cx, [si]
+	or	dx, 32[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 32[si]
+	or	cx, ax
+	or	dx, bx
+endif
+	jmps	nextsmy
+;
+mous_to_11:
+if rev_vid
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 32[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	or	cx, [si]
+	or	dx, 32[si]
+	or	cx, ax
+	or	dx, bx
+endif
+;
+;	6 - update screen mouse area to next y scan line
+;
+nextsmy:
+	mov	[si], cx	; new mouse area = [old AND mask] xor mouse
+	mov	32[si], dx
+	pop	di
+	add	si, 2		; Next line
+	test	si, 1Eh
+	jnz	nextmy
+	add	si, 1568	; Next character row
+nextmy:	dec	es:ratht	; decrement vertical scan line count
+	jz	gmexit
+	jmp	mdlp		; loop until done
+gmexit:
+	ret
+;
+;
+mousoff:
+	if	manual_update
+	push	ax
+	push	dx
+	push	old_MY2
+	push	old_MX2
+	push	old_MY1
+	push	old_MX1
+	call	touch	
+	add	sp, 8
+	pop	dx
+	pop	ax
+
+	endif
+	mov	di, oldul	; setup es:di to screen old mouse area
+if wy700
+	push	dx		;restore old control port value
+	mov	dx,3dfh
+	mov	al,cs:temp_port
+	out	dx,al
+	mov	cs:current_port,al
+	pop	dx
+endif
+if mono_multisegs or mono_xrxfp
+	mov	es, oldulseg
+;
+else
+	mov	ax, graph_plane
+	mov	es, ax		; init the segment register
+endif
+if mono_mem
+	mov	al, oldbank
+	mov	current_bank, al 
+	mov	es:.mono_mem_off, al		
+endif
+if mono_port
+	mov	dx, plane_sel_port
+	mov	al, oldbank
+	out	dx, al
+	mov	current_bank, al	;restore the bank
+endif
+	lea	si, mousbuf	; setup ds:si to mouse buffer
+	mov	cx, oldmht	; no. of scan lines drawn (old mouse)
+if num_planes eq 1
+	call	mofflp
+	ret
+endif
+;
+if ( num_planes gt 1 ) and not (segment_access )
+	mov	plane_loop_count, num_planes		; load up the plane count
+	mov	ax, 1			; set up the mask bit for plane/color
+mousoff_0:
+;   init the plane select port
+	mov	dx, plane_sel_port
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	mov	ax, bx
+	shl	ax, 1			; move the bit mask over one
+	push	ax
+	push	cx
+	push	si
+	push	di
+	call	mofflp			; start mouse copy 
+	pop	di
+	pop	si
+	pop	cx
+	pop	ax
+	add	si,64			; point to next saved area
+	dec	plane_loop_count	; is line done
+	jnz	mousoff_0
+	ret
+endif
+;
+if (num_planes gt 1) and segment_access
+	mov	plane_loop_count, num_planes		; load up the plane count
+mousoff_0:
+	push	cx
+	push	si
+	push	di
+	call	mofflp			; start mouse copy 
+	pop	di
+	pop	si
+	pop	cx
+	add	si,64			; point to next saved area
+	mov	ax, es			; 
+	add	ax, next_plane
+	mov	es, ax			; point to the next plane
+	dec	plane_loop_count	; is line done
+	jnz	mousoff_0
+	ret
+endif
+;
+
+copylp:	lodsw			; data from buffer
+	mov	es:[di], ax	; data back to screen mouse area
+	lodsw
+	mov	es:32[di], ax	; mouse area is always two words
+;
+;	Update screen mouse area to next y scan line
+;
+	call	dest_add
+mofflp:	loop	copylp
+	ret
+;
+yinc_add:
+	test	yinc,8000h
+	jnz	yinc_sub
+	jmp	dest_add
+;
+yinc_sub:
+	test	di, 01Eh
+	jnz	dest_sub1
+	sub	di, 1568
+dest_sub1:
+	sub	di, 2
+	ret	
+	
+if wy700
+yinc_add:
+	push	ax			;save registers
+	push	dx
+	mov	al,cs:current_port	;get current control port value
+	mov	dx,3dfh			;point to control port
+	xor	al,3			;switch banks
+	out	dx,al
+	mov	cs:current_port,al	;save new value
+	mov	dx,yinc			;get the offset
+
+	test	al,2			;only add offset if on even
+	lahf				;line and offset is positive or
+	shl	ah,1			;if on odd line and offset
+	xor	ah,dh			;is negative
+	jns	wy700_end2
+
+	add	di,dx			;add offset
+wy700_end2:
+	pop	dx			;restore registers
+	pop	ax
+	ret
+
+temp_port	db	0		;temporary wy700 control port data
+endif
+EJECT
+dseg
+;******************************************************************************
+;*				DATA TO BE REASSEMBLED			      *
+;*			contains device dependent information		      *
+;******************************************************************************
+	public	Y1,Y2,X1,X2
+	public	LSTLIN
+	public	LN_MASK
+	public	FG_BP_1
+	public	txt_blt_mode
+	public	TMP_FG_BP
+	public	plane_loop_count
+if (num_planes gt 1 ) and (not segment_access )
+	public	plane_port_tbl
+	public	plane_read_tbl
+endif
+	public	WRT_MODE
+	public	GCURX,GCURY
+	public	HIDE_CNT
+	public	WORD_MASK_TABLE
+	public	plygn_bez, plygn_rrot, flit_bez, flit_bez_off
+
+	extrn	contrl_ptr:dword	;pointer to the users contrl array
+;	extrn	chrptr:word		;pointer to the character pattern
+	extrn	patptr:word		;pointer to pattern fill style
+	extrn	patmsk:word		;the mask for the pattern fills in y
+	extrn	fill_int:word
+;;;	extrn	y:word			;Not used
+	extrn	mous_ci_mask:word
+	extrn	mous_ci_data:word
+	extrn	mous_col_map:byte
+	extrn	mous_col:byte
+	extrn	mxhot:word
+	extrn	myhot:word
+	extrn	mmask:word
+	extrn	udpt_np:word
+	extrn	ud_patrn:word
+	extrn   NEXT_PAT:word
+	extrn	hollow:word
+	extrn	solid:word
+;
+if msb_first
+ortbl		db	128		; 'or' mask table in stpixl
+		db	64
+		db	32
+		db	16
+		db	8
+		db	4
+		db	2
+		db	1
+else
+ortbl		db	1
+		db	2
+		db	4
+		db	8
+		db	16
+		db	32
+		db	64
+		db	128
+endif
+;
+box_optbl	dw	offset	box_replace_mode
+		dw	offset	box_tran_mode
+		dw	offset	box_xor_mode
+		dw	offset	box_invtran_mode
+if msb_first
+ if byte_swap
+word_mask_table	dw	0ffffh
+		dw	0ff7fh
+		dw	0ff3fh
+		dw	0ff1fh
+		dw	0ff0fh
+		dw	0ff07h
+		dw	0ff03h
+		dw	0ff01h
+		dw	0ff00h
+		dw	07f00h
+		dw	03f00h
+		dw	01f00h
+		dw	00f00h
+		dw	00700h
+		dw	00300h
+		dw	00100h
+		dw	0
+else
+word_mask_table	dw	0ffffh
+		dw	07fffh
+		dw	03fffh
+		dw	01fffh
+		dw	00fffh
+		dw	007ffh
+		dw	003ffh
+		dw	001ffh
+		dw	000ffh
+		dw	0007fh
+		dw	0003fh
+		dw	0001fh
+		dw	0000fh
+		dw	00007h
+		dw	00003h
+		dw	00001h
+		dw	0
+ endif	;byte_swap
+else ; msb_first
+ if byte_swap
+word_mask_table	dw	0ffffh
+		dw	0fffeh
+		dw	0fffch
+		dw	0fff8h
+		dw	0fff0h
+		dw	0ffe0h
+		dw	0ffc0h
+		dw	0ff80h
+		dw	0ff00h
+		dw	0fe00h
+		dw	0fc00h
+		dw	0f800h
+		dw	0f000h
+		dw	0e000h
+		dw	0c000h
+		dw	08000h
+		dw	0
+ else ; byte_swap
+word_mask_table	dw	0ffffh
+		dw	0feffh
+		dw	0fcffh
+		dw	0f8ffh
+		dw	0f0ffh
+		dw	0e0ffh
+		dw	0c0ffh
+		dw	080ffh
+		dw	000ffh
+		dw	000feh
+		dw	000fch
+		dw	000f8h
+		dw	000f0h
+		dw	000e0h
+		dw	000c0h
+		dw	00080h
+		dw	0
+ endif ; byte_swap
+endif ; msb_first
+if mono_port or mono_mem
+	port_dir	db	0
+endif
+left_word_mask	dw	0
+right_word_mask	dw	0
+patcnt		dw	0	
+BOX_MODE	dw	0	
+;			
+	
+gcurx	dw	0			;current cursor X-coordinate
+gcury	dw	0			;current cursor Y-coordinate
+HIDE_CNT	dw	1
+;
+;variables used in abline
+; 
+WRT_MODE	dw	0
+LSTLIN		dw	0		;flag for last line of polline
+LN_MASK		dw	0ffffh		;line style
+TMP_FG_BP	dw	0
+txt_blt_mode	dw	0
+FG_BP_1		dw	0
+;
+wrap_around	dw	0
+yinc		dw	0
+					;0ffh for last line
+					; 0   not last line
+;
+X1	dw	0		;variables used in line drawing routine
+Y1	dw	0
+X2	dw	0
+Y2	dw	0
+;
+
+;
+oldbank		db	0
+oldulseg	dw	0		; old mouse segment address
+mheight		dw	16		; default mouse height = 16 scanlines
+mshft		dw	0		; mouse form and mask bit alignment shift count
+mht		dw	16		; default mouse height = 16 lines
+
+oldul		dw	0		; old mouse upper left byte address
+oldmht		dw	16		; old mouse height
+ratht		dw	16		; mouse display loop count = mht
+
+		if manual_update
+old_mx1		dw	0		; Rectangle surrounding where
+old_my1		dw	0		; the mouse pointer was last
+old_mx2		dw	0
+old_my2		dw	0	
+		endif
+
+
+mclip		dw	0		; mouse clipped flag
+					; 0 = not clipped, -1 = neg. clipped
+yclip		dw	0		; no. of mouse rows clipped (y < 0) 
+mon		dw	0		; mouse on flag
+mousbuf_ptr	dw	0		; temporary pointer storage for plane
+					; based mouse
+mousbuf		rw	32 * num_planes ; make sure buffer is large enough
+mous_jmp	dw	0
+mous_jmp_tbl	dw	offset	mous_to_00
+		dw	offset	mous_to_01
+		dw	offset	mous_to_10
+		dw	offset	mous_to_11
+vec_len_high		dw	1
+vec_len_low		dw	1
+plane_loop_count	db	num_planes
+if (num_planes gt 1) and (not segment_access)
+plane_port_tbl		db	plane_1_port_val	;0
+			db	plane_1_port_val	;1
+			db	plane_2_port_val	;2
+			db	plane_2_port_val	;3
+			db	plane_3_port_val	;4
+			db	plane_3_port_val	;5
+			db	plane_3_port_val	;6
+			db	plane_3_port_val	;7
+			db	plane_4_port_val	;8
+plane_read_tbl		db	plane_1_read_val	;0
+			db	plane_1_read_val	;1
+			db	plane_2_read_val	;2
+			db	plane_2_read_val	;3
+			db	plane_3_read_val	;4
+			db	plane_3_read_val	;5
+			db	plane_3_read_val	;6
+			db	plane_3_read_val	;7
+			db	plane_4_read_val	;8
+endif
+
+plygn_bez       dw 0
+flit_bez        dw 0
+flit_bez_off    dw 0
+plygn_rrot      db 0
+

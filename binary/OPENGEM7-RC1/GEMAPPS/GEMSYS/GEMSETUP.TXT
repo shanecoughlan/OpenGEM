@@ -1,0 +1,11 @@
+@PRINTER
+{
+|DESCRIPTION|Hewlett-Packard Deskjet Drucker (300 x 300 PPI)
+|SHORT DESCR|HP Deskjet
+|FILENAME|PDDJU9.B30
+|FNT WILDCRD|*.B30
+|SRC DISK|GEM DRIVER PACK DISK #14
+|AUX FILES|PRTRERR.STR;DJU.DDF;DJU.ATM
+|LONG DESCRP| W„hlen Sie diesen Treiber, wenn Sie einen Hewlett Packard Deskjet
+Drucker besitzen. Die Aufl”sung betr„gt 300 x 300 Punkte pro Inch.
+}

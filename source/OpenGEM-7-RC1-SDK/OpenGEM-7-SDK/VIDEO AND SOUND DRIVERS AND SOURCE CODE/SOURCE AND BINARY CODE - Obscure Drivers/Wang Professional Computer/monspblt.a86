@@ -1,0 +1,821 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+public	MONO8XHT
+if mono_port
+extrn	next_seg_pgdown:near
+endif
+
+dseg
+if mono_port or mono_mem 
+		extrn	current_bank:byte
+endif
+if not rev_vid
+MONO8XHT_MODE	dw	offset MONO8XHT_EQ_0	;REPLACE IX = 0
+		dw	offset MONO8XHT_SET_0	;TRANS IX = 0
+		dw	offset MONO8XHT_XOR	;XOR IX = 0
+		dw	offset MONO8XHT_NOT_SET_0	;UNDRAW IX = 0 
+		dw	offset MONO8XHT_EQ_SRC	;REPLACE IX = 1
+		dw	offset MONO8XHT_SET_1	;TRANS IX = 1
+		dw	offset MONO8XHT_XOR	;XOR IX = 1
+		dw	offset MONO8XHT_NOT_SET_1	;UNDRAW IX = 1 
+else
+MONO8XHT_MODE	dw	offset MONO8XHT_EQ_FF	;REPLACE IX = 0
+		dw	offset MONO8XHT_SET_1	;TRANS IX = 0
+		dw	offset MONO8XHT_XOR	;XOR IX = 0
+		dw	offset MONO8XHT_NOT_SET_1	;UNDRAW IX = 0 
+		dw	offset MONO8XHT_NOT_EQ_SRC	;REPLACE IX = 1
+		dw	offset MONO8XHT_SET_0	;TRANS IX = 1
+		dw	offset MONO8XHT_XOR	;XOR IX = 1
+		dw	offset MONO8XHT_NOT_SET_0	;UNDRAW IX = 1 
+endif
+	extrn	WRT_MODE:word
+	extrn	TEXT_BP:word
+	extrn	plane_loop_count:byte
+if ( num_planes gt 1 ) and ( not segment_access )
+	extrn	plane_port_tbl:byte
+	extrn	plane_read_tbl:byte
+endif
+	extrn	DESTX:word,DESTY:word		;destination pixel address
+	extrn	DELY:word			;size of area to use
+	extrn	FOFF:word			;offset of source form
+	extrn	FWIDTH:word			;form width of source form
+	extrn	R_OFF:word,L_OFF:word		;skew factors
+	extrn	WEIGHT:word			;thickening factor
+	extrn	CLIP:word			;clipping flag
+	extrn	XMN_CLIP:WORD,XMX_CLIP:WORD	;clipping region
+	extrn	YMN_CLIP:WORD,YMX_CLIP:WORD	;
+;
+	extrn	WORD_MASK_TABLE:word		;masks for fringes
+	extrn	INTIN:word
+	extrn	CONTRL:word
+cseg
+if wy700
+	extrn	current_port:byte		;wy700 control port value
+endif
+	extrn	set_fnthdr:near
+	extrn	chk_fnt:near
+	extrn	CONCAT:near
+	if	manual_update
+	 extrn	touch:near
+	endif
+if mono_multisegs
+	extrn	graph_seg_high:word		;get the data from cs:	
+
+
+endif
+MONO8XHT:
+	cmp	CONTRL, 11			;is this justified text
+	jz	MONO8XHT_QUIT
+	mov	ax, DESTX
+	and	al, 7
+	jnz	MONO8XHT_QUIT			; if not on byte bound quit
+	cmp	CLIP, 0
+	jz	MONO8XHT_OK			; if cliping is on then see if ok
+	mov	cx, DESTX
+	cmp	cx, XMN_CLIP
+	jl	MONO8XHT_QUIT
+	mov	bx, DESTY
+	cmp	bx, YMN_CLIP
+	jl	MONO8XHT_QUIT
+	add	bx, DELY
+	dec	bx
+	cmp	bx, YMX_CLIP
+	jg	MONO8XHT_QUIT
+	mov	ax, CONTRL+6			; get the char count
+	shl	ax, 1
+	shl	ax, 1
+	shl	ax, 1				; mpy by 8
+	add	ax, cx
+	cmp	ax, XMX_CLIP
+	jle	MONO8XHT_OK
+MONO8XHT_QUIT:
+	xor	ax,ax
+	ret
+MONO8XHT_OK:
+	if	manual_update
+	 mov	ax, DESTY
+	 add	ax, DELY
+	 push	ax			;Bottom edge
+	 mov	ax, CONTRL+6		;Seems silly to do it all again, but
+	 shl	ax, 1 			;if clipping is off it wasn't done
+	 shl	ax, 1 			;the first time.
+	 shl	ax, 1 
+	 add	ax, DESTX	
+	 push	ax			;AX = right fringe 
+	 push	DESTY
+	 push	DESTX
+	 call	touch
+	 add	sp, 8
+	endif
+
+
+;;;	mov ax, intin
+;;;	call set_fnthdr
+;;;	mov intin, ax			; jn 11-21-87
+	call	chk_fnt
+
+if mono_multisegs or mono_xrxfp
+;
+else
+	mov	ax, graph_plane
+	mov	es, ax		; init the segment register
+endif
+	mov	bx, DESTX
+	mov	ax, DESTY
+	call	concat				; returns di = start add
+	if	byte_swap
+	 xor	di, 1
+	endif
+	mov	bx, offset INTIN		; get the character pointer
+	mov	dx, FWIDTH			; get the font form width
+	mov	cx, DELY
+	mov	ax, CONTRL+6			; get the count
+MONO8XHT_CHAR_LOOP:
+	push	ax
+if mono_port or mono_mem	
+	mov	al, current_bank
+	push	ax				; save the current bank
+endif
+	mov	al,[bx]				; get the character
+;	cmp	al, 20h				; is it a space
+;	jz	MONO8XHT_NEXT_CHAR
+	xor	ah,ah
+	mov	si, FOFF
+	add	si,ax				; si = pointer to font
+	push	bx
+	push	bp
+if (num_planes gt 1) and not segment_access	
+	mov	bx,1				; set up the mask for planes
+	mov	plane_loop_count, num_planes
+	mov	bp, TEXT_BP
+	shl	bp, 1
+	shl	bp, 1
+MONO8XHT_PLANE_LOOP:
+	push	dx				; save form width
+	mov	dx, plane_sel_port
+	mov	al, plane_port_tbl[bx]
+	out	dx, al
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	pop	dx
+	shl	bx, 1
+	push	bx
+	mov	bx, bp
+	and	bx, 4
+	or	bx, WRT_MODE
+	shl	bx, 1
+	mov	ax, MONO8XHT_MODE[bx]
+	pop	bx
+	shr	bp,1
+	push	cx				; save the loop count
+	push	si				; save the font ptr	
+	push	di				; save the dest ptr
+	call	ax				; branch to the routine
+	pop	di
+	pop	si
+	pop	cx
+	dec	plane_loop_count
+	jnz	MONO8XHT_PLANE_LOOP
+else
+	mov	plane_loop_count, num_planes
+	mov	bp, TEXT_BP
+	shl	bp, 1
+	shl	bp, 1
+	push	es				; save the segment of screen
+MONO8XHT_PLANE_LOOP:
+	mov	bx, bp
+	and	bx, 4
+	or	bx, WRT_MODE
+	shl	bx, 1
+	mov	ax, MONO8XHT_MODE[bx]
+	shr	bp,1
+	push	cx				; save the loop count
+	push	si				; save the font ptr	
+	push	di				; save the dest ptr
+	call	ax				; branch to the routine
+	pop	di
+	pop	si
+	pop	cx
+	mov	ax, es
+	add	ax, next_plane
+	mov	es, ax
+	dec	plane_loop_count
+	jnz	MONO8XHT_PLANE_LOOP
+	pop	es				; get the segment back
+endif
+	pop	bp
+	pop	bx	
+MONO8XHT_NEXT_CHAR:
+	inc	di				; point to the next byte in dest
+	inc	bx
+	inc	bx				; point to the next character
+if mono_mem
+	pop	ax
+	mov	current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port 
+	pop	ax				; get the current bank back
+	mov	current_bank, al
+	push	dx
+	mov	dx, plane_sel_port
+	out	dx, al
+	pop	dx
+endif
+	pop	ax				; get the loop count back
+	dec	ax
+	jnz	MONO8XHT_CHAR_LOOP
+	not	ax
+	ret
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	bx = font form width
+MONO8XHT_EQ_0:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+	xor	al, al
+MONO8XHT_EQ_0_LOOP:
+	if	byte_swap
+	 xor	di, 1
+	 mov	es:[di], al
+	 xor	di, 1
+	else
+	 mov	es:[di], al
+	endif
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_EQ_0_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_EQ_0_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_EQ_0_NEXT1:
+	mov	es, ax
+	xor	al, al
+endif
+if mono_multisegs
+	jnc	MONO8XHT_EQ_0_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_EQ_0_NEXT
+	call	next_seg_pgdown
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_EQ_0_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_eq_0_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_eq_0_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_EQ_0_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_EQ_0_NEXT:
+	loop	MONO8XHT_EQ_0_LOOP
+	pop	ds
+	ret
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	bx = font form width
+MONO8XHT_EQ_FF:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+	mov	al, 0ffh
+	jmps	MONO8XHT_EQ_0_LOOP
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	bx = font form width
+MONO8XHT_EQ_SRC:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_EQ_SRC_LOOP:
+	mov	al,[si]
+	if	byte_swap
+	 xor	di, 1
+	 mov	es:[di], al
+	 xor	di, 1
+	else
+	 mov	es:[di], al
+	endif
+	add	si, dx
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_EQ_SRC_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_EQ_SRC_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_EQ_SRC_NEXT1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	MONO8XHT_EQ_SRC_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_EQ_SRC_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_eq_SRC_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_eq_src_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_EQ_SRC_NEXT
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_EQ_SRC_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_EQ_SRC_NEXT:
+	loop	MONO8XHT_EQ_SRC_LOOP
+	pop	ds
+	ret
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	bx = font form width
+MONO8XHT_NOT_EQ_SRC:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_NOT_EQ_SRC_LOOP:
+	mov	al,[si]
+	not	al
+	if	byte_swap
+	 xor	di, 1
+	 mov	es:[di], al
+	 xor	di, 1
+	else
+	 mov	es:[di], al
+	endif
+	add	si, dx
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_NOT_EQ_SRC_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_NOT_EQ_SRC_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_NOT_EQ_SRC_NEXT1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	MONO8XHT_NOT_EQ_SRC_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_NOT_EQ_SRC_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_noteq_SRC_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_noteq_src_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_NOT_EQ_SRC_NEXT
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_NOT_EQ_SRC_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_NOT_EQ_SRC_NEXT:
+	loop	MONO8XHT_NOT_EQ_SRC_LOOP
+	pop	ds
+	ret
+
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	bx = font form width
+MONO8XHT_SET_0:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_SET_0_LOOP:
+	mov	al,[si]
+	not	al
+	if	byte_swap
+	 xor	di, 1
+	 and	es:[di], al
+	 xor	di, 1
+	else
+	 and	es:[di], al
+	endif
+	add	si, dx
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_SET_0_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_SET_0_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_SET_0_NEXT1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	MONO8XHT_SET_0_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_SET_0_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_set_0_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_set_0_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_SET_0_NEXT
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_SET_0_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_SET_0_NEXT:
+	loop	MONO8XHT_SET_0_LOOP
+	pop	ds
+	ret
+
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	bx = font form width
+MONO8XHT_NOT_SET_0:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_NOT_SET_0_LOOP:
+	mov	al,[si]
+	if	byte_swap
+	 xor	di, 1
+	 and	es:[di], al
+	 xor	di, 1
+	else
+	 and	es:[di], al
+	endif
+	add	si, dx
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_NOT_SET_0_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_NOT_SET_0_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_NOT_SET_0_NEXT1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	MONO8XHT_NOT_SET_0_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_NOT_SET_0_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_notset_0_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_notset_0_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_NOT_SET_0_NEXT
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_NOT_SET_0_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_NOT_SET_0_NEXT:
+	loop	MONO8XHT_NOT_SET_0_LOOP
+	pop	ds
+	ret
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	dx = font form width
+MONO8XHT_SET_1:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_SET_1_LOOP:
+	mov	al,[si]
+	if	byte_swap
+	 xor	di, 1
+	 or	es:[di], al
+	 xor	di, 1
+	else
+	 or	es:[di], al
+	endif
+	add	si, dx
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_SET_1_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_SET_1_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_SET_1_NEXT1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	MONO8XHT_SET_1_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_SET_1_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_set_1_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_set_1_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_SET_1_NEXT
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_SET_1_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_SET_1_NEXT:
+	loop	MONO8XHT_SET_1_LOOP
+	pop	ds
+	ret
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	dx = font form width
+MONO8XHT_NOT_SET_1:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_NOT_SET_1_LOOP:
+	mov	al,[si]
+	not	al
+	if	byte_swap
+	 xor	di, 1
+	 or	es:[di], al
+	 xor	di, 1
+	else
+	 or	es:[di], al
+	endif
+	add	si, dx
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_NOT_SET_1_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_NOT_SET_1_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_NOT_SET_1_NEXT1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	MONO8XHT_NOT_SET_1_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_NOT_SET_1_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_notset_1_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_notset_1_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_NOT_SET_1_NEXT
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_NOT_SET_1_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_NOT_SET_1_NEXT:
+	loop	MONO8XHT_NOT_SET_1_LOOP
+	pop	ds
+	ret
+;
+; entry es:di point to screen
+;  	cx = loop count	
+;	si = pointer to character data
+;	dx = font form width
+MONO8XHT_XOR:
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_XOR_LOOP:
+	mov	al,[si]
+	if	byte_swap
+	 xor	di, 1
+	 xor	es:[di], al
+	 xor	di, 1
+	else
+	 xor	es:[di], al
+	endif
+	add	si, dx
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	MONO8XHT_XOR_NEXT
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	MONO8XHT_XOR_NEXT1
+	mov	ax, graph_plane
+	add	di, bytes_line
+MONO8XHT_XOR_NEXT1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	MONO8XHT_XOR_NEXT
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_XOR_NEXT
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	mono8xht_xor_monok
+	mov	al, 0c0h
+	add	di, bytes_line
+mono8xht_xor_monok:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	MONO8XHT_XOR_NEXT
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	MONO8XHT_XOR_NEXT
+	add	di, ss:true_to_first
+endif
+MONO8XHT_XOR_NEXT:
+	loop	MONO8XHT_XOR_LOOP
+	pop	ds
+	ret
+
+if wy700
+dest_add:
+	push	ax			;save registers
+	push	dx
+	mov	al,cs:current_port	;get current control port value
+	mov	dx,3dfh			;point to control port
+	xor	al,3			;switch banks
+	out	dx,al
+	mov	cs:current_port,al	;save new value
+
+	test	al,2
+	jnz	wy700_end1
+
+	add	di,next_line		;add offset
+wy700_end1:
+	pop	dx			;restore registers
+	pop	ax
+	ret
+endif

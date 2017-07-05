@@ -1,0 +1,97 @@
+[Video1]
+Title="AT&T DEB (640x480 16 colours)"
+FontExt=EGA"
+ColDepth=16
+Resolution="640x480"
+DestFN="SDDEB8.EGA"
+
+[Video2]
+Title="AT&T Monochrome (640x480)"
+FontExt=EGA"
+ColDepth=2
+Resolution="640x480"
+DestFN="SDATT8.EGA"
+
+[Video3]
+Title="GEM/5-palette VGA (640x480 16 colours)"
+FontExt=VGA"
+ColDepth=16
+Resolution="640x480"
+DestFN="SDGEM5.VGA"
+
+[Video4]
+Title="Hercules/Monochrome PC Display (720x348)"
+FontExt=EGA"
+ColDepth=2
+Resolution="720x348"
+DestFN="SDHRC8.EGA"
+
+[Video5]
+Title="IBM CGA/Colour Display (640x200 monochrome)"
+FontExt=CGA"
+ColDepth=2
+Resolution="640x200"
+DestFN="SDCGA8.CGA"
+
+[Video6]
+Title="IBM EGA/Mono Display (640x350)"
+FontExt=EGA"
+ColDepth=2
+Resolution="640x350"
+DestFN="SDEH18.EGA"
+
+[Video7]
+Title="IBM EGA (640x350 16 colours)"
+FontExt=EGA"
+ColDepth=16
+Resolution="640x350"
+DestFN="SDEHF8.EGA"
+
+[Video8]
+Title="IBM VGA (640x480 16 colours)"
+FontExt=VGA"
+ColDepth=16
+Resolution="640x480"
+DestFN="SDPSC9.VGA"
+
+[Video9]
+Title="IBM VGA (640x480 monochrome)"
+FontExt=VGA"
+ColDepth=2
+Resolution="640x480"
+DestFN="SDPSM8.VGA"
+
+[Video10]
+Title="MDS THE GENIUS (728x1008)"
+FontExt=VGA"
+ColDepth=2
+Resolution="728x1008"
+DestFN="SDGEN8.VGA"
+
+[Video11]
+Title="Super VGA (800x600 16 colours)"
+FontExt=VGA"
+ColDepth=16
+Resolution="800x600"
+DestFN="SDPSC8.VGA"
+
+[Video12]
+Title="Video 7 VEGA Deluxe/Quadram ProSync (640x480 16 colours)"
+FontExt=VGA"
+ColDepth=16
+Resolution="640x480"
+DestFN="SDP648.VGA"
+
+[Video13]
+Title="Wyse/Amdek Monochrome (1200x800)"
+FontExt=VGA"
+ColDepth=2
+Resolution="1200x800"
+DestFN="SDWYS8.VGA"
+
+[Video14]
+Title="Video 7 VEGA Deluxe/Quadram ProSync (752x410 16 colours)"
+FontExt=VGA"
+ColDepth=16
+Resolution="752x410"
+DestFN="SDP758.VGA"

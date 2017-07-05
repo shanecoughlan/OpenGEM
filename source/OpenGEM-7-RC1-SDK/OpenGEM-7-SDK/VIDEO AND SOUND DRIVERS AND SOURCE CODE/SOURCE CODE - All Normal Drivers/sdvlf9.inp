@@ -1,0 +1,20 @@
+sdvlf9.vga = entry,
+vlf_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+vlf_drv,
+vlpttxt1,
+vlpttxt2,
+vlptdraw,
+vlfmblit,
+vlfblit,
+vlfpat,
+enddseg, 
+5x7font[nop]
+                                                                    
+                                                                    

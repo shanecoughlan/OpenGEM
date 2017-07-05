@@ -1,0 +1,2469 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+
+		cseg
+;;		public	set_fnthdr
+;;		public	chk_ade		; jn 10-27-87
+		public	chk_fnt
+		public	inc_lfu
+		public	CLC_DDA
+		public	ACT_SIZ
+		public	in_rot
+		public	in_doub
+		public	cpy_head
+		public	txtblt_rep_rr_s	
+		public	txtblt_tran_rr_s
+		public	txtblt_xor_rr_s
+		public	txtblt_itran_rr_s
+		public	txtblt_rep_rl_s
+		public	txtblt_tran_rl_s
+		public	txtblt_xor_rl_s
+		public	txtblt_itran_rl_s
+		public	txtblt_xor_rr_1
+		public	txtblt_xor_rl_1
+		public	ftmgradd
+		public  txtblt_rrot_table_1
+
+if mono_multisegs
+		extrn	graph_seg_high:word
+endif
+if mono_port
+		extrn	next_seg_pgdown:near
+endif
+
+;
+;these two tables are initialized to rotate and mask the data 
+;
+txtblt_rrot_table_1 rb	2048
+txtblt_rrot_table_2 rb	2048
+double_table	    rb	512	
+public	double_table
+;
+		dseg
+if mono_mem
+		extrn	current_bank:byte
+endif
+		extrn	first:dword
+		extrn	cur_font:dword
+		extrn	act_font:dword
+		extrn	cur_head:dword
+		extrn	T_SCLSTS:word
+		extrn	DDA_INC:word
+		extrn	fi_flags:word
+		extrn	FOFF:word
+		extrn	poff_tbl:word
+		extrn	seg_htbl:word
+if ( num_planes gt 1 ) and ( not segment_access )
+		extrn	plane_port_tbl:byte
+		extrn	plane_read_tbl:byte
+endif
+ftmgradd	rd	0	
+ftmgroff	dw	0		;offset of font mgr call
+ftmgrseg	dw	0		;segment of font mgr call
+		public	ftmgroff
+		public	ftmgrseg
+		cseg
+if wy700
+		extrn	current_port:byte	;wy700 control port value
+endif
+		extrn	expand_byte:word
+		extrn	text_ink:word
+
+;*******************************************
+;txtblt_rep_rr_s
+;	replace mode rotate right color ix = 1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+txtblt_rep_rr_s_doright:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	inc	di
+	inc	di
+	call	txt_rep_putw_mask_dh
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add2
+else
+	add	di, next_line-2			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_rep_rr_s_nomid_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_rep_rr_s_nomid_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_rep_rr_s_nomid_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_rep_rr_s_nomid_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rr_s_nomid_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_rep_rr_s_nomid_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_rep_rr_s_nomid_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rr_s_nomid_end
+	add	di, ss:true_to_first
+endif
+txtblt_rep_rr_s_nomid_end:
+	loop	txtblt_rep_rr_s_nomid_loop
+	ret
+;
+;this code draws a character with left + right mask or left mask only
+;
+txtblt_rep_rr_s_nomid:
+	cmp	dh, 0ffh
+	jz	txtblt_rep_rr_s_nomid_loop
+	dec	bp				;make the add -1 for speed
+txtblt_rep_rr_s_nomid_loop:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	call	txt_rep_putw_mask_dl
+
+	cmp	dh, 0ffh			; left only?
+	jne	txtblt_rep_rr_s_doright
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add1
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_rep_rr_s_noright_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_rep_rr_s_noright_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_rep_rr_s_noright_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_rep_rr_s_noright_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rr_s_noright_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_rep_rr_s_noright_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_rep_rr_s_noright_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_rep_rr_s_noright_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rr_s_noright_end
+	add	di, ss:true_to_first
+endif
+txtblt_rep_rr_s_noright_end:
+	loop	txtblt_rep_rr_s_nomid_loop
+	ret
+;
+;this code is for middle + left + right
+;
+txtblt_rep_rr_s:
+	mov	bx, ax
+	and	ch, ch				;is this a no middle one
+if mono_mem
+	jnz	txtblt_rep_rr_s_wide
+	jmp	txtblt_rep_rr_s_nomid
+else
+	jz	txtblt_rep_rr_s_nomid
+endif
+txtblt_rep_rr_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	call	txt_rep_putw_mask_dl		;AL = byte to write DL=mask
+	inc	di
+	inc	di
+	mov	ah, ch				;ah will be the middle count
+txtblt_rep_rr_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+endif
+	call	txt_rep_putw
+	inc	di
+	inc	di
+	dec	ah
+	jnz	txtblt_rep_rr_s_wide_bloop
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	call	txt_rep_putw_mask_dh		;AL = byte to write DL=mask
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_rep_rr_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_rep_rr_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_rep_rr_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_rep_rr_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rr_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_rep_rr_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_rep_rr_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_rep_rr_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rr_s_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_rep_rr_s_wide_end:
+	dec	cl
+	jnz	txtblt_rep_rr_s_wide
+	ret
+;
+; Given a byte AL, a mask DH or DL and a pointer DI, stretch byte and mask to
+; double-width and store at [DI]
+; The bits in DH/DL will be 1 for the bits not to draw.
+;
+txt_rep_putw_mask_dh:
+	push	bx
+	push	dx
+	mov	bl, dh
+	jmps	trpw1
+
+txt_rep_putw_mask_dl:
+	push	bx
+	push	dx
+	mov	bl, dl
+trpw1:	mov	bh, 0
+;
+	shl	bx, 1
+	mov	dx, cs:expand_byte[bx]	;DX = mask
+	mov	bl, al
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]	;BX = word to write
+if not byte_swap
+	xchg	bh, bl
+	xchg	dh, dl
+endif
+
+	and	es:[di], dx		; Mask out the bits that will be painted
+if	rev_vid
+	push	dx
+	not	dx			; DX = mask of bits that will be set
+	and	dx, bx			; DX = mask of background bits
+	or	es:[di], dx		; Paint the background	
+	pop	dx
+	not	bx
+endif
+	not	dx			; DX = mask of bits that can be painted
+	and	bx, dx			; BX = foreground bits to paint
+	and	bx, cs:text_ink
+	or	es:[di], bx
+	pop	dx
+	pop	bx
+	ret		
+;
+; Given a byte AL and a pointer DI, stretch AL to double-width and store
+; it at [DI]
+;
+txt_rep_putw:
+	push	bx
+	mov	bl, al
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]	;BX = word to write
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	es:word ptr[di], 0	
+if	rev_vid
+	or	es:[di], bx		; Paint the background	
+	not	bx
+endif
+	and	bx, cs:text_ink
+	or	es:[di], bx
+	pop	bx
+	ret		
+;
+; Given a byte AL and a pointer DI, stretch AL to double-width and store
+; it at [DI]
+;
+txt_itran_putw:
+	push	bx
+	mov	bl, al
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]
+if not byte_swap
+	xchg	bh, bl
+endif
+if rev_vid
+	and	es:[di], bx
+else
+	not	bx
+	and	es:[di], bx
+endif
+	not	bx
+	and	bx, cs:text_ink
+	or	es:[di], bx
+	pop	bx
+	ret
+;
+;
+txt_tran_putw:
+	push	bx
+	mov	bl, al
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]
+if not byte_swap
+	xchg	bh, bl
+endif
+if rev_vid
+	and	es:[di], bx
+else
+	not	bx
+	and	es:[di], bx
+endif
+	not	bx
+	and	bx, cs:text_ink
+	or	es:[di], bx
+	pop	bx
+	ret
+;
+; Given a byte AL and a pointer DI, stretch AL to double-width and xor
+; the word at [DI] with it
+;
+txt_xor_putw:
+	push	bx
+	mov	bl, al
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]
+if not byte_swap
+	xchg	bh, bl
+endif
+if rev_vid
+;;	not	bx
+endif
+	xor	es:[di], bx
+	pop	bx
+	ret
+;
+;*******************************************
+;txtblt_rep_rl_s
+;	replace mode rotate left color ix = 1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;this code is for left + right or left only
+txtblt_rep_rl_s_doright:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	inc	di
+	inc	di
+	call	txt_rep_putw_mask_dh
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add1
+else
+	add	di, next_line-2			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_rep_rl_s_nomid_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_rep_rl_s_nomid_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_rep_rl_s_nomid_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_rep_rl_s_nomid_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rl_s_nomid_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_rep_rl_s_nomid_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_rep_rl_s_nomid_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_rep_rl_s_nomid_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rl_s_nomid_end
+	add	di, ss:true_to_first
+endif
+txtblt_rep_rl_s_nomid_end:
+	loop	txtblt_rep_rl_s_nomid_loop
+	ret
+txtblt_rep_rl_nomid:
+	dec	bp
+	cmp	dh, 0ffh
+	je	txtblt_rep_rl_s_nomid_loop
+	dec	bp				;set up the next line counter
+txtblt_rep_rl_s_nomid_loop:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+endif	
+	call	txt_rep_putw_mask_dl
+
+	cmp	dh, 0ffh
+	jne	txtblt_rep_rl_s_doright
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add1
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_rep_rl_s_noright_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_rep_rl_s_noright_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_rep_rl_s_noright_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_rep_rl_s_noright_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rl_s_noright_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_rep_rl_s_noright_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_rep_rl_s_noright_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_rep_rl_s_noright_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rl_s_noright_end
+	add	di, ss:true_to_first
+endif
+txtblt_rep_rl_s_noright_end:
+	loop	txtblt_rep_rl_s_nomid_loop
+	ret
+;this code is for left + middle + right
+;
+txtblt_rep_rl_s:
+	mov	bx, ax
+	and	ch, ch
+if mono_mem
+	jnz	txtblt_rep_rl_s_wide
+	jmp	txtblt_rep_rl_nomid
+else
+	jz	txtblt_rep_rl_nomid
+endif
+txtblt_rep_rl_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+endif	
+	call	txt_rep_putw_mask_dl
+	inc	di
+	inc	di
+	mov	ah, ch				;ah will be the middle count
+	and	ah, ah
+	jz	txtblt_rep_rl_s_wide_right
+txtblt_rep_rl_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+endif
+	call	txt_rep_putw
+	inc	di
+	inc	di
+	dec	ah
+	jnz	txtblt_rep_rl_s_wide_bloop
+txtblt_rep_rl_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	call	txt_rep_putw_mask_dh
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_rep_rl_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_rep_rl_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_rep_rl_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_rep_rl_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rl_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_rep_rl_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_rep_rl_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_rep_rl_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_rep_rl_s_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_rep_rl_s_wide_end:
+	dec	cl
+	jnz	txtblt_rep_rl_s_wide
+	ret
+;
+;*******************************************
+;txtblt_tran_rr_s
+;	transparent mode rotate right color ix = 1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+;
+;this code draws a character with left fringe only
+;
+txtblt_tran_rr_s_noright:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+if rev_vid
+	or	al, dl
+else
+	and	al, dl
+endif
+	call	txt_tran_putw
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_tran_rr_s_noright_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_tran_rr_s_noright_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_tran_rr_s_noright_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_tran_rr_s_noright_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rr_s_noright_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_tran_rr_s_noright_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_tran_rr_s_noright_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_tran_rr_s_noright_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rr_s_noright_end
+	add	di, ss:true_to_first
+endif
+txtblt_tran_rr_s_noright_end:
+	loop	txtblt_tran_rr_s_noright
+	ret
+;
+;this code draws a character with left + right mask only
+;
+txtblt_tran_rr_s_nomid:
+	xor	ch, ch
+	cmp	dh, 0ffh
+if rev_vid eq FALSE
+	not	dx				;invert the mask if not revvid
+endif
+	jz	txtblt_tran_rr_s_noright
+	dec	bp				;make the add -1 for speed
+txtblt_tran_rr_s_nomid_loop:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+if	rev_vid
+	or	al, dl
+else
+	and	al, dl
+endif
+	call	txt_tran_putw
+	inc	di
+	inc	di
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	or	al, dh
+	call	txt_tran_putw
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	and	al, dh
+	call	txt_tran_putw
+endif
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add1
+else
+	add	di, next_line-2			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_tran_rr_s_nomid_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_tran_rr_s_nomid_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_tran_rr_s_nomid_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_tran_rr_s_nomid_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rr_s_nomid_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_tran_rr_s_nomid_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_tran_rr_s_nomid_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_tran_rr_s_nomid_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rr_s_nomid_end
+	add	di, ss:true_to_first
+endif
+txtblt_tran_rr_s_nomid_end:
+	loop	txtblt_tran_rr_s_nomid_loop
+	ret
+;
+txtblt_tran_rr_s:
+	mov	bx, ax
+	and	ch, ch				;is there any middle
+	jz	txtblt_tran_rr_s_nomid
+if rev_vid eq FALSE
+	not	dx				;invert the mask if not revvid
+endif
+txtblt_tran_rr_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+if rev_vid
+	or	al, dl
+else
+	and	al, dl
+endif
+	call	txt_tran_putw
+	inc	di	
+	inc	di
+	mov	ah, ch				;ah will be the middle count
+txtblt_tran_rr_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+	call	txt_tran_putw
+	inc	di
+	inc	di
+	dec	ah
+	jnz	txtblt_tran_rr_s_wide_bloop
+txtblt_tran_rr_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	or	al, dh
+else
+	and	al, dh
+endif
+	call	txt_tran_putw
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_tran_rr_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_tran_rr_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_tran_rr_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_tran_rr_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rr_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_tran_rr_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_tran_rr_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_tran_rr_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rr_s_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_tran_rr_s_wide_end:
+	dec	cl
+	jnz	txtblt_tran_rr_s_wide
+	ret
+;*******************************************
+;txtblt_tran_rl_s
+;	transparent mode rotate left color ix = 1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+txtblt_tran_rl_s_noright:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	or	al, dl
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+	and	al, dl
+endif
+	call	txt_tran_putw
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_tran_rl_s_noright_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_tran_rl_s_noright_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_tran_rl_s_noright_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_tran_rl_s_noright_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rl_s_noright_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_tran_rl_s_noright_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_tran_rl_s_noright_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_tran_rl_s_noright_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rl_s_noright_end
+	add	di, ss:true_to_first
+endif
+txtblt_tran_rl_s_noright_end:
+	loop	txtblt_tran_rl_s_noright
+	ret
+;this code is for left + right
+txtblt_tran_rl_s_nomid:
+	dec	bp
+	xor	ch, ch
+	cmp	dh, 0ffh
+if rev_vid eq FALSE
+	not	dx				;invert the mask if not revvid
+endif
+	jz	txtblt_tran_rl_s_noright
+	dec	bp				;set up the next line counter
+txtblt_tran_rl_s_nomid_loop:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	or	al, dl
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+	and	al, dl
+endif	
+	call	txt_tran_putw
+	inc	di
+	inc	di
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	or	al, dh
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+	and	al, dh
+endif	
+	call	txt_tran_putw
+	add	si, bp				;add the source width in
+if wy700
+	call	dest_add1
+else
+	add	di, next_line-2			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_tran_rl_s_nomid_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_tran_rl_s_nomid_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_tran_rl_s_nomid_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_tran_rl_s_nomid_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rl_s_nomid_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_tran_rl_s_nomid_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_tran_rl_s_nomid_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_tran_rl_s_nomid_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rl_s_nomid_end
+	add	di, ss:true_to_first
+endif
+txtblt_tran_rl_s_nomid_end:
+	loop	txtblt_tran_rl_s_nomid_loop
+	ret
+
+;
+txtblt_tran_rl_s:
+	mov	bx, ax
+	and	ch, ch
+	jz	txtblt_tran_rl_s_nomid
+if rev_vid eq FALSE
+	not	dx				;invert the mask if not revvid
+endif
+txtblt_tran_rl_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	or	al, dh
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+	and	al, dh
+endif
+	call	txt_tran_putw
+	inc	di		
+	inc	di				;apply the byte
+	mov	ah, ch				;ah will be the middle count
+txtblt_tran_rl_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+endif
+	call	txt_tran_putw
+	inc	di
+	inc	di
+	dec	ah
+	jnz	txtblt_tran_rl_s_wide_bloop
+txtblt_tran_rl_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	or	al, dh
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	and	al, dh
+endif
+	call	txt_tran_putw
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_tran_rl_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_tran_rl_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_tran_rl_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_tran_rl_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rl_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_tran_rl_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_tran_rl_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_tran_rl_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_tran_rl_s_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_tran_rl_s_wide_end:
+	dec	cl
+	jnz	txtblt_tran_rl_s_wide
+	ret
+;
+;*******************************************
+;txtblt_xor_rr_s
+;txtblt_xor_rr_0
+;	xor mode rotate right color ix = 0/1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+txtblt_xor_rr_s:
+	mov	bx, ax
+	not	dx				;invert the masks
+txtblt_xor_rr_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+if rev_vid
+	not	al
+endif
+	and	al, dl
+	call	txt_xor_putw
+	inc	di
+	inc	di
+	and	ch, ch
+	jz	txtblt_xor_rr_s_wide_right
+	mov	ah, ch				;ah will be the middle count
+txtblt_xor_rr_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+endif
+	call	txt_xor_putw
+	inc	di
+	inc	di
+	dec	ah
+	jnz	txtblt_xor_rr_s_wide_bloop
+txtblt_xor_rr_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	and	al, dh
+	call	txt_xor_putw			;xor in the source data
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_xor_rr_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_xor_rr_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_xor_rr_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_xor_rr_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_xor_rr_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_xor_rr_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_xor_rr_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_xor_rr_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_xor_rr_s_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_xor_rr_s_wide_end:
+	dec	cl
+	jnz	txtblt_xor_rr_s_wide
+	ret
+;*******************************************
+;txtblt_xor_rl_s
+;txtblt_xor_rl_0
+;	xor mode rotate left color ix = 0/1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+txtblt_xor_rl_s:
+	mov	bx, ax
+	not	dx				;invert the mask if not revvid
+txtblt_xor_rl_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+endif	
+	and	al, dl				;apply the mask
+	call	txt_xor_putw
+	inc	di				;apply the byte
+	inc	di
+	and	ch, ch
+	jz	txtblt_xor_rl_s_wide_right
+	mov	ah, ch				;ah will be the middle count
+txtblt_xor_rl_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+endif
+	call	txt_xor_putw
+	inc	di
+	inc	di
+	dec	ah
+	jnz	txtblt_xor_rl_s_wide_bloop
+txtblt_xor_rl_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	and	al, dh				;apply the right mask
+	call	txt_xor_putw
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_xor_rl_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_xor_rl_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_xor_rl_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_xor_rl_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_xor_rl_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_xor_rl_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_xor_rl_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_xor_rl_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_xor_rl_s_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_xor_rl_s_wide_end:
+	dec	cl
+	jnz	txtblt_xor_rl_s_wide
+	ret
+;
+;*******************************************
+;txtblt_itran_rr_0
+;	inverse transparent mode rotate right color ix = 0
+;txtblt_itran_rr_s
+;	inverse transparent mode rotate right color ix = 1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+txtblt_itran_rr_s:
+if rev_vid eq FALSE
+	not	dx				;invert the mask if not revvid
+endif
+
+txtblt_itran_rr_common:
+	mov	bx, ax
+
+txtblt_itran_rr_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+if rev_vid
+	or	al, dl				;mask off bits
+else
+	and	al, dl
+endif
+	call	txt_itran_putw
+txtblt_itran_rr_end_1:
+	inc	di
+	inc	di
+	and	ch, ch
+	jz	txtblt_itran_rr_wide_right
+	mov	ah, ch				;ah will be the middle count
+txtblt_itran_rr_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+	not	al
+endif
+	call	txt_itran_putw
+txtblt_itran_rr_end_2:
+	inc	di	
+	inc	di	
+	dec	ah
+	jnz	txtblt_itran_rr_wide_bloop
+txtblt_itran_rr_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+	or	al, dh
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+	and	al, dh
+endif
+	call	txt_itran_putw
+txtblt_itran_rr_end_3:
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_itran_rr_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_itran_rr_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_itran_rr_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_itran_rr_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_itran_rr_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_itran_rr_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_itran_rr_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_itran_rr_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_itran_rr_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_itran_rr_wide_end:
+	dec	cl
+	jz	end_txtblt_itran_rr
+	jmp	txtblt_itran_rr_wide
+end_txtblt_itran_rr:
+	ret
+;*******************************************
+;txtblt_itran_rl_0
+;	inverse transparent mode rotate left color ix = 0
+;txtblt_itran_rl_s
+;	inverse transparent mode rotate left color ix = 1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+txtblt_itran_rl_s:
+if rev_vid eq FALSE
+	not	dx				;invert the mask if not revvid
+endif
+
+txtblt_itran_rl_common:
+	mov	bx, ax
+txtblt_itran_rl_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+txtblt_itran_rl_set_1:
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	not	al
+	or	al, dl
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+	not	al
+	and	al, dl
+endif	
+	call	txt_itran_putw
+txtblt_itran_rl_end_1:
+	inc	di				;apply the byte
+	inc	di
+	and	ch, ch
+	jz	txtblt_itran_rl_wide_right
+	mov	ah, ch				;ah will be the middle count
+txtblt_itran_rl_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+	not	al
+endif
+	call	txt_itran_putw
+txtblt_itran_rl_end_2:
+	inc	di
+	inc	di
+	dec	ah
+	jnz	txtblt_itran_rl_wide_bloop
+txtblt_itran_rl_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+	or	al, dh
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+	and	al, dh
+endif
+	call	txt_itran_putw
+txtblt_itran_rl_end_3:
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	txtblt_itran_rl_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	txtblt_itran_rl_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+txtblt_itran_rl_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	txtblt_itran_rl_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	txtblt_itran_rl_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	txtblt_itran_rl_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+txtblt_itran_rl_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	txtblt_itran_rl_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	txtblt_itran_rl_wide_end
+	add	di, ss:true_to_first
+endif
+txtblt_itran_rl_wide_end:
+	dec	cl
+	jz	end_txtblt_itran_rl
+	jmp	txtblt_itran_rl_wide
+end_txtblt_itran_rl:
+	ret
+
+;
+;*******************************************
+;txtblt_xor_rr_1
+;	xor mode rotate right color ix = 0/1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+txtblt_xor_rr_1:
+	mov	bx, ax
+	not	dx				;invert the masks
+onebpp_xor_rr_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+if rev_vid
+	not	al
+endif
+	and	al, dl
+	xor	es:[di], al
+	inc	di
+	and	ch, ch
+	jz	onebpp_xor_rr_s_wide_right
+	mov	ah, ch				;ah will be the middle count
+onebpp_xor_rr_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch first byte from nxt src
+endif
+	xor	es:[di], al
+	inc	di
+	dec	ah
+	jnz	onebpp_xor_rr_s_wide_bloop
+onebpp_xor_rr_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	and	al, dh
+	xor	es:[di], al			;xor in the source data
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	onebpp_xor_rr_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	onebpp_xor_rr_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+onebpp_xor_rr_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	onebpp_xor_rr_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	onebpp_xor_rr_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	onebpp_xor_rr_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+onebpp_xor_rr_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	onebpp_xor_rr_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	onebpp_xor_rr_s_wide_end
+	add	di, ss:true_to_first
+endif
+onebpp_xor_rr_s_wide_end:
+	dec	cl
+	jnz	onebpp_xor_rr_s_wide
+	ret
+;*******************************************
+;txtblt_xor_rl_1
+;	xor mode rotate left color ix = 0/1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+txtblt_xor_rl_1:
+	mov	bx, ax
+	not	dx				;invert the mask if not revvid
+onebpp_xor_rl_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+endif	
+	and	al, dl				;apply the mask
+	xor	es:[di], al
+	inc	di				;apply the byte
+	and	ch, ch
+	jz	onebpp_xor_rl_s_wide_right
+	mov	ah, ch				;ah will be the middle count
+onebpp_xor_rl_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+endif
+	xor	es:[di], al
+	inc	di
+	dec	ah
+	jnz	onebpp_xor_rl_s_wide_bloop
+onebpp_xor_rl_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	and	al, dh				;apply the right mask
+	xor	es:[di], al
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+if wy700
+	call	dest_add
+else
+	add	di, next_line			;move to the next screen line
+endif
+if mono_xrxfp
+	jnc	onebpp_xor_rl_s_wide_end
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	onebpp_xor_rl_s_wide_end1
+	mov	ax, graph_plane
+	add	di, bytes_line
+onebpp_xor_rl_s_wide_end1:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	onebpp_xor_rl_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, ss:true_plane_size
+	jc	onebpp_xor_rl_s_wide_end
+	sub	di, ss:true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	onebpp_xor_rl_s_wide_end_mono
+	mov	al, 0c0h
+	add	di, bytes_line
+onebpp_xor_rl_s_wide_end_mono:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, ss:true_plane_size			;have we wrapped past the end?
+	jc	onebpp_xor_rl_s_wide_end
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	onebpp_xor_rl_s_wide_end
+	add	di, ss:true_to_first
+endif
+onebpp_xor_rl_s_wide_end:
+	dec	cl
+	jnz	onebpp_xor_rl_s_wide
+	ret
+
+
+;*************************
+; in_doub
+;	
+;	initializes the double table
+;*************************
+in_doub:
+	push	ds
+	push	es
+	push	bp
+	mov	ax, cs
+	mov	es, ax
+	mov	di, offset double_table
+	mov	cx, 256
+	mov	bp, 0C000h			;we will set two bits in dest
+	mov	dl, 80h				;start at the high bit
+	xor	bx, bx
+in_double_loop:
+	xor	ax, ax
+in_double_byte_loop:
+	test	bl, dl				;is this bit set in dest
+	jz	in_double_not_set
+	or	ax, bp
+in_double_not_set:
+	ror	bp,1
+	ror	bp,1
+	ror	dl,1				;point at the next bit
+	jnc	in_double_byte_loop
+	xchg	ah, al
+	stosw
+	inc	bl
+	loop	in_double_loop
+	pop	bp
+	pop	es
+	pop	ds
+	ret
+;*************************
+; in_rot
+;	initialize the two rotation tables
+;	
+;*************************
+in_rot:
+	push	ds
+	push	es
+	push	bp
+	mov	ax, cs
+	mov	ds, ax
+	mov	es, ax
+	mov	di, offset txtblt_rrot_table_1
+	mov	si, offset txtblt_rrot_table_2
+	mov	ch, 8			;we will build two tables of 2k	
+	xor	ax, ax
+	mov	dx, ax
+	not	dl			;init the source and mask data
+	mov	cl, al
+in_rot_out_loop:
+	mov	bp, 256
+in_rot_in_loop:
+	mov	al, ah			;get the current byte value
+	ror	al, cl
+	mov	bl, al
+	and	al, dl
+	and	bl, dh
+if rev_vid
+	not	al
+	not	bl
+endif
+	stosb
+	mov	[si], bl
+	inc	si
+	inc	ah
+	dec	bp
+	jnz	in_rot_in_loop
+	xor	ah, ah
+	shr	dl, 1			;move the table one mask over 1 bit
+	mov 	dh, dl
+	not	dh
+	inc	cl			;increment the rotate count
+	dec	ch
+	jnz	in_rot_out_loop
+	pop	bp
+	pop	es
+	pop	ds
+	ret
+;
+;*************************
+; CLC_DDA
+; entry
+;	4[bp] = actual size
+;	6[bp] = requested size
+;
+; exit
+;	ax = dda_inc
+;************************** 
+CLC_DDA:
+	push	bp
+	mov	bp,sp
+	mov	dx, 6[bp]
+	mov	bx, 4[bp]
+	xor	ax, ax
+	cmp	dx, bx			; if dx less than bx then scale down
+	jle	clc_dda_small
+	mov	T_SCLSTS, 1
+	sub	dx, bx			; dx = req - act
+	cmp	dx, bx
+	jge	CLC_DDA_BIG
+	div	bx			; ax = dda_inc
+	pop	bp
+	ret
+CLC_DDA_BIG:
+	mov	ax, 0ffffh		; return dda = 2X
+	pop	bp
+	ret
+CLC_DDA_SMALL:
+	mov	T_SCLSTS, 0
+	and	dx, dx			; if requested size is 0 then make 1
+	jnz	clc_dda_small_ok
+	inc	dx
+clc_dda_small_ok:
+	div	bx
+	pop	bp
+	ret
+;**************************
+; ACT_SIZ
+; entry
+;	4[bp] = size to scale
+; exit
+;	ax = actual size
+;**************************
+ACT_SIZ:
+	push	bp
+	mov	bp, sp
+	mov	cx, 4[bp]
+	mov	dx, DDA_INC
+	cmp	dx, 0ffffh
+	jz	ACT_SIZ_DOUBLE
+	mov	bx, 32767		; bx = accumulator = 1/2
+	xor	ax, ax			; ax = new count
+	and	cx,cx
+	jz	ACT_SIZ_0
+	test	T_SCLSTS, 1
+	jz	ACT_SIZ_SMALL_LOOP	
+ACT_SIZ_LOOP:
+	add	bx, dx
+	jnc	ACT_SIZ_TIME1
+	inc	ax
+ACT_SIZ_TIME1:
+	inc	ax
+	loop	ACT_SIZ_LOOP
+ACT_SIZ_0:
+	pop	bp
+	ret
+ACT_SIZ_DOUBLE:
+	mov	ax, cx
+	shl	ax, 1			; ax = size * 2
+	pop	bp
+	ret
+ACT_SIZ_SMALL_LOOP:
+	add	bx, dx
+	jnc	act_siz_small_1
+	inc	ax
+act_siz_small_1:
+	loop	ACT_SIZ_SMALL_LOOP
+	pop	bp
+	and	ax, ax			; if ax = 0 then make = 1
+	jnz	act_siz_small_2
+	inc	ax
+act_siz_small_2:
+	ret
+;**************************
+; CPY_HEAD
+;**************************
+cpy_head:
+		push	ds
+		les	di, cur_head
+		lds	si, cur_font
+		mov	cx, 56
+	rep	movsw
+		pop	ds
+		ret
+;**************************
+;  inc_lfu
+;**************************
+inc_lfu:
+	les	di, act_font
+	inc 	es: word ptr 92[di]
+	jnc	inc_lfu_done
+	inc	es: word ptr 94[di]
+inc_lfu_done:
+	ret
+
+;*************************
+;  chk_fnt
+;*************************
+chk_fnt:
+;;; Not in SDCGA9
+;;;	test	fi_flags, 10h		;is this font not here!!!!!
+;;;	jz	chk_fnt_done
+	push	es
+	push	di
+	push	ax
+	push	bx
+	les	di, act_font
+	mov	bx, 66
+	add	bx, di	
+	mov	ax, es:[bx]
+	test	ax, 10h			; Font not here?
+	jz	chk_fnt_done
+	mov	ax, di
+	mov	bx, es
+	callf	ftmgradd		;here we go	
+	and	fi_flags, 0ffefh	;enable the local font header
+	mov	ax, es:word ptr 70[di]
+	mov	poff_tbl+2, ax		;fix up the segment
+	mov	seg_htbl, ax		;fix up segment of horz off table
+	mov	ax, es:word ptr 78[di]
+	mov	FOFF+2, ax
+chk_fnt_done:
+	pop	bx
+	pop	ax
+	pop	di
+	pop	es
+	ret
+
+if wy700
+dest_add:
+	push	ax			;save registers
+	push	dx
+	mov	al,cs:current_port	;get current control port value
+	mov	dx,3dfh			;point to control port
+	xor	al,3			;switch banks
+	out	dx,al
+	mov	cs:current_port,al	;save new value
+
+	test	al,2
+	jnz	wy700_end1
+
+	add	di,next_line		;add offset
+wy700_end1:
+	pop	dx			;restore registers
+	pop	ax
+	ret
+
+dest_add1:
+	push	ax			;save registers
+	push	dx
+	mov	al,cs:current_port	;get current control port value
+	mov	dx,3dfh			;point to control port
+	xor	al,3			;switch banks
+	out	dx,al
+	mov	cs:current_port,al	;save new value
+
+	test	al,2
+	jnz	wy700_end2
+
+	add	di,next_line		;add offset
+wy700_end2:
+	dec	di
+	pop	dx			;restore registers
+	pop	ax
+	ret
+
+dest_add2:
+	push	ax			;save registers
+	push	dx
+	mov	al,cs:current_port	;get current control port value
+	mov	dx,3dfh			;point to control port
+	xor	al,3			;switch banks
+	out	dx,al
+	mov	cs:current_port,al	;save new value
+
+	test	al,2
+	jnz	wy700_end3
+
+	add	di,next_line		;add offset
+wy700_end3:
+	dec	di
+	dec	di
+	pop	dx			;restore registers
+	pop	ax
+	ret
+endif
+
+
+if 0
+
+;==========
+set_fnthdr:	; set font header
+;==========
+;
+;	Set the current font header.
+;
+;	Entry:	ax = char
+;
+;	Exit:	act_font = font header for this character
+;		cur_font = act_font
+;		font_inf = *cur_font
+
+	push ax
+	call chk_ade
+	; Is the proper header in place?
+	cmp ax, 0 ! je sfe
+	  ; Nope, 
+	  ; Is the char out of range
+	  cmp ax, 2 ! jne sf1
+	    ; Yes,  force a space
+	    pop ax			; clear the incoming char from stack
+	    mov ax, 20h			; set a space
+	    push ax			
+	    call chk_ade
+	    cmp ax, 0 ! je sfe
+sf1:
+	    call chk_fnt
+sfe:
+	pop ax
+	ret
+
+eject
+
+;=======
+chk_ade:	; check the ADE value of a char
+;=======
+;
+; jn 10-27-87
+; This is the support for a segmented screen font.
+;
+; This routine must be called for every character.
+;
+; If the ADE value of the character passed in falls within
+; the range of the characters in the currently selected font
+; then we just return.
+;
+; If the ADE value of the character passed in not within the
+; the range of the characters in the currently selected font
+; the following is done:
+;
+;	1) The font chain traversed, starting with first, until
+;	   the first font header segment for the currently selected
+;	   font is found.
+;
+;	2) The font segments for the currently selected font are
+;	   traversed until the font segment containing 
+;	   the required ADE value is found.
+;
+;	3) act_font is set to the new font header.
+;
+;	Entry:	char passed in on stack
+;
+;	Exit:	act_font = the proper font header for the entry character 
+;		cur_font = act_font
+;		the new font header is copied into the current virtual
+;		work station font info structure.
+;		ax = 0 - if no change to the font_inf header
+;		   = 1 - if there was a change.
+;			 or if the font in the font header is not loaded.
+;		   = 2 - if the character was out of range.
+;
+;	Note:	This routine preserves all registers used
+;		except ax.  This is because is was added onto an
+;		existing system.
+;
+;		act_font is relative to the current virtual work 
+;		station
+
+	push bp				; C type preamble
+	mov bp, sp
+
+	mov ax, 4[bp]			; ax = the character
+
+	push si				; save regs we need.
+	push es
+
+	; Does the ADE value of the character fall
+	; within the range of the current font header ADE values?
+
+	and ax, 0ffh			; mask off the high byte
+	les si, act_font		; es:si = act_font
+
+	; check the low bound
+	cmp ax, es:24h[si] ! jl ca1
+	  ; check the upper bound
+	  cmp ax, es:26h[si] ! jg ca1
+	    ; The character falls within
+	    ; the ADE bounds of the current font header.
+	    ;---
+	    ; Is the font present?
+	    test es:42h[si], word ptr 010h ! jz ca2
+	      ; the font is not present.
+	      mov ax, 01
+	      jmps cae
+ca2:	; the font is present.
+	    xor ax, ax
+	    jmps cae
+
+ca1:	; the character does not fall within the bounds of the
+	; current font header.  find the correct header.
+
+	call find_font_seg0		; es:si -> font_seg0
+	call find_ade_seg		; es:si -> font header seg we want
+	; Is the character with in range
+	cmp ax, 0 ! jz ca3
+	  ; Nope, set the out of range return code...
+	  mov ax, 2
+	  jmps cae
+ca3:
+	mov word ptr act_font, si	; set up the actual font pointer
+	mov word ptr act_font + 2, es
+
+	mov word ptr cur_font, si	; set up the current font pointer
+	mov word ptr cur_font + 2, es
+
+	push cx
+	push di
+	call cpy_head			; put the new font header into the
+	pop di				; virtual work station font info
+	pop cx				; structure.
+
+	mov ax, 1			; set the return code.
+
+cae:
+	pop es				; restore the regs used in
+	pop si				; the basic search.
+	pop bp
+
+	ret
+
+eject
+
+;------------
+find_ade_seg:
+;------------
+;
+;	Find the font header segment that contains the
+;	ADE segment range
+;
+;	Entry:	ax = char
+;		es:si = first header for this font style and point size
+;
+;	Exit:	es:si = header we want.
+;		ax = 0 - if we found a font segment that contains
+;			 the char we want
+;		   = 1 - if the character is out of bounds
+
+	push bx				; preserve reg that is used
+fas4:
+	; Is this character within range
+	cmp ax, es:24h[si] ! jl fas1	; check low bound.
+	  ; Its greater >= the low bound
+	  cmp ax, es:26h[si] ! jg fas2	; check the high bound.
+	    ; We found the header we want
+	    mov ax, 0
+	    jmps fase
+
+fas1:	; The character value is below the lowest ADE for this font.
+	; So, return the lowest header.
+	mov ax, 1
+	jmps fase
+
+fas2:	; Check the next header
+	; Is the next header NULL?
+	mov bx, es:58h[si]
+	or bx, es:5Ah[si]
+	jnz fas3
+	  ; The next header is 0
+	  ; So just return the one we have.
+	  mov ax, 1
+	  jmps fase
+fas3:
+	; Point to thenext font segment.
+	les si, es:58h[si]
+	jmps fas4
+
+fase:	; find ade segment exit
+	pop bx
+	ret
+
+eject
+
+;--------------
+find_font_seg0:
+;--------------
+;
+;	Find the first segment of this font.
+;
+;	Entry:	es:si = act_font
+;
+;	Exit:	es:si = addr of first font header segment of the
+;			desired font face and point size.
+
+	push ax				; save regs used
+	push bx
+	push cx
+
+	; register usage for search
+	;  ax = desired font style
+	;  bx = desired point size
+	;  es:si = ptr to font header
+
+	mov ax, es:[si]			; ax = desired font style
+	mov bx, es:2[si]		; bx = desired point size
+
+	; first is in the physical work station segment
+
+	mov si, seg first
+	mov es, si
+	mov si, offset first		; es:si = -> to first font in chain
+ffs3:
+	; is the correct font style?
+	cmp ax, es:[si]	! jne ffs1
+	  ; this is the font style we want.
+	  ; Is this the correct point size?
+	  cmp bx, es:2[si] ! jne ffs1
+	    ; This is the correct point size also.
+	    ; We have found the font header we seek
+	    jmps ffse
+ffs1:
+	; the current font header is not the one we seek.
+	; Is there another font header in the chain?
+	mov cx, es:54h[si]
+	or cx, es:56h[si]
+	jnz ffs2
+	  ; This was the last header.
+	  ; THIS IS AN ERROR.
+	  ; Return the last font header we found
+	  jmps ffse
+ffs2:
+	; there is another font 
+	; point to it and go to the top of the loop
+	les si, es:54h[si]
+	jmps ffs3
+
+ffse:	; find font segment 0 exit point
+
+	pop cx				; restore regs that were used	
+	pop bx
+	pop ax
+	ret
+
+endif
+
+
+

@@ -1,0 +1,904 @@
+;**************************************************************************
+;*			    DEVICE SPECIFIC ROUTINES			  *
+;*									  *   
+;*		These routines and equates are device dependant.	  *
+;*									  *
+;*									  *
+;*									  *
+;**************************************************************************
+;Hist
+;Name	Date	Modification
+;
+include externs.a86
+include fpmregs.a86
+dseg
+        extrn   ptsin_ptr:dword,intin_ptr:dword
+cseg
+;
+	public	INIT_G,DINIT_G
+	public	CONCAT
+	public	TRAN_FM
+	public	EX_TIMV
+	public	S_COLMAP
+	public	I_COLMAP
+	public	CONTRL,INTIN,INTOUT
+	public	PTSIN,PTSOUT
+	public	PLYGN_BEZ,PLYGN_RROT,MAP_COL,line_offsets
+;
+	extrn	entry:near		;the place to jump to if this module
+;integer array indexing equates
+	W_1	equ	word ptr 0
+	W_2	equ	word ptr 2
+	W_3	equ	word ptr 4
+	W_4	equ	word ptr 6
+	W_5	equ	word ptr 8
+	W_6	equ	word ptr 10
+	W_7	equ	word ptr 12
+	W_8	equ	word ptr 14
+	W_9	equ	word ptr 16
+	W_10	equ	word ptr 18
+;
+
+;
+; Apricot BIOS equates
+;
+ACTIVE_SCREEN   equ     412h    ;0 for LCD, 1 for 4-colour, 2 for 16-colour
+BIOS_MOUSE_FLAG	equ	608h	;Bit 0 set if mouse present
+BIOS_CONFIG_TBL	equ	700h	;Pointer to BIOS configuration table
+REG_COPY_TABLE  equ     722h    ;Address of write-only-register value copies
+
+ESC		equ	1Bh	
+
+ibmvdi		equ	1		;leave out the old code if for retail
+ibmmouse	equ	0
+min_x_escape	equ	60
+max_x_escape	equ	62
+;
+;
+;****************************************************************
+;		IBM STANDARD ROM BIOS CALLS			*
+;****************************************************************
+direct		equ	false		; direct = true --> don't use ROS calls
+					;   (for example, for two-screen stuff)
+					; set to false for PCjr
+
+SCREEN	equ	10H			;interrupts to use for rom routine I/O
+KEYBD	equ	16H
+;
+EJECT
+;
+	jmp	entry		;if we come in from here, go to real entry
+;****************************************	
+;escape func 2
+; Enter Graphics Mode 
+;****************************************	
+INIT_G:
+	pushf
+	mov	ax,cs
+	mov	usermot+2,ax		;init the user call vectors segs
+	mov	userbut+2,ax
+	mov	usercur+2,ax
+	mov	ax,offset umotvec
+	mov	usermot,ax
+	mov	ax,offset ubutvec
+	mov	userbut,ax
+	mov	ax,offset mov_cur
+	mov	usercur,ax
+	popf
+	push	ds
+	pop	es
+	call	fp_mouse_fixup
+escfn2: 
+if mouse
+	mov	bl, 1			;initialize the mouse
+	call	mouse_function
+endif
+	cmp	dispmode,1
+	jz	escfn2_ok
+	ret
+escfn2_ok:
+	mov	dispmode,0		; 
+	mov	di, offset esc_gfxmode
+	call	txt_putstr
+
+	push	ds
+	xor	ax, ax
+	mov	ds, ax
+	mov	bx, BIOS_CONFIG_TBL
+	les	di, [bx]
+	add	di, 23h
+	mov	dl, es:[di]
+	add	di, 5
+	mov	es:word ptr [di], 0
+	pop	ds
+
+	call	switch_lcd
+	call	clearmem		; clear graphics display
+	call	check_mouse
+	mov	bx, 32h			;Device class
+	mov	cx, 10h			;Undocumented keyboard function
+	mov	dx, 1
+	int	0FCh
+	ret
+;
+check_mouse:
+	push	ds
+	xor	ax, ax
+	mov	ds, ax
+	mov	bx, BIOS_MOUSE_FLAG	
+	mov	ax, [bx]
+	pop	ds
+	test	ax, 1
+	jz	check_mouse1
+	inc	bx
+check_mouse1:
+	mov	mouseflag, bl
+	ret
+;
+init_pal:
+	ret
+;
+;****************************************	
+;escape func 3
+; Exit Graphics Mode
+;****************************************	
+DINIT_G:
+if mouse
+	mov	bl,2
+	call	mouse_function
+endif
+escfn3: 
+	cmp	dispmode,0
+	jz	escfn3_ok
+	ret
+escfn3_ok:				; 
+	mov	dispmode,1
+	call	CLEARMEM
+	push	ds
+	xor	ax, ax
+	mov	ds, ax
+	mov	bx, BIOS_CONFIG_TBL
+	les	di, [bx]
+	add	di, 28h
+	mov	es:word ptr [di], 0FFFFh
+	pop	ds
+	call	unswitch_lcd
+	mov	di, offset esc_z
+	call	txt_putstr
+	ret
+;
+switch_lcd:
+	push	ds
+	xor	ax, ax
+	mov	ds, ax
+	mov	si, REG_COPY_TABLE
+	mov	bx, ACTIVE_SCREEN
+	mov	bx, [bx]
+	cmp	bx, 1
+	jz	switch_lcd1
+	pop	ds
+	ret
+;
+switch_lcd1:
+	lds	si, [si]
+	add	si, 8		;Last value written to LCD control port
+	mov	ax, [si]
+	and	al, 0ABh	;Reset bits 2,4,6
+	or	al, 8		;Set bit 3 (LCD enabled)
+	mov	[si], ax
+	out	2Eh, ax
+	pop	ds
+	ret
+;
+unswitch_lcd:
+	push	ds
+	xor	ax, ax
+	mov	ds, ax
+	mov	si, REG_COPY_TABLE
+	mov	bx, ACTIVE_SCREEN
+	mov	bx, [bx]
+	cmp	bx, 1
+	jnz	unswitch_lcd1
+	lds	si, [si]
+	add	si, 8		;Last value written to LCD control port
+	mov	ax, [si]
+	or	al, 0E4h	;Set bits 2,5,6,7
+	mov	[si], ax
+	out	2Eh, ax
+unswitch_lcd1:
+	pop	ds
+	ret
+;
+
+
+EJECT
+;****************************************************************
+;I_COLMAP							*	
+;	ENTRY	                                        	*
+;		INTIN[0] = color index				*
+;		INTIN[1] = req or actual flag			*
+;								*
+;	EXIT	                             			*
+;		INTOUT[0] = color index				*
+;		INTOUT[1] = RED					*
+;		INTOUT[2] = GRN					*
+;		INTOUT[3] = BLU					*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+I_COLMAP:
+	mov	bx, INTIN		;check if the index is in range of dev
+	cmp	bx, 0
+	jge	i_colmap_chkix
+	jmps	i_colmap_badix
+i_colmap_chkix:
+	cmp	bx, num_colors-1	;test if index is too high
+	jle	i_colmap_ixok
+	jmps	i_colmap_badix
+i_colmap_ixok:
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	mov	di, bx			; di = ptr to act/req col tbls
+	shl	di, 1
+	shl	di, 1
+	add	di, bx
+	add	di, bx			; mpy ix by 6 to point into table
+	mov	si, offset INTOUT+2
+	mov	cx, 3
+	mov	INTOUT, bx		; return the color index
+	mov	bx, offset req_col_tbl
+	test	INTIN+2, 0ffffh		; if != 0 then return actual values
+	jz	i_colmap_load
+	mov	bx, offset act_col_tbl
+i_colmap_load:
+	mov	ax, [bx+di]
+	mov	[si], ax
+	add	di, 2
+	add	si, 2
+	loop	i_colmap_load
+	ret
+i_colmap_badix:
+	mov	INTOUT, -1
+	ret	
+EJECT
+;****************************************************************
+;S_COLMAP							*	
+;	ENTRY	                                        	*
+;		INTIN[0] = color index				*
+;		INTIN[1] = RED 0 - 1000				*
+;		INTIN[1] = GRN 0 - 1000				*
+;		INTIN[1] = BLU 0 - 1000				*
+;								*
+;	EXIT	                             			*
+;		                           			*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+S_COLMAP:
+	mov	bx, INTIN		;check if the index is in range of dev
+	cmp	bx, 0
+	jge	s_colmap_chkix
+	jmp	s_colmap_exit
+s_colmap_chkix:
+	cmp	bx, num_colors-1	;test if index is too high
+	jle	s_colmap_ixok
+	jmp	s_colmap_exit
+s_colmap_ixok:
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	mov	di, bx			; di = ptr to act/req col tbls
+	shl	di, 1
+	shl	di, 1
+	add	di, bx
+	add	di, bx			; mpy ix by 6 to point into table
+	mov	dx, INTIN+2		; get the red value
+	call	s_colmap_val
+	mov	dx, INTIN+4		; get the grn value
+	call	s_colmap_val
+	mov	dx, INTIN+6		; get the blu values 
+	call	s_colmap_val
+s_colmap_exit:
+	ret
+; 
+s_colmap_val:
+	mov	req_col_tbl[di], dx	; save the requested value
+	add	di, 2			; move to the next value 
+	ret
+
+
+;****************************************************************
+;TRAN_FM							*	
+;	ENTRY	                                        	*
+;		                                     		*
+;								*
+;	EXIT	                             			*
+;		                           			*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+TRAN_FM:
+	push	bp	
+	push	es
+	push	ds
+	les	di,contrl_ptr
+	mov	ax, es: word ptr 14[di]
+	mov	bx, es: word ptr 16[di]		; get smfdb pointer
+	mov	dx, es: word ptr 18[di]
+	mov	bp, es: word ptr 20[di]		; get dmfdb pointer
+	mov	es, bx
+	mov	di, ax				; set es:di to it
+	mov	ax, es: word ptr 12[di]		; get num of planes in source
+; xform n to n planes
+	push	ax				; save the plane count
+	call	calc_src_form
+	call	calc_des_form
+	call	calc_seg_off
+	pop	bx				; get the plane count back
+col_to_col_lp:
+	push	si
+	push	di
+	push	bx
+	push	cx
+col_to_col_loop:
+	lodsw
+if not byte_swap
+	xchg	ah,al
+endif
+if rev_vid
+	not	ax
+endif
+	stosw
+	loop	col_to_col_loop
+	pop	cx
+	pop	bx
+	pop	di
+	pop	si
+	call	tran_next_seg
+	dec	bx
+	jnz	col_to_col_lp
+	pop	ds
+	pop	es
+	pop	bp
+	ret
+tran_next_seg:
+	push	cx
+	mov	ax, cx
+	mov	cl, 3
+	shr	ax, cl			;get the segment increment
+	mov	bp, es
+	add	bp, ax
+	mov	es, bp
+	mov	bp, ds
+	add	bp, ax
+	mov	ds, bp
+	pop	cx
+	mov	ax, cx			;get the byte increment
+	and	ax, 0007h
+	shl	ax, 1
+	add	si, ax
+	add	di, ax
+	ret
+;
+calc_seg_off:
+	mov	bp, cx				; find the next seg
+	shr	bp,1
+	shr	bp,1
+	shr	bp,1
+	mov	dx, cx
+	shl	dx, 1
+	and	dx, 000fh			; find the incremental offset
+;	mov	bx,num_planes
+	ret
+;
+calc_des_form:
+	mov	ds, bp
+	mov	si, dx				; load dmfdb pointer
+	not	bx
+	and	bx,1				; invert format
+	mov	10[si],bx			; toggle dest form
+	mov	ax, es: word ptr 2[di]		; get source ptr seg
+	mov	di, es: word ptr [di]		; offset
+	mov	es, ax
+	mov	ax, 2[si]
+	mov	si, [si]			; get dest ptr seg,offset
+	mov	ds, ax
+	xchg	si,di				; swap pointers
+	mov	ax, es
+	mov	dx, ds
+	mov	es, dx
+	mov	ds, ax
+	ret
+;
+calc_src_form:
+	mov	bx, es: word ptr 10[di]		; get the format flag
+	mov	ax, es: word ptr 8[di]		; get the width in words
+	mov	cx, es: word ptr 6[di]		; get the height in pixels
+	push	dx
+	mul	cx
+	pop	dx
+	mov	cx, ax				; cx = word count
+	and	bx,bx				; if bx = 0 then dev spec form
+	ret
+
+EJECT
+;****************************************************************
+;EX_TIMV							*	
+;	ENTRY	                                        	*
+;		CONTRL 7,8 = NEW VEC                            *
+;	EXIT	                             			*
+;		                           			*
+;		CONTRL 9,10 = OLD VEC				*
+;               INTOUT [0] = TIMER TICK COUNT IN MILLISECS	*
+;								*
+;****************************************************************
+EX_TIMV:
+	pushf
+	cli
+	push	es
+	push	ds
+	les	di,contrl_ptr
+	xor	ax,ax
+	mov	ds,ax
+	mov	si,4 * 0FFh		;setup the offset to timer int vector
+	mov	ax,[si]
+	mov	es:word ptr 18[di],ax	;save old timer vector
+	mov	ax,2[si]
+	mov	es:word ptr 20[di],ax
+	mov	ax, es:word ptr 14[di]
+	mov	[si],ax
+	mov	ax, es:word ptr 16[di]
+	mov	2[si],ax
+	pop	ds
+	pop	es
+	popf
+	mov	ax, 1			; flag that data is to be returned 
+	mov	CONTRL+8, ax
+	mov	ax, 20
+	mov	INTOUT, ax		; return the millisec/tick count 
+	ret
+;
+EJECT
+;
+txt_putstr:	
+	mov	ax, ds
+	mov	es, ax
+	mov	cx, [di]		; Length of string
+	add	di, 2
+txt_puts1:
+	jcxz	txt_puts2
+	mov	ax, es:[di]
+	add	di, 2
+	call	txt_putchar
+	loop	txt_puts1
+txt_puts2:
+	ret
+;
+txt_putchar:
+	mov	dl, al
+	mov	ah, 2
+	int	21h
+	ret
+;
+
+EJECT
+;****************************************************************
+;CONCAT 							*	
+;	ENTRY	Reg. BX - X-coordinate (dev. coord.)		*
+;		Reg. AX - Y-coordinate (dev. coord.)		*
+;								*
+;	EXIT	Reg. DI - Physical address			*
+;		Reg. BL - Byte index				*	
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+concat:
+	and	bx, 03ffh		;mask off 10 lsb for x-coord.
+	mov	cx, bx
+	mov	di, ax
+	shl	di, 1
+	mov	di, line_offsets[di]	;On the FP this is just a fast way
+	sar	cx, 1			;to multiply by 160. Presumably based
+	sar	cx, 1			;on the F1 version, where line offsets
+	and	cx, 0FFFEh		;are a hardware thing that can be
+	add	di, cx			;changed.
+	and	bl, 7
+	xor	bh, bh
+	ret
+
+EJECT
+include	aprfdvsp.a86
+if mouse
+cseg
+include fpmouse.a86
+endif
+cseg
+include aprfmre1.a86
+include aprfmre2.a86
+dseg
+include fpmdev.a86
+
+	dseg
+
+		dw	0,0,0,0
+line_deltax	dw	0
+line_deltay	dw	0
+line_drawaddr	dw	0
+line_nextrow	dw	0
+line_step	dw	0
+		dw	0
+line_ormask	dw	0
+line_dxparam	dw	0
+line_deltac	dw	0
+line_nadd_dx	dw	0
+line_add_dx	dw	0
+line_prefix	dw	0
+line_draw	dw	0
+line_drawcode	dw	0,0
+line_arg_offset	dw	0
+		dw	0
+line_flg1	db	0
+line_initjump	db	0
+line_flg3	db	0
+		db	0
+line_prefixes	dw	offset line_prefix_rep
+line_draws	dw	offset line_draw_rep
+		dw	offset line_prefix_rep	
+		dw	offset line_draw_rep	
+		dw	0
+		dw	offset line_draw_tran
+		dw	0
+		dw	offset line_draw_xor
+		dw	0
+		dw	offset line_draw_tran
+
+line_argp	dw	0FFFAh, 0
+		dw	0FFFAh, 0
+		dw	0FFFAh, 0
+		dw	0FFFAh, 0
+		dw	0, 0
+
+
+
+right_masks	dw	0FFFFh, 07FFFh, 03FFFh, 01FFFh
+		dw	00FFFh, 007FFh, 003FFh, 001FFh
+		dw	000FFh, 0007Fh, 0003Fh, 0001Fh
+		dw	0000Fh, 00007h, 00003h, 00001h
+left_masks	dw	0FFFFh, 0FFFEh, 0FFFCh, 0FFF8h
+		dw	0FFF0h, 0FFE0h, 0FFC0h, 0FF80h
+		dw	0FF00h, 0FE00h, 0FC00h, 0F800h
+		dw	0F000h, 0E000h, 0C000h, 08000h
+
+ortbl		db	80h, 40h, 20h, 10h, 8, 4, 2, 1
+
+line_offsets	dw	0
+		dw	160
+		dw	320
+		dw	480
+		dw	640
+		dw	800
+		dw	960
+		dw	1120
+		dw	1280
+		dw	1440
+		dw	1600
+		dw	1760
+		dw	1920
+		dw	2080
+		dw	2240
+		dw	2400
+		dw	2560
+		dw	2720
+		dw	2880
+		dw	3040
+		dw	3200
+		dw	3360
+		dw	3520
+		dw	3680
+		dw	3840
+		dw	4000
+		dw	4160
+		dw	4320
+		dw	4480
+		dw	4640
+		dw	4800
+		dw	4960
+		dw	5120
+		dw	5280
+		dw	5440
+		dw	5600
+		dw	5760
+		dw	5920
+		dw	6080
+		dw	6240
+		dw	6400
+		dw	6560
+		dw	6720
+		dw	6880
+		dw	7040
+		dw	7200
+		dw	7360
+		dw	7520
+		dw	7680
+		dw	7840
+		dw	8000
+		dw	8160
+		dw	8320
+		dw	8480
+		dw	8640
+		dw	8800
+		dw	8960
+		dw	9120
+		dw	9280
+		dw	9440
+		dw	9600
+		dw	9760
+		dw	9920
+		dw	10080
+		dw	10240
+		dw	10400
+		dw	10560
+		dw	10720
+		dw	10880
+		dw	11040
+		dw	11200
+		dw	11360
+		dw	11520
+		dw	11680
+		dw	11840
+		dw	12000
+		dw	12160
+		dw	12320
+		dw	12480
+		dw	12640
+		dw	12800
+		dw	12960
+		dw	13120
+		dw	13280
+		dw	13440
+		dw	13600
+		dw	13760
+		dw	13920
+		dw	14080
+		dw	14240
+		dw	14400
+		dw	14560
+		dw	14720
+		dw	14880
+		dw	15040
+		dw	15200
+		dw	15360
+		dw	15520
+		dw	15680
+		dw	15840
+		dw	16000
+		dw	16160
+		dw	16320
+		dw	16480
+		dw	16640
+		dw	16800
+		dw	16960
+		dw	17120
+		dw	17280
+		dw	17440
+		dw	17600
+		dw	17760
+		dw	17920
+		dw	18080
+		dw	18240
+		dw	18400
+		dw	18560
+		dw	18720
+		dw	18880
+		dw	19040
+		dw	19200
+		dw	19360
+		dw	19520
+		dw	19680
+		dw	19840
+		dw	20000
+		dw	20160
+		dw	20320
+		dw	20480
+		dw	20640
+		dw	20800
+		dw	20960
+		dw	21120
+		dw	21280
+		dw	21440
+		dw	21600
+		dw	21760
+		dw	21920
+		dw	22080
+		dw	22240
+		dw	22400
+		dw	22560
+		dw	22720
+		dw	22880
+		dw	23040
+		dw	23200
+		dw	23360
+		dw	23520
+		dw	23680
+		dw	23840
+		dw	24000
+		dw	24160
+		dw	24320
+		dw	24480
+		dw	24640
+		dw	24800
+		dw	24960
+		dw	25120
+		dw	25280
+		dw	25440
+		dw	25600
+		dw	25760
+		dw	25920
+		dw	26080
+		dw	26240
+		dw	26400
+		dw	26560
+		dw	26720
+		dw	26880
+		dw	27040
+		dw	27200
+		dw	27360
+		dw	27520
+		dw	27680
+		dw	27840
+		dw	28000
+		dw	28160
+		dw	28320
+		dw	28480
+		dw	28640
+		dw	28800
+		dw	28960
+		dw	29120
+		dw	29280
+		dw	29440
+		dw	29600
+		dw	29760
+		dw	29920
+		dw	30080
+		dw	30240
+		dw	30400
+		dw	30560
+		dw	30720
+		dw	30880
+		dw	31040
+		dw	31200
+		dw	31360
+		dw	31520
+		dw	31680
+		dw	31840
+		dw	32000
+		dw	32160
+		dw	32320
+		dw	32480
+		dw	32640
+		dw	32800
+		dw	32960
+		dw	33120
+		dw	33280
+		dw	33440
+		dw	33600
+		dw	33760
+		dw	33920
+		dw	34080
+		dw	34240
+		dw	34400
+		dw	34560
+		dw	34720
+		dw	34880
+		dw	35040
+		dw	35200
+		dw	35360
+		dw	35520
+		dw	35680
+		dw	35840
+		dw	36000
+		dw	36160
+		dw	36320
+		dw	36480
+		dw	36640
+		dw	36800
+		dw	36960
+		dw	37120
+		dw	37280
+		dw	37440
+		dw	37600
+		dw	37760
+		dw	37920
+		dw	38080
+		dw	38240
+		dw	38400
+		dw	38560
+		dw	38720
+		dw	38880
+		dw	39040
+		dw	39200
+		dw	39360
+		dw	39520
+		dw	39680
+		dw	39840
+		dw	40000
+		dw	40160
+		dw	40320
+		dw	40480
+		dw	40640
+		dw	40800
+;
+box_optbl	dw	offset	box_replace_mode
+		dw	offset	box_tran_mode
+		dw	offset	box_xor_mode
+		dw	offset	box_invtran_mode
+s_colmap_i	db	0
+box_pattern	dw	0
+box_pattern2	dw	0
+		rb	32
+;
+; Colour translations for F1, but present in all drivers.
+;
+sp_col		db	0, 2, 8, 10, 4, 6, 12, 14, 16, 18, 24, 26, 20, 22, 28
+		db	30, 0, 0, 2, 2, 3, 3, 3, 3, 4, 4, 6, 6, 5, 1, 7, 7, 0
+;
+
+
+include scanxlt.a86
+;
+
+txt_row		dw	1
+txt_col		dw	1
+mouseflag	db	0
+esc_gfxmode	dw	2, ESC, '}'
+esc_z		dw	2, ESC, 'z'
+esc_H		dw	2, ESC, 'H'
+esc_K		dw	2, ESC, 'K'
+esc_p		dw	2, ESC, 'p'
+esc_q		dw	2, ESC, 'q'
+esc_y		dw	4, ESC, 'Y', ' ', ' '
+
+dispmode	dw	1
+;
+if not rev_vid
+act_col_tbl	dw	   0,    0,    0	;black
+		dw	1000, 1000, 1000	;white
+req_col_tbl	dw	   0,    0,    0	;black
+		dw	1000, 1000, 1000	;white
+else
+act_col_tbl	dw	1000, 1000, 1000	;white
+		dw	   0,    0,    0	;black
+req_col_tbl	dw	1000, 1000, 1000	;white
+		dw	   0,    0,    0
+endif
+
+
+MAP_COL		dw	0
+		dw	15		;red
+		dw	15		;green
+		dw	15		;blue
+		dw	15		;cyan
+		dw	15		;yellow	
+		dw	15		;magenta
+		dw	15		;white
+		dw	15
+		dw	15
+		dw	15
+		dw	15
+		dw	15
+		dw	15
+		dw	15
+		dw	15
+
+CONTRL          rw      CONTRL_SIZE
+INTIN           rw      INTIN_SIZE
+PTSOUT          rw      PTSOUT_SIZE
+	include	date.a86
+	db	' Apricot FP 4-plane colour driver '
+	include	copyrt.a86
+		rs offset PTSIN + 2 * PTSIN_SIZE + 4 - offset $
+
+INTOUT		rw INTOUT_SIZE

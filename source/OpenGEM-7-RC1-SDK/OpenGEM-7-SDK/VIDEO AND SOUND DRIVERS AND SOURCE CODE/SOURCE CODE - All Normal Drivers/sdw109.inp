@@ -1,0 +1,21 @@
+sdw109.vga = entry,
+w10_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+w10_drv,
+w1pttxt1,
+w1pttxt2,
+w1ptdraw,
+w10mblit,
+w10blit,
+w10pat,
+enddseg, 
+vgacp, 
+vgafont[nop]
+                                                                    
+                                                                    

@@ -1,0 +1,68 @@
+The SIMPLE VERSIONING SYSTEM (SVS)
+Release 4
+========================================================================
+This document was created on the 28th February 2006
+========================================================================
+
+We believe version numbering on software can be simplified.
+This will lead to a better end-user experience.
+
+We use a versioning system that reflects the network-centric release 
+methods used nowadays.  Rather than focusing on generational updates, 
+we make evolutionary software.  Thus software is conceptualized as a 
+progression instead of a series of generations.
+
+We call this the Simple Versioning System (SVS).
+
+Example (using GEMini):
+
+GEMini Release 0.1 = first development release
+GEMini Release 0.28 = twenty-eight development release
+GEMini Release 1 = first end user release
+GEMini Release 28 = twenty-eight user release
+
+We would intend each release to simply be a combination of bug-fixes and 
+updates.  There would be no fixed amount of progress for each release. 
+People would simply update their software to the latest release when it
+is made available.
+
+We think this system is easier to follow than any other currently being 
+used, and it's more reflective of the network-centric development we have 
+these days.
+
+How do I use the Simple Versioning System (SVS)?:
+
+Development version numbering:
+AnySoftware Devlopement 1 = first development release
+AnySoftware Development 28 = twenty-eight development release
+
+Release  numbering:
+AnySoftware Release 1 = first release
+AnySoftware Release 28 = twenty-eight release
+
+An example can be taken from the Mobility Project:
+
+Mobility IM Release [version number]
+Mobility IM Development [version number]
+
+In the case of software where dramatic changes are made between versions,
+it is perhaps a good idea to actually rename the software.
+
+Again using the Mobility Project as an example:
+
+Mobility IM currently has active development and release versions using
+the Gaim 1.5 messaging engine.  At the same time, the Mobility Project 
+is developing a next generation messaging client using the Gaim 2.0
+messaging engine.  Instead of attempting to create additional version
+numbers, this new project is called Mobility Messenger, and has its
+own development and release numbers.  This makes it easier for users to
+understand the amount of change to be expected if they switch between
+the two software distributions.
+
+In essence, the SVS is about moving software versioning away from being
+a developer tool, and closer to being a way for end users to understand
+what they are downloading and using.  It's about empowering the user
+and reducing the potential for confusion.
+
+
+For more information about SVS please email us at info@opendawn.com

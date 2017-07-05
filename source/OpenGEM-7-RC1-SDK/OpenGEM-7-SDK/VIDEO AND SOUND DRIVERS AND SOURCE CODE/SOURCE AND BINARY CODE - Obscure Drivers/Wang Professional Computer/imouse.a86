@@ -1,0 +1,2352 @@
+
+eject
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+
+;History
+;Change #	Person	Date	Description
+;1		DH	2/24/85	added summa tablet support
+;2		DH	3/13/85	cleared control status on mouse motion
+;3		DH	3/13/85 toggled kbd mouse status on mouse first motion
+;4		DH	5/24/85 fixed ms mouse bug's (tracking) **IBM ONLY**
+;				this code should only be used by ibm compatible
+;				pc's
+;5		DH	5/25/85 Mouse Systems mouse enhanced to have variable
+;				rate ouput (like the MS mouse).
+;6		RG	4/16/86	Fixed No Mouse init so globals initialized
+;7Steve Bockman SB	5/9/86	hardcoded mouse patch area for com2, mm961.
+;8		SB	5/10/86	added non-square tablet scaling.
+;				added mm1812 tablet initialization.
+;9		SB	5/12/86	added tablet_xorigin and tablet_yorigin.
+;				added tablet_type initialization.
+;10		SB	5/13/86	added tablet resolution and origin control
+;				functions.
+;11		SB	5/23/86	added range checking to scaling functions.
+;				added return values to set xy scale function.
+;12		SB	5/28/86	added tablet alignment factor.
+;13		PR	29oct86 check for OS and use XIOS if Conc DOS XM
+;14		PR	 9dec86 clear i/o protocols for Conc DOS XM
+;15		PR	29apr87 restore aux device after mouse init
+;16		PR	11may87 added PS/2 support (NOT banked Conc DOS)
+;
+;20		JCE	2006-12-17  Reconstructed from disassembled SDEHF9.EGA
+;21		JCE	2006-12-17  Reconstructed from disassembled SDPSC9.VGA
+;22		JCE	2006-12-20  Updated to match ViewMAX/I: if mouse type
+;				is 0, CTRL+RightShift toggles pointer
+;				visibility; port addresses read from BIOS
+;				not hardcoded.
+
+;---------------------------------------------------------------------------
+; 	PLEASE UPDATE THE REVISION HISTORY AND VERSION NUMBER
+; 	IF YOU CHANGE THE MOUSE DRIVER
+;---------------------------------------------------------------------------
+
+IBMMOUSE	equ	1
+
+;--------------
+; Mouse version
+;--------------
+
+VERSION		EQU	22
+
+;-------------------
+; Mouse/Tablet modes
+;-------------------
+SERIALCOM1	EQU	0
+SERIALCOM2	EQU	1
+MM961TABLET	EQU	1
+MM1201TABLET	EQU	2
+MM1812TABLET	EQU	3
+MM1201STYLUS	EQU	4
+MM1201CURSOR	EQU	5
+MM961STYLUS	EQU	6
+MM961CURSOR	EQU	7
+MM1812STYLUS	EQU	8
+MM1812CURSOR	EQU	9
+
+MM961MAXLPI	EQU	508
+MM1201MAXLPI	EQU	508
+MM1812MAXLPI	EQU	1016
+
+;-------------------
+; PS/2 Mouse Equates
+;-------------------
+PSM_ENABLE	EQU	0C200H
+PSM_RESET	EQU	0C201H
+PSM_SAMPLE	EQU	0C202H
+PSM_RESOL	EQU	0C203H
+PSM_PACKET	EQU	0C205H
+PSM_EXT		EQU	0C206H
+PSM_ASR		EQU	0C207H
+
+;----------------------
+; CDOS XM (5.0) Equates
+;----------------------
+
+; BDOS
+;-----
+A_GET		EQU	169	
+A_SET		EQU	168
+A_CATTACH	EQU	167
+BDOS		EQU	224
+P_DELAY		EQU	141
+
+; XIOS 
+;-----
+IO_POINTER	EQU	14
+AUX_PROT	EQU	3
+XIOS		EQU	DWORD PTR .28H
+
+; PCMODE 
+;-------
+XMVER		EQU	4451h
+
+	cseg
+
+extrn	mouse_port:byte
+extrn	mouse_type:byte
+
+eject
+
+
+
+;******************************************************************************
+;mouse_function 							      *
+;	Entry point for all mouse code					      *
+;									      *
+;		Entry	bl = function number				      *
+;									      *
+;			bl = 0 Reserved 				      *
+;									      *
+;			bl = 1 Initialize mouse 			      *
+;				Set's baud rate, parity, stop bits	      *
+;				Initializes the interrupt vector location     *
+;									      *
+;			       Exit none				      *
+;									      *
+;			bl = 2 Deinitialize the mouse			      *
+;				Puts interrupt vector location back	      *
+;				Turns off receive interrupt		      *
+;									      *
+;			       Exit none				      *
+;									      *
+;			bl =  3 Return mouse status/coordinates		      *
+;									      *
+;			       Exit					      *
+;									      *
+;					al = 0 nothing happened 	      *
+;									      *
+;					al = 1 button press		      *
+;						ah = character information    *
+;									      *
+;					al = 2 coordinate information	      *
+;						x1 = current x		      *
+;						y1 = current y		      *
+;									      *
+;									      *
+;******************************************************************************
+public  mouse_function
+
+mouse_function:
+	sub	ax,ax			; pre-set status
+	dec	bl			; convert [bl] to index
+	cmp	bl,2			; only 0,1,2 allowed 
+	ja	mouse_function_error
+	xor	bh,bh			; [bx] = table index
+	add	bx,bx			; [bx] = table offset 
+	 jnz	mouse_fn_exec		; [JCE] New in SDPSC9
+	 push	bx
+	 call	os_init
+	 pop	bx
+mouse_fn_exec:
+	mov	si,tab_entry[bx]	; [si] = function table
+	xor	bh,bh
+	mov	bl,mouse_type		; [bx] = mouse index 
+	add	bx,bx			; [bx] = mouse offset 
+	call	word ptr [si+bx]	; call function entry..
+mouse_function_error:
+	ret
+
+; dummy button/motion routines
+;------------------------------
+public  umotvec
+public  ubutvec
+umotvec:	retf			;call to user defined motion vector
+ubutvec:	retf
+
+eject
+dseg
+
+	public	MOUSE_BT
+
+; Version/Patch Area
+;-------------------
+; As from Version 14 we have an eight byte sequence:
+; NNzyxgPT where NN is the mouse version, P is the port number
+; and T is the mouse type.
+;
+mouse_version	db	VERSION/10 + '0'
+		db	VERSION MOD 10 + '0'
+;
+; On the Wang there is only one serial port so make this an equate rather
+; than a variable.
+;
+mouse_receive_port	equ	1080h		;default comm port address
+
+mouse_int_vector_offset	dw	4*(0ch)
+;
+;the following are variables for the microsoft mouse
+;
+ms_mouse_avail		db	0	;default is no
+ms_mouse_int_status	db	0
+ms_mouse_screen_mode	db	0
+
+
+if not VIEWMAX		;No tablets in ViewMAX
+;
+;the following are variables for the pc/summa mice
+;
+xmax_tablet	dw	117		; max size x for 1201
+ymax_tablet	dw	117		; max size y for 1201
+cursor_mask	db	01h		; mask for stylus w/ tablet
+					; this makes only button 1's
+
+public		tablet_type, tablet_xorigin, tablet_yorigin
+tablet_type	dw	00		; tablet type.
+tablet_xorigin	dw	00		; tablet origin.
+tablet_yorigin	dw	00
+tablet_xlpi	dw	00		; tablet x resolution in lines/inch.
+tablet_ylpi	dw	00		; tablet y resolution in lines/inch.
+tablet_maxlpi	dw	00		; maximum resolution in lines/inch.
+tablet_xmaxlin	dw	00		; maximum x axis resolution in lines.
+tablet_ymaxlin	dw	00		; maximum y axis resolution in lines.
+tablet_align	dw	00		; tablet axis alignment factor.
+align_set	db	0		; tablet alignment flag.
+
+summa_init_table db	53h		; set report rate to max/8
+ 		 db	72h		; set x,y scale command
+xscale_mm1201	 dw	0		;equate above determines this value
+					;from resolution of screen	
+yscale_mm1201	 dw	0		;equate above determines this value
+					;from resolution of screen	
+tablet_org	 db	62h		; set origin to upper left 1201
+		 db	40h		;continuous output from tablet is requested
+					; send @ for stream mode 
+
+endif		;not ViewMAX
+	
+; init entries 
+;-------------
+tab_init  equ  offset $ 
+	dw	offset no_mouse_init	;no_mouse initialization
+	dw	offset pc_mouse_init	;mouse systems initialization
+	dw	offset MS_MOuse_init	;microsoft driver mouse initialization
+	dw	offset ms_smouse_init	;microsoft rs232 mouse initialization
+
+if VIEWMAX	;ViewMAX drops tablet support
+	dw	offset no_mouse_init
+	dw	offset no_mouse_init
+	dw	offset no_mouse_init
+	dw	offset no_mouse_init
+	dw	offset no_mouse_init
+	dw	offset no_mouse_init
+else	;ViewMAX
+	dw	offset mm1201_Sty_init	; mm1201 SummaSketch w/ Stylus
+	dw	offset mm1201_Cur_init	; mm1201 SummaSketch w/ cursor
+	dw	offset mm961_Sty_init	; mm961  SummaSketch w/ Stylus
+	dw	offset mm961_Cur_init	; mm961  SummaSketch w/ cursor
+	dw	offset mm1812_Sty_init	; mm1812 SummaSketch w/ Stylus
+	dw	offset mm1812_Cur_init	; mm1812 SummaSketch w/ cursor
+endif	;ViewMAX
+	dw	offset ps_mouse_init	; ps/2 mouse initialization
+
+; de-init entries
+;----------------
+tab_deinit equ offset $		
+	dw	offset no_mouse_deinit	;no mouse de initialization
+	dw	offset pc_mouse_deinit	;mouse systems de init
+	dw	offset ms_mouse_deinit	;microsoft driver mouse deinit
+	dw	offset ms_smouse_deinit ;microsoft rs232 mouse deinit
+if VIEWMAX	;ViewMAX drops tablet support
+	dw	offset no_mouse_deinit
+	dw	offset no_mouse_deinit
+	dw	offset no_mouse_deinit
+	dw	offset no_mouse_deinit
+	dw	offset no_mouse_deinit
+	dw	offset no_mouse_deinit
+else	;ViewMAX
+	dw	offset mm_tablet_deinit	;summa graphics tablet deinit
+	dw	offset mm_tablet_deinit	;summa graphics tablet deinit
+	dw	offset mm_tablet_deinit	;summa graphics tablet deinit
+	dw	offset mm_tablet_deinit	;summa graphics tablet deinit
+	dw	offset mm_tablet_deinit	;summa graphics tablet deinit
+	dw	offset mm_tablet_deinit	;summa graphics tablet deinit
+endif	;ViewMAX
+	dw	offset ps_mouse_deinit	; ps/2 mouse deinitialisation
+
+; status entries	 	
+;---------------
+tab_status equ offset $ 
+	dw	offset no_mouse_status	;no mouse status
+	dw	offset pc_mouse_status	;pc mouse status / delta x, delta y
+	dw	offset ms_mouse_status	;ms mouse driver status
+	dw	offset ms_smouse_status ;ms rs232 mouse status 
+if VIEWMAX	;ViewMAX drops tablet support
+	dw	offset no_mouse_status
+	dw	offset no_mouse_status
+	dw	offset no_mouse_status
+	dw	offset no_mouse_status
+	dw	offset no_mouse_status
+	dw	offset no_mouse_status
+else	;ViewMAX
+	dw	offset mm_tablet_status  ;summa graphics tablet status
+	dw	offset mm_tablet_status  ;summa graphics tablet status
+	dw	offset mm_tablet_status  ;summa graphics tablet status
+	dw	offset mm_tablet_status  ;summa graphics tablet status
+	dw	offset mm_tablet_status  ;summa graphics tablet status
+	dw	offset mm_tablet_status  ;summa graphics tablet status
+endif	;ViewMAX
+	dw	offset ps_mouse_status	 ;ps/2 mouse status
+
+; function table index
+;---------------------
+tab_entry	dw  tab_init, tab_deinit, tab_status
+
+; mouse systems state array
+;--------------------------
+pc_mouse_int_table 	dw	offset pc_mouse_int_byte2
+			dw	offset pc_mouse_int_byte5
+			dw	offset pc_mouse_int_byte4
+			dw	offset pc_mouse_int_byte3
+			dw	offset pc_mouse_int_byte2
+			dw	offset pc_mouse_int_byte2
+
+if not VIEWMAX	;ViewMAX doesn't support tablets
+; tablet state array
+;-------------------
+mm_tablet_int_table	dw	offset mm_tablet_int_byte2
+			dw	offset mm_tablet_int_byte5
+			dw	offset mm_tablet_int_byte4
+			dw	offset mm_tablet_int_byte3
+			dw	offset mm_tablet_int_byte2	
+			dw	offset mm_tablet_int_byte2
+endif	;ViewMAX
+
+; serial mouse common data
+;-------------------------
+mouse_count		db	5	;byte count for mouse
+mouse_deltax		dw	0	;mouse delta x value
+mouse_deltay		dw	0	;mouse delta y value
+mouse_int_status	db	0	;interrupt routine status byte
+MOUSE_BT		dw	0	;data variable for button status
+old_mouse_but		dw	0ffh
+button_mask		db	0f8h	;the button mask byte for the mouse
+aux_device		db	0	;default CDOS aux device  
+;
+; [JCE] In SDPSC9, these three move to the data segment
+;
+mouse_status_byte	db	0	;status byte for mouse
+mouse_switch_byte	db	0	;switch byte for mouse
+mouse_lock		db	0	;set the semaphore to off
+
+;
+; tablet/mouse button->key map table
+;-----------------------------------
+ms_smouse_keymap	db	00000000b	; microsoft (serial)
+			db	00000010b
+			db	00000001b
+			db	00000011b
+
+pc_keymap		db	00000000b	; mouse systems 
+			db	00000100b
+			db	00000010b
+			db	00000110b
+			db	00000001b
+			db	00000101b
+			db	00000011b
+			db	00000111b
+
+if not VIEWMAX		;No tablet support in ViewMAX
+mm_tablet_keymap	db	00000000b	; suma tablet
+			db	00000001b	; 1
+			db	00000010b	; 2
+			db	00000011b	; 3,1+2,1+3,2+3,1+2+3
+			db	00000100b	; 4
+			db	00000101b	; 1 + 4
+			db	00000110b	; 2 + 4
+			db	00000111b	; 1+2+4,2+3+4,1+2+3+4
+endif
+
+; public/global mouse vectors
+;----------------------------
+public usermot
+usermot	dw	offset umotvec
+	dw	seg    umotvec       
+public  userbut
+userbut	dw	offset ubutvec
+	dw	seg    ubutvec
+public  usercur
+usercur	dw	offset mov_cur
+	dw	seg    mov_cur		
+;
+;this equate does not require change
+;
+pc_mouse_byte_count	equ	5	;pc mouse bytes / string
+
+;Conc DOS tick interrupt stack
+;-----------------------------
+		rw	80		;80 levels of stack
+tick_stack 	rw	0		
+
+cseg
+			public	mouse_lock
+			public  mouse_x
+			public  mouse_y
+; [JCE] In SDPSC9 mouse_lock and the other two are in the data segment
+;;mouse_lock		db	0	;set the semaphore to off
+;;mouse_status_byte	db	0	;status byte for mouse
+;;mouse_switch_byte	db	0	;switch byte for mouse
+mouse_x			dw	xresmx/2
+mouse_y			dw	yresmx/2
+
+mouse_event		dw	0	;ID of mouse event callback
+mouse_int_vec_save	dw	0,0
+
+ss_save			dw	0	;old stack segment
+sp_save			dw	0	;old stack offset
+tick_flag		db	0	;tick in progress
+
+eject
+;----------------------------------------------------------------
+; os_init:
+;---------
+;	initializes:
+;
+;	SYSDAT variable 
+;
+;	entry 	none
+;	exit
+;		SYSDAT cleared (if MSDOS) 
+;		SYSDAT set     (if Conc DOS XM 5.0)
+;
+os_init:
+;---------------------------------------------------------------
+	mov	ax,XMVER	;get CDOS XM version	
+	int	21h		
+	jc	set_os_dos	;if MSDOS (or DOS Plus!)
+	cmp	al,050h		;or BDOS before 5.0 (Unlikely!)
+	jl	set_os_dos 
+	mov	cl,154		
+	int	224
+	mov	SYSDAT,es	;set sysdat address
+cdos_mouse:
+	cmp	mouse_type,0	;no mouse ??
+	je	cdos_mouse_done ;yes, do no more
+	cmp	mouse_type,2	;microsoft bus mouse ??
+	je	cdos_mouse_done ;yes, do no more (won't work banked)
+	cmp 	mouse_type,10	;IBM PS/2 BIOS mouse ??
+	je	cdos_mouse_done ;yes, do no more (won't work banked)
+cdos_mouse_attach:
+	mov 	cl,A_GET	;get aux device		    
+	int 	224		;as currently set (AUX=?)   
+	mov	aux_device,al	;and save it                
+	mov	cl,A_SET	;set aux device
+	mov	dl,mouse_port	;to mouse port 
+;;; [JCE] sdpsc9 doesn't	sub dl, 3			; jn 11-7-87
+	int	224
+	or	al,al		;check for error ?	
+	jnz	cdos_mouse_error
+	mov	cl,A_CATTACH	;attach to mouse
+	int	224		
+	or	al,al		;check for error ?	
+	jnz	cdos_mouse_error
+	
+	mov	al,IO_POINTER	;get io_pointer
+	mov	cx,AUX_PROT 	;for aux_protocol
+	call	xios_direct
+	mov	bx,ax		; [ds][bx]-> .(aux prot)
+	sub	ah,ah
+	mov	al,mouse_port	; [ax]=port no (0,1,2 etc)
+;;; [JCE] sdpsc9 doesn't	sub al, 3			; jn 11-7-87
+	add	ax,ax		; make offset 
+	add	bx,ax		; [ds][bx]-> .(req aux port)
+	push	ds		; save local seg
+	mov	ds,SYSDAT	; get SYSDAT for pointers
+	mov	si,[bx]		; [ds][si]-> req aux in prot
+	mov	di,4[bx]	; [ds][di]-> req aux out prot 
+	and	word ptr [si],0fff8h	; clear input protocols
+	and	word ptr [di],0fff8h	; clear output protocols
+	pop	ds
+	jmps	cdos_mouse_exit					
+
+cdos_mouse_error:
+	mov	mouse_type,0	;disable mouse - port in use/not installed
+cdos_mouse_exit:
+	mov	cl,A_SET	; set aux device back to   	
+	mov	dl,aux_device	; default for CDOS aware 	
+	int	224		; printer/plotter drivers	
+;
+; SDPSC9 doesn't try to set aux device back if it wasn't set in the first
+; place.
+;
+cdos_mouse_done:
+	ret
+
+set_os_dos:
+	mov	SYSDAT,0
+	ret
+	
+SYSDAT	dw	0
+
+eject
+;------------------------------------------------------------------
+;xx_mouse_init:		
+;--------------		
+;
+;	initializes the mouse 
+;
+;	entry	none
+;	exit
+;		mouse_status_byte cleared
+;		mouse_switch_byte cleared
+;		deltax,deltay = 0
+;		mouse port baud rate, stop bits,parity set
+;		mouse port interrupt vector set-up 
+;		mouse port receive interrupt turned on
+;
+;-------------------------------------------------------------------
+public ms_mouse_init
+
+
+no_mouse_init:	; no mouse 
+;-------------
+	call	clear_mouse_status_bytes
+	ret
+
+
+pc_mouse_init:	; mouse systems compatible mouse
+;------------
+	mov	button_mask, 0f8h	;the first byte mask for syncronization
+	pushf				;turn off interrupts
+	cli
+	call	clear_mouse_status_bytes
+	mov	mouse_count,pc_mouse_byte_count	;init byte count
+;
+; Mode register at startup: 4E 7D 
+; 4E = 0100 1110  1 stop bit, no parity, 8 data bits
+; 7D = 0111 1101  7 = use internal clock D=9600 baud
+;
+	mov	bh, 01001110b		;8 data, no parity, 1 stop
+	mov	bl, 77h			;1200 baud 
+	call	init_mouse_port		
+	mov	ax,offset pc_mouse_int_vector	;point to the ISR 
+	call	init_mouse_int_vector
+	popf
+	ret
+
+ms_smouse_init:	; Microsoft Serial Mouse
+;--------------
+	mov	button_mask, 0cfh	;the first byte mask for syncronization
+	pushf				;turn off interrupts
+	cli
+	call	clear_mouse_status_bytes
+	mov	mouse_count,3			;init byte count
+	mov	bh, 01001010b			;7 data bits no parity 1 stop
+	mov	bl, 77h				;1200 baud 
+	call	init_mouse_port
+	mov	ax,offset pc_mouse_int_vector	;point to the ISR
+	call	init_mouse_int_vector
+	popf
+	ret
+
+ms_mouse_init:		; initializes a microsoft (int 33) compatible mouse
+;-------------
+	call	clear_mouse_status_bytes
+if ibmmouse	; this code is for ibm equipment compatibles only
+  	push	ds
+ 	xor	ax, ax
+  	mov	ds,ax
+ 	mov	bx,449h			;ibm mode flag byte
+	mov	ah, [bx]
+	mov	al, 6			;color card mode 
+  	mov	[bx],al 		;select color card
+  	pop	ds
+	mov	ms_mouse_screen_mode,ah
+endif
+	xor	ax,ax
+	mov	ms_mouse_int_status,al
+	mov	ms_mouse_avail,al
+	int     33h
+	and	ax,ax
+	jz	ms_mouse_init_done
+	mov	ms_mouse_avail,0ffh
+	mov     ax,12   ; set up the cll to the interrupt subroutine
+	mov     cx,000ffh
+	push    es
+	push    cs
+	pop     es
+	mov     dx,offset ms_mouse_int_vector
+	int     33h
+	mov	ax, 7			;init the horizontal motion max and min 
+	xor	cx, cx			;min x = 0
+	mov	dx, xresmx
+	int	33h
+	mov	ax, 8
+	xor	cx, cx
+	mov	dx, true_yresmx
+	int	33h			;init the vertical motion max and min
+
+; following code tries to determine the correct mickey to pixel ratio
+
+	mov	ax, true_ysize
+	shr	ax, 1			;divide y by to 
+	sub	ax, xsize		;is ysize gt xsize
+	mov	cx, 8			;mickey / pel hztl is 8/8
+	mov	dx, 8
+	jc	mick_pel_nodouble
+	mov	dx, 16
+mick_pel_nodouble:
+	mov	ax, 15
+	int	33h			;set the mickey to pel ratio
+	mov	ax, 4			;set the cursor position
+	mov	cx, xresmx/2
+	mov	dx, true_yresmx
+	shr	dx, 1
+	int	33h
+	pop     es
+ms_mouse_init_done:
+;
+; NEW ViewMAX bit
+;
+	mov	cl, ms_mouse_screen_mode
+	push	ds
+	sub	ax,ax
+	mov	ds,ax
+	mov	bx,449h
+	and	cl,7Fh
+	cmp	cl,7	; If current mode is 7 or less
+	jg	modefix
+	mov	cl,6	; then set current mode in BIOS data seg to 6
+modefix:
+	mov	[bx],cl
+	pop	ds
+;
+; End of new ViewMAX bit
+;
+	ret
+
+
+ps_mouse_init:	; IBM Personal System 2 BIOS Mouse
+;-------------
+	push	es				; save es
+	call	clear_mouse_status_bytes	; clear x, y, deltas, status
+ 
+	mov	ax,PSM_RESET			; BIOS reset pointing device
+	int	15h				; BIOS system services
+	jc	bios_mouse_init_error		; If CY => no mouse
+
+	mov	bh,03h				; packet size = 3
+	mov	ax,PSM_PACKET			; BIOS set packet size
+	int	15h				; BIOS system services
+	jc	bios_mouse_init_error		; If CY => error
+
+	mov	bh,03h				; 60 reports / second
+	mov	ax,PSM_SAMPLE			; BIOS set sample rate
+	int	15h				; BIOS system services
+	jc	bios_mouse_init_error		; If CY => error
+
+	mov	bh,03h				; 8 counts / mm
+	mov	ax,PSM_RESOL			; BIOS set resolution
+	int	15h				; BIOS system services
+	jc	bios_mouse_init_error		; If CY => error
+
+	mov	bh,02h				; 2:1 scaling
+	mov	ax,PSM_EXT			; BIOS extended commands
+	int	15h				; BIOS system services
+	jc	bios_mouse_init_error		; If CY => error
+	
+	push	cs				; cs = segment of async routine
+	pop	es				; es = ditto
+	mov	bx,offset ps_mouse_int_vector	; es:bx = address of async
+	mov	ax,PSM_ASR			; BIOS install ASR (driver) 
+	int	15h				; BIOS system services
+	jc	bios_mouse_init_error		; If CY => error
+
+	mov	bh,01h				; enable pointing device
+	mov	ax,PSM_ENABLE			; BIOS pointing device enable
+	int	15h				; BIOS system services
+	jc	bios_mouse_init_error		; If CY => error
+
+bios_mouse_init_error:
+	pop	es				; restore es
+	ret					; BIOS mouse init done
+;
+; NEW in ViewMAX: Lose the tablet support
+;
+if not VIEWMAX
+;
+eject
+;------------------------------------------------------------------
+;mmNNNN_XXX_init
+;-----------------
+;
+;	initializes the tablet 
+;	(nnnn is size, xxx is stylus or cursor) 
+;
+;	entry	none
+;	exit
+;		mouse_status_byte cleared
+;		mouse_switch_byte cleared
+;		deltax,deltay = 0
+;		mouse port baud rate, stop bits,parity set
+;		mouse port interrupt vector set-up 
+;		mouse port receive interrupt turned on
+;
+;-------------------------------------------------------------------
+public tablet_Sty_init
+public tablet_Cur_init
+public mm961_Sty_init
+public mm961_Cur_init
+public mm1812_Sty_init
+public mm1812_Cur_init
+public mm1201_Sty_init
+public mm1201_Cur_init
+
+
+mm1812_Sty_init:	; summa 18x12 tablet with stylus
+;--------------- 
+	mov	xmax_tablet,180		; x max tablet size 18 inches
+	mov	ymax_tablet,120		; y max tablet size 12 inches
+	mov	summa_init_table,52h	; set report rate to 50 per second.
+	mov	tablet_type,MM1812TABLET; set tablet type.
+	mov	tablet_maxlpi,MM1812MAXLPI	; set maximum resolution.
+	jmp	tablet_Sty_init
+
+mm1812_Cur_init:	; summa 18x12 tablet with cursor
+;---------------
+	mov	xmax_tablet,180		; x max tablet size 18 inches
+	mov	ymax_tablet,120		; y max tablet size 12 inches
+	mov	summa_init_table,52h	; set report rate to 50 per second.
+	mov	tablet_type,MM1812TABLET; set tablet type.
+	mov	tablet_maxlpi,MM1812MAXLPI	; set maximum resolution.
+	jmp	tablet_Cur_init
+
+mm1201_Sty_init:	; summa 12x12 tablet with stylus
+;---------------
+	mov	xmax_tablet,117		; x max tablet size 11.7 inches
+	mov	ymax_tablet,117		; y max tablet size 11.7 inches
+	mov	tablet_type,MM1201TABLET; set tablet type.
+	mov	tablet_maxlpi,MM1201MAXLPI	; set maximum resolution.
+	jmps	tablet_Sty_init
+
+mm1201_Cur_init:	; summa 12x12 tablet with cursor 
+;---------------
+	mov	xmax_tablet,117		; x max tablet size 11.7 inches
+	mov	ymax_tablet,117		; y max tablet size 11.7 inches
+	mov	tablet_type,MM1201TABLET; set tablet type.
+	mov	tablet_maxlpi,MM1201MAXLPI	; set maximum resolution.
+	jmps	tablet_Cur_init
+
+mm961_Sty_init:		; summa 9x6 tablet with stylus 
+;--------------	
+	mov	xmax_tablet,90		; x max tablet size 9 inches
+	mov	ymax_tablet,60		; y max tablet size 6 inches
+	mov	tablet_org, 63h		; set vertical orientation.
+	mov	tablet_type,MM961TABLET	; set tablet type.
+	mov	tablet_maxlpi,MM961MAXLPI	; set maximum resolution.
+	jmps	tablet_Sty_init
+
+mm961_Cur_init:		; summa 9x6 tablet with cursor
+;--------------
+	mov	xmax_tablet,90		; x max tablet size 9 inches
+	mov	ymax_tablet,60		; y max tablet size 6 inches
+	mov	tablet_type,MM961TABLET	; set tablet type.
+	mov	tablet_org, 63h		; set vertical orientation.
+	mov	tablet_maxlpi,MM961MAXLPI	; set maximum resolution.
+
+tablet_Cur_init:
+	mov	cursor_mask, 7		; set mask for cursor
+
+tablet_Sty_init:
+	mov	tablet_xorigin,0	; reset tablet origin.
+	mov	tablet_yorigin,0
+
+	mov	bx,offset dimensiontable; BX = pointer to dimension table.
+	mov	si,tablet_type
+	dec	si
+	mov	cl,2
+	shl	si,cl			; SI = tablet type as index.
+
+	mov	ax,tablet_maxlpi	; AX = max resolution in lines/inch.
+	mov	cx,xdoff[bx+si]		; CX = tablet x dimension in tenths.
+	mul	cx
+	mov	cx,10
+	div	cx			; AX = maximum x axis resolution
+	mov	tablet_xmaxlin,ax	;       in lines.
+
+	mov	ax,tablet_maxlpi	; AX = max resolution in lines/inch.
+	mov	cx,ydoff[bx+si]		; CX = tablet y dimension in tenths.
+	mul	cx
+	mov	cx,10
+	div	cx			; AX = maximum y axis resolution
+	mov	tablet_ymaxlin,ax	;       in lines.
+
+	mov	ax, xmax_tablet
+	push	ax
+	mov	ax, 10
+	push	ax
+	mov	ax, xresmx
+	push	ax			; tablet d/i in x = (10 * xresmx )/117
+	call	SMUL_DIV
+	add	sp, 6
+	mov	bx, 10
+	push	bx			; tablet xres = (xd/i * 117 ) / 10
+	push	ax
+	mov	bx, xmax_tablet
+	push	bx
+	call	SMUL_DIV
+	mov	xscale_mm1201, ax
+	add	sp, 6
+
+	mov	ax, ymax_tablet
+	push	ax
+	mov	ax, 10
+	push	ax
+	mov	ax, yresmx
+	push	ax			; tablet d/i in y = (10 * yresmx )/117
+	call	SMUL_DIV
+	add	sp, 6
+	mov	bx, 10
+	push	bx			; tablet yres = (yd/i * 117 ) / 10
+	push	ax
+	mov	bx, ymax_tablet
+	push	bx
+	call	SMUL_DIV
+	inc	ax
+	mov	yscale_mm1201, ax
+	add	sp, 6
+
+	mov	button_mask, 0c0h	;the first byte mask for syncronization
+	pushf				;turn off interrupts
+	cli
+	call	clear_mouse_status_bytes
+	mov	mouse_count,pc_mouse_byte_count	;init byte count
+	mov	bh, 01011110b			;8 data, odd parity, 1 stop
+	mov	bl, 7Dh				;9600 baud rate	 
+	call	init_mouse_port
+	mov	ax,offset pc_mouse_int_vector	;point to the int routine
+	call	init_mouse_int_vector
+;
+;	This CPU wait loop is to allow the Summa tablet time to
+;	respond to the reset command it just received
+;	This has been tested at IBM AT speeds. Is there a better
+;	BIOS delay call to make this more machine independent
+;
+	mov	bx, mouse_receive_port
+	mov	dx, 8
+	add	dx, bx
+	mov	al,00h				;reset code for tablet
+	call 	send				;send the reset command 
+;
+
+	cmp	SYSDAT,0	;check if conc dos ?
+	je	dos_delay	;no, use hard delay
+cdos_delay:
+	mov	dx,1
+	mov	cl,141		;delay one tick
+	int	224
+	jmps	delay_exit
+
+dos_delay:
+	mov	cx,0ffffh	; must wait 10 milleseconds
+wait0:
+	loop	wait0		;must loop at least 10 millsecs (more is ok)
+
+delay_exit:
+;
+;	If using a mm961 must invert the X and Y axis
+;
+	cmp	tablet_org,63h
+	jne	No961
+	mov	ax, yscale_mm1201	; save current y
+	mov	bx, xscale_mm1201	; save current x
+	mov	yscale_mm1201, bx	; swap x and y
+	mov	xscale_mm1201, ax
+
+No961:
+	mov	cx, 8 		; eight chars to send
+	mov	bx, offset summa_init_table
+summa_string_loop:
+	mov	al, [bx]
+	push	bx
+	push	cx
+	call	send
+	pop	cx
+	pop	bx
+	inc	bx
+	loop	summa_string_loop
+	popf
+	ret
+; 
+send:	cmp	SYSDAT,0		; if conc dos ?
+	jne	cdos_send		; use XIOS output	
+	mov	cx,0ffffh		
+	out	dx,al
+send1:
+	loop send1
+	ret
+
+cdos_send:	; output byte to summa tablet, etc
+
+	mov	dl,mouse_port		; get mouse port 
+;;; [JCE] SDPSC9 doesn't	sub dl, 3			; jn 11-7-87
+	mov	cl,al			; character to send
+	mov	al,6			; auxiliary output	
+	call	xios_direct		; via XIOS
+	mov	dx,1
+	mov	cl,P_DELAY		; delay one tick
+	int	224
+	ret
+
+endif	;not ViewMAX
+
+xios_direct:
+	push	ds			; save local segs
+	mov	ds,SYSDAT		; get SYSDAT seg
+	callf	XIOS
+	pop	ds
+	ret
+		
+;----------------------------------	
+;  Generic Mouse/Tablet Subroutines
+;----------------------------------
+clear_mouse_status_bytes:
+;------------------------
+	xor	ax,ax
+	mov	word ptr mouse_status_byte, ax	;clear mouse status byte.
+						;clear switch status byte.
+	mov	gcurx, xresmx/2
+	mov	ax, true_yresmx
+	shr	ax,1
+	mov	gcury, ax
+	mov	mouse_x, xresmx/2
+	mov	mouse_y, ax
+	xor	ax, ax
+	mov	mouse_deltax,ax 		;init delta x
+	mov	mouse_deltay,ax 		;init delta y
+	ret
+
+;initialize the mouse comm port 
+;-------------------------------
+init_mouse_port:	; [bh] = word format [bl] =baud rate
+;---------------
+;
+	mov	ax, 12
+	mov	dx, mouse_receive_port
+	add	dx, ax
+	cli	
+	mov	al, bh
+	out	dx, al	;Mode register 1
+	mov	al, bl
+	out	dx, al	;Mode register 2
+	sti
+	ret
+;
+; INT81 handler.
+;
+is_serial	db	0
+serial_byte	db	0
+wang_mouse_code	dw	0
+;
+; [JCE] On the Wang PC, the easiest way of interrupting on a serial port
+; 	character received is to register a BIOS callback, that will be 
+;	called from within the interrupt handler. We can't include all our
+;	code in that callback, because it's called from a BIOS routine that
+;	isn't re-entrant, so also add a wrapper around the interrupt handler.
+;	The wrapper will:
+;		a) Set is_serial to 0
+;		b) Call the BIOS handler
+;		c) If is_serial is now 1, then this was a serial interrupt,
+;		  so call the main GEM handler.
+
+wang_serial_int:
+		mov	cs:byte ptr is_serial, 0
+		pushf
+		callf	cs:dword ptr mouse_int_vec_save ;Call BIOS handler
+		test	cs:byte ptr is_serial, 0FFh
+		jz	wsi_1
+		call	cs:word ptr wang_mouse_code
+wsi_1:		iret	
+
+;
+; This will be called from the BIOS serial interrupt handler.
+;
+wang_serial_callback:
+		push	ax
+		push	dx
+		mov	cs:byte ptr is_serial, 1
+		mov	dx, mouse_receive_port
+		in	al, dx
+		mov	cs:serial_byte, al
+		pop	dx
+		pop	ax
+		retf
+;
+init_mouse_int_vector:	;  setup vector to ISR address [ax]
+;---------------------
+;
+	mov	wang_mouse_code, ax		;Our interrupt handler
+	push	es				;save extra segment
+	push	ds
+	push	ax
+
+	mov	ax, 3581h
+	int	21h				;Get INT 81h vector
+        mov	cs:word ptr mouse_int_vec_save,bx
+        mov	cs:word ptr mouse_int_vec_save+2,es
+
+	mov	ax, cs				;Set INT 81h vector to
+	mov	ds, ax				;wang_serial_int
+	mov	ax, 2581h
+	mov	dx, offset wang_serial_int
+	int	21h
+
+	mov	dx, offset wang_serial_callback	;DX ->callback
+	mov	ax, cs
+	mov	bx, 1		;Event ID: Serial character received
+	mov	ds, ax		;DS:DX -> callback
+	mov	ax, 2
+	int	88h
+	mov	cs:mouse_event, bx
+	or	al, al
+	jz	did_work
+	xor	bx, bx
+	mov	cs:mouse_event, bx
+did_work:
+	pop	ax
+	pop	ds
+	pop	es
+	ret
+
+
+set_cdos_isr:	; patch ISR address and vector  
+;------------	; [ax] = ISR address  
+		; mouse_int_vector_offset = vector
+
+	cmp	SYSDAT,0			; check if Conc DOS
+	je	set_cdos_isr_exit
+	mov	ax,offset tick_vector		; Conc DOS ISR
+;
+; [JCE] This check (I'm not sure what it's for, but it seems to determine
+; whether to hook INT 8 or INT 1C) is new in sdpsc9.
+;
+	 push	ds
+	 mov	ds, cs:SYSDAT
+	 cmp	ds:word ptr .20h, 0
+	 pop	ds
+	 jnz	set_cdos_isr1
+	mov	mouse_int_vector_offset, 8 * 4	; tick vector	
+	jmps	set_cdos_isr_exit
+;
+set_cdos_isr1:
+ 	 mov	mouse_int_vector_offset, 28 * 4	; tick vector	
+	
+set_cdos_isr_exit:
+	ret	
+
+
+eject
+;-----------------------------------------------
+; xx_mouse_deinit (xx_tablet_deinit)
+; ----------------------------------
+;
+;	turn off the receive interrupts
+;	put back interrupt mask
+;
+;-----------------------------------------------
+public ms_mouse_deinit
+
+
+ms_smouse_deinit:	; microsoft serial mouse
+mm_tablet_deinit:	; tablet 
+pc_mouse_deinit:	; mouse systems compatible mouse
+
+	cmp	SYSDAT,0			; check if CDOS XM
+	je	dos_deinit			; no, direct to hardware
+cdos_deinit:
+
+	 mov	ax,mouse_int_vector_offset
+	 shr	ax,1				; [JCE] SDPSC9 uses int21h
+	 shr	ax,1				; rather than manual POKEs
+	 push	ds
+	 lds	dx,cs:dword ptr mouse_int_vec_save
+	 mov	ah,25h
+	 int	21h
+	 pop	ds
+	jmps	no_mouse_deinit
+
+dos_deinit:
+;
+; Unhook the hook we put on INT 81h
+;
+	push	ds
+	lds	dx,cs:dword ptr mouse_int_vec_save
+	mov	ax,2581h
+	int	21h
+	pop	ds
+
+	mov	bx, cs:mouse_event
+	or	bx, bx
+	jz	no_mouse_deinit
+	mov	ax, 3
+	int	88h		;Unregister the mouse callback
+	xor	bx, bx	
+	mov	cs:mouse_event, bx
+no_mouse_deinit:	; no mouse deinit	
+	ret
+
+
+
+ps_mouse_deinit:	; IBM PS/2 BIOS Mouse deinit
+;---------------
+	mov	ax,PSM_RESET			; BIOS reset pointing device
+	int	15h				; BIOS system services
+	ret					; BIOS mouse deinit
+
+
+ms_mouse_deinit:	; Microsoft (int 33) deinit
+;---------------
+	xor	ax,ax
+
+if ibmmouse	; code is for ibm clones only
+
+	mov	cl, ms_mouse_screen_mode  ;color card mode 
+  	push	ds
+  	mov	ds,ax
+ 	mov	bx,449h			;ibm mode flag byte
+  	mov	[bx],cl 		;select color card
+  	pop	ds
+endif
+	int	33h			;init the mouse. this resets all interrupt condition flags
+	ret
+
+
+EJECT
+;--------------------------------------------------------------  
+;xx_mouse_status
+;----------------
+;
+;	routine returns the current state of the mouse
+;
+;	al = 0 nothing happened 	    
+;  
+;       al = 1 button press		      
+;		ah = character information    
+;
+;	al = 2 coordinate information
+;		x1 = current x		      
+;		y1 = current y		      
+;
+;--------------------------------------------------------------
+
+no_mouse_status:	; no mouse
+pc_mouse_status:	; mouse systems compatible mouse
+ms_mouse_status:	; microsoft (int 33) mouse
+ms_smouse_status:	; microsoft serial mouse
+mm_tablet_status:	; tablet 
+ps_mouse_status:	; IBM PS/2 BIOS Mouse	
+
+	pushf
+	cli
+	push	ds	;sdpsc9 has these in the data segment
+	mov	ax, seg mouse_status_byte
+	mov	ds,ax
+	mov	ax, word ptr mouse_status_byte	;get the status of the mouse
+	mov	mouse_status_byte,0
+	pop	ds
+	mov	bx, mouse_x
+	mov	x1,bx
+	mov	cx, mouse_y
+	mov	y1,cx
+	popf
+	ret
+
+;
+;******************************************************************************
+; xxxxx_int_vector
+;-----------------
+;
+; 	Mouse hardware interrupt vector
+;
+;		Exit							      
+;			mouse_status_byte				      *
+;					  = 0 nothing happened		      *
+;									      *
+;					  = 1 button press		      *
+;						mouse_switch_byte	      *
+;						     = character information  *
+;									      *
+;					  = 2 coordinate information	      *
+;						     mouse_deltax = delta x   *
+;						     mouse_deltay = delta y   *
+;									      *
+;
+;******************************************************************************
+public ms_mouse_int_vector
+
+
+ms_mouse_int_vector:		; microsoft (int 33) mouse
+;-------------------
+	pushf
+	cli
+	push    ds
+	push    ax
+	mov     ax,seg MOUSE_BT
+	mov     ds,ax
+	pop     ax
+	cmp     bx,MOUSE_BT     ; has a mouse button changed
+	je      ms_mouse_crdchange ; handle a coordinate change
+
+ms_mouse_switch:       ; falls thru here if it is a button change
+
+	mov	CONTRL_STATUS, 0	; clear out control status in case kbd
+	mov     MOUSE_BT,bx
+	mov     old_mouse_but,bx
+	push    ax
+	mov     ax,bx
+	push    bx
+	callf   dword ptr userbut
+	pop     bx
+	pop     ax
+	and     al,00ah         ; is it a button press
+	jz      ms_mouse_exit   ; if not, it is a release
+	mov     al,mouse_status_byte
+	and     al,1
+	jnz     ms_mouse_exit   ; haven't read last switch closure
+	mov     mouse_switch_byte,20h
+	and     bl,1
+	jnz     ms_mouse_switch_exit
+	inc     mouse_switch_byte
+ms_mouse_switch_exit:
+	or      mouse_status_byte,1
+	jmp     ms_mouse_exit
+ms_mouse_crdchange:
+	mov	CONTRL_STATUS, 0 ; clear out control status in case kbd
+	cmp	FIRST_MOTN, 0	; is mouse motion the first
+	jnz	ms_mouse_crdchange_ok
+	mov	FIRST_MOTN, 0ffh
+;;;	not	KBD_MOUSE_STS	; toggle the control status to off
+	mov	KBD_MOUSE_STS,0	; ViewMAX wants to make sure
+ms_mouse_crdchange_ok:	
+	test     mouse_lock,1    ; are we currently drawing a mouse
+	jnz      ms_mouse_exit   ; exit if we are
+	or      mouse_status_byte,2     ; set the bit indicating a coordinate change
+	mov     mouse_lock,1    ; indicate we are drawing a mouse
+	sti     		; reenable interuupts while we are mouse drawing
+	mov     bx,cx           ; mov x count into bx
+	mov	cx, dx
+	cld
+	mov	mouse_x, bx
+	mov	mouse_y, cx
+	push	ds		; [JCE] SDPSC9 saves DS across this call
+	callf   dword ptr usermot
+	callf   dword ptr usercur
+	pop	ds
+	mov     mouse_lock,0
+ms_mouse_exit:
+	pop     ds
+	popf
+	retf
+
+
+tick_vector:	; CDOS XM tick based mouse
+;-----------
+	cli					;ensure ints off
+	cmp	tick_flag,1			;and not aleady in tick
+	 jnz	tick_cdos
+	 jmp	tick_bypass
+
+tick_cdos:	
+	push	ax
+	mov	ss_save,ss
+	mov	sp_save,sp			;save int stack
+	mov	ax,seg mouse_count
+	mov	ss,ax
+	mov	sp,offset tick_stack
+	mov	tick_flag,1			;set tick in progress
+	
+	sti					;now allow ints
+	push	es
+	push	ds
+	push	bp
+	push	di				;save registers
+	push	si
+	push	dx
+	push	cx
+	push	bx				
+
+	mov	ax,seg mouse_count		;set local segment
+	mov	ds,ax				
+	sub	ah,ah
+	mov	al,mouse_port			;get mouse port (0/1)
+;;; [JCE] SDPSC9 doesn't	sub al, 3			; jn 11-7-87
+	push	ax
+	mov	ax,SYSDAT			;set SYSDAT segment 
+	mov	ds,ax
+char_again:
+	mov	al,37
+	pop	dx
+	push	dx				;get AUX device
+	callf	XIOS			 	;call XIOS for status 
+	or	al,al				;[al] = 0 = not ready
+	je	no_char		
+
+	mov	al,5				;call XIOS for input
+	pop	dx
+	push	dx				;get AUX device
+	callf	XIOS				;[al] = character
+
+	push	ds				;save sysdat
+	mov	bx,seg mouse_count		;set local seg
+	mov	ds,bx
+	call	serial_mouse_byte		;call mouse with byte
+	pop	ds				;get sysdat
+	jmps	char_again	
+
+
+no_char:
+	add	sp,2				;clean stack
+	pop	bx				;restore environment
+	pop	cx
+	pop	dx
+	pop	si
+	pop	di
+	pop	bp
+	pop	ds
+	pop	es
+	mov	ss,ss_save
+	mov	sp,sp_save			;restore stack
+	pop	ax
+	mov	tick_flag,0			;clr in tick flag
+
+tick_bypass:	
+	cli					;ints off and 
+	jmpf	cs:dword ptr mouse_int_vec_save ;continue with  
+						;"normal" tick
+
+
+
+ps_mouse_int_vector:	; IBM PS/2 BIOS Mouse
+;------------------- 
+	push	bp				; save bp
+	mov	bp,sp				; bp -> top of arg stack
+	pushf					; save interrupt status
+	cli					; disable interrupts
+	push	ds				; save ds
+	push	es
+	push	si
+	push	di
+	mov	ax,seg MOUSE_BT			; ax = data segment
+	mov	ds,ax				; ds -> data segment
+	mov	ax,12[bp]			; ax = status word
+	and	ax,3				; bit 0 = left, bit 1 = right
+	cmp	ax,MOUSE_BT			; check against last
+	je	bios_mouse_xy			; if no change => do x/y
+	mov	MOUSE_BT,ax			; save new state
+	mov	CONTRL_STATUS,0			; clear in case keyboard ?
+	callf	dword ptr userbut		; let user see button changes
+	test	al,1				; left button pressed
+	jz	bios_noleft			; if so =>
+	or	mouse_status_byte,1		; status byte key press set
+	mov	mouse_switch_byte,20h		; say left = <sp>
+bios_noleft:
+	test	al,2				; right button pressed
+	jz	bios_noright			; if so =>
+	or	mouse_status_byte,1		; status byte key press set
+	mov	mouse_switch_byte,21h		; say right = "!"
+bios_noright:
+	jmp	bios_mouse_exit			; done
+
+bios_mouse_xy:
+	mov	CONTRL_STATUS,0			; clear status in case kbd
+	cmp	FIRST_MOTN,0			; is mouse motion the first
+	jnz	bios_mouse_xy_ok
+	mov	FIRST_MOTN,0ffh
+;;;	not	KBD_MOUSE_STS			; toggle control status to off
+	mov	KBD_MOUSE_STS,0	; ViewMAX wants to make sure
+bios_mouse_xy_ok:
+	test	mouse_lock,1    		; are we currently drawing
+	jnz	bios_mouse_exit			; exit if we are
+	mov     mouse_lock,1			; indicate we are drawing
+	sti					; reenable interuupts
+	mov     ax,10[bp]			; al = delta x
+	cbw					; ax = delta x
+	mov	bx,ax				; bx = delta x
+	mov     ax,8[bp]			; al = delta y
+	cbw					; ax = delta y
+	neg	ax				; y's are backwards
+	mov	cx,ax				; cx = delta y
+	add	bx,mouse_x			; add delta x to current x
+	add	cx,mouse_y			; add delta y to current y
+	call	clip_cross			; clip to screen coordinates
+	mov	mouse_x, bx			; save new x
+	mov	mouse_y, cx			; save new y
+	cld					; for user calls
+	callf   dword ptr usermot		; mouse motion vector
+	callf   dword ptr usercur		; cursor draw vector
+	mov     mouse_lock,0			; done with draw
+bios_mouse_exit:
+	pop	di
+	pop	si
+	pop	es
+	pop     ds
+	popf
+	pop	bp
+	retf
+
+
+pc_mouse_int_vector:	  ; mouse/tablet interrupt vector
+;--------------------
+	push	ds
+	push	dx
+	push	bx
+	push	ax
+
+;;;	push	ax
+;;;	push	dx
+;;;	mov	dx, 0AEEAh
+;;;	mov	ax, 'D'
+;;;	out	dx, ax
+;;;	pop	dx
+;;;	pop	ax
+
+	mov	ax, seg mouse_count
+	mov	ds, ax				;load of data segment
+	mov	al, cs:serial_byte
+
+	push	es
+	push	bp
+	push	di
+	push	si
+	push	cx
+	call	serial_mouse_byte		;action the serial mouse 
+	pop	cx
+	pop	si
+	pop	di
+	pop	bp
+	pop	es
+
+
+;;;	push	ax
+;;;	push	dx
+;;;	mov	dx, 0AEEAh
+;;;	mov	ax, 'd'
+;;;	out	dx, ax
+;;;	pop	dx
+;;;	pop	ax
+
+	jmps	serial_end
+;
+serial_1:
+serial_2:
+	mov	al,5
+	cmp	button_mask,0CFh
+	jnz	serial_3
+	mov	al,3
+serial_3:
+	mov	mouse_count,al	
+serial_end:
+	pop	ax
+	pop	bx
+	pop	dx
+	pop	ds
+	ret
+		
+
+serial_mouse_byte:		; serial mouse byte in [al]
+			
+	mov	bl,al				;save the new byte
+	mov	cl, button_mask
+	cmp	cl, 0cfh			;is this a ms mouse?
+	jnz	not_ms_byte			;no, process others
+	jmp	ms_smouse_test			;yes, go check it
+
+not_ms_byte:	
+	and	al,cl
+	mov	si,offset mouse_count
+	cmp	byte ptr[si], pc_mouse_byte_count ;test if first byte of sequence
+	jnz	pc_other_mouse_bytes		;if not then process others
+	cmp	al,80h
+	jz	pc_switch
+	jmp	pc_mouse_int_exit		;wait till first byte
+
+pc_switch:
+	jmp	pc_mouse_switch
+	
+pc_other_mouse_bytes:
+	cmp	al,80h				; look for an overflow cond
+	jnz	pc_other_1			; if not an overflow go ahead
+	mov	byte ptr [si],pc_mouse_byte_count
+	jmps	pc_switch
+
+pc_other_1:
+	mov	al,bl		;restore the byte
+	cbw			;get the delta value (16 BITS)
+	mov	bl,[si]
+	xor	bh,bh
+	shl	bx,1
+
+if	VIEWMAX		;ViewMAX doesn't do tablets
+	jmp	pc_mouse_int_table[bx]
+
+else
+	cmp	cl, 0c0h
+	jz	pc_other_summa
+	jmp	pc_mouse_int_table[bx]
+pc_other_summa:
+	jmp	mm_tablet_int_table[bx]
+
+endif			;ViewMAX
+
+pc_mouse_int_byte2:
+	call	pc_mouse_int_mag_tst
+mm_tablet_int_byte2:
+	mov	mouse_deltax,ax	;save delta x1	
+	jmp	pc_mouse_int_exit0
+
+if not VIEWMAX	;No tablets in ViewMAX
+mm_tablet_int_byte3:
+	mov	cl, 7
+	shl	ax, cl		;shift x value 7 bits left
+	or	mouse_deltax, ax
+	jmp	pc_mouse_int_exit0 	
+endif	;not ViewMAX
+
+pc_mouse_int_byte3:
+	call	pc_mouse_int_mag_tst
+	mov	mouse_deltay,ax	;save delta y1
+	jmp	pc_mouse_int_exit0
+
+if not VIEWMAX	;No tablets in ViewMAX
+mm_tablet_int_byte4:
+	mov	mouse_deltay, ax
+	jmp	pc_mouse_int_exit0
+endif	;not ViewMAX
+
+pc_mouse_int_byte4:
+	call	pc_mouse_int_mag_tst
+	add	mouse_deltax,ax	
+	jmp	pc_mouse_int_exit0
+
+if not VIEWMAX	;No tablets in ViewMAX
+mm_tablet_int_byte5:
+	mov	cl, 7
+	shl	ax, cl			;get y lined up
+	or	ax, mouse_deltay
+	mov	bx, mouse_deltax
+	cmp	xmax_tablet,90
+	jnz	mm_1201_byte5		; jump if not 6 x 9 tablet.
+	xchg	ax,bx
+mm_1201_byte5:
+	mov	mouse_y, ax
+	mov	mouse_x, bx
+	cmp	align_set,01
+	jne	mm_skip_align		; jump if alignment flag false.
+	mov	cx,tablet_align
+	xor	dx,dx
+	idiv	cx			; ax = y/tablet_alignment factor.
+	add	mouse_x,ax		; adjust x coordinate.
+	mov	ax,bx
+	xor	dx,dx
+	idiv	cx
+	neg	ax			; ax = -x/tablet_alignment factor.
+	add	mouse_y,ax		; adjust y coordinate.
+mm_skip_align:
+	mov	ax,tablet_xorigin
+	sub	mouse_x,ax
+	mov	ax,tablet_yorigin
+	sub	mouse_y,ax
+mm_tablet_byte5:
+	xor	dx, dx
+	mov	bx, dx
+	mov	al, mouse_int_status
+	mov	mouse_count, pc_mouse_byte_count
+	test	al, 4
+	jnz	mm_tablet_int_byte_51
+	mov	mouse_status_byte, al
+	jmps	mm_tablet_int_byte_51
+endif	;not ViewMAX
+
+pc_mouse_int_byte5:
+	call	pc_mouse_int_mag_tst
+	add	ax, mouse_deltay	;get y value
+ms_smouse_int_byte5:
+	mov	bx, mouse_deltax	; get x value
+	mov	dx,ax
+	mov	al,mouse_int_status
+	test	al,4
+	jnz	pc_mouse_int_byte51
+	mov	mouse_status_byte,al
+pc_mouse_int_byte51:				;don't return button if not edge
+	mov	mouse_count,pc_mouse_byte_count
+	mov	ax,bx
+	or	ax,dx
+	jnz	mm_tablet_int_byte_51		; jump if change in x or y.
+	jmp	pc_mouse_int_exit
+
+mm_tablet_int_byte_51:
+	mov	CONTRL_STATUS, 0 ; clear out control status in case kbd
+	cmp	FIRST_MOTN, 0	; is mouse motion the first
+	jnz	mm_tablet_int_byte_52
+	mov	FIRST_MOTN, 0ffh
+;;;	not	KBD_MOUSE_STS	; toggle the control status to off
+	mov	KBD_MOUSE_STS,0	; ViewMAX wants to make sure
+mm_tablet_int_byte_52:	
+	cmp	mouse_lock,1
+	jnz	mm_tablet_int_byte_53	
+	jmp	pc_mouse_update
+
+mm_tablet_int_byte_53:
+	mov	mouse_lock,1			;set lock out
+	cmp	SYSDAT,0			;if conc dos 
+	jne	assume_ints			;assume ints are OK
+assume_ints:
+	sti					;turn interrupts on
+	add	bx,mouse_x			;
+	mov	cx,mouse_y
+	sub	cx,dx
+	cld					; make sure string inst. work
+	call	clip_cross			;bx,cx = new coordinate values
+	mov	mouse_x, bx
+	mov	mouse_y, cx
+	push	ds				;[JCE] sdpsc9 saves DS
+	callf	dword ptr usermot		;call the user defined motion
+	callf	dword ptr usercur		;call the cursor draw routine
+if pc1512
+	call	pc1512_fix
+endif
+	pop	ds
+	mov	mouse_lock,0
+	jmps	pc_mouse_int_exit_1
+
+pc_mouse_int_exit0:
+	dec	mouse_count
+pc_mouse_int_exit:
+	cmp	SYSDAT,0			;if CDOS
+	jne	pc_mouse_int_exit_1		;don't send EOI
+pc_mouse_int_exit_1:
+	ret
+;
+; I'm not sure what this is for, but the original PC1512 mouse driver does it
+; and so I do it too.
+;
+if pc1512
+
+pc1512_fix:
+	cmp	cs:mouse_type, 2
+	jnz	pc1512_fix_exit
+	mov	ax, 4
+	mov	cx, cs:mouse_x
+	mov	dx, cs:mouse_y
+	int	33h
+pc1512_fix_exit:
+	ret
+
+endif
+
+ms_smouse_test:		; microsoft serial mouse
+;--------------		; (unpack to mouse systems compatible)
+
+	test	al, 40h				; check for first byte 
+	jnz	ms_smouse_byte1			; yes, if bit set
+	cmp	mouse_count, 3			; are we waiting for 1st byte ?
+	jnc	pc_mouse_int_exit
+	cmp	mouse_count,2
+	jnz	ms_smouse_byte3			; no, get more
+	mov	si,offset mouse_deltax
+	and	bl, 7Fh				; bit 7 may be 1 or 0.
+	mov	ax,[si]
+	or	al,bl
+	cbw
+	call	pc_mouse_int_mag_tst
+	mov	[si],ax
+	jmp	pc_mouse_int_exit0		; yes, ignore this one 
+
+ms_smouse_byte1:
+	mov	mouse_count, 3
+	mov	al, bl
+	and	al, 3				;get the two high order x
+	ror	al,1
+	ror	al,1
+	cbw
+	mov	mouse_deltax, ax
+	mov	cl, 4
+	ror	bl, cl				;get switch bits in posn
+	mov	al, bl
+	and	al, 0c0h
+	mov	mouse_deltay, ax
+	jmp	ms_smouse_switch
+
+ms_smouse_byte3:
+	mov	ax, mouse_deltay
+	and	bl, 7Fh				; bit 7 may be 1 or 0.
+	or	al, bl
+	cbw
+	call	pc_mouse_int_mag_tst
+	mov	mouse_deltay,ax
+	neg	ax
+	mov	mouse_count,3
+	jmp	ms_smouse_int_byte5
+
+
+
+pc_mouse_update:	; update mouse on screen	
+;---------------
+	add	bx,mouse_x			;
+	mov	cx,mouse_y
+	sub	cx,dx
+	cld					; make sure string inst. work
+	call	clip_cross			;bx,cx = new coordinate values
+	mov	mouse_x, bx
+	mov	mouse_y, cx
+	jmp	pc_mouse_int_exit
+
+
+eject
+;******************************************************************************
+;mouse_switch
+;	mouse switch handling routine
+;
+;	entry	ah = 00000sss
+;		where s=switch bit
+;
+;	exit	to mouse_int_exit
+;	uses	ax
+;******************************************************************************
+ms_smouse_switch:
+	and	bx, 3
+	jz	pc_mouse_switch1
+	mov	bl, ms_smouse_keymap[bx]
+	jmps	pc_mouse_switch1
+
+if not VIEWMAX		;ViewMAX doesn't do tablets
+mm_tablet_switch:
+	and	bl, 7
+	jz	pc_mouse_switch1
+	cmp	cursor_mask, 01h	; check for stylus(01) or cursor
+	je	mm_tablet_switch1
+	mov	bl, mm_tablet_keymap[bx]	; using a cursor
+	jmps	pc_mouse_switch1
+
+mm_tablet_switch1:
+	mov	bl, 1			; force all buttons to be 1
+	jmps	pc_mouse_switch1
+
+endif	;not ViewMAX
+
+pc_mouse_switch:
+	xor	bh, bh
+if not VIEWMAX		;ViewMAX doesn't do tablets
+	cmp	cl, 0c0h
+	jz	mm_tablet_switch
+endif	;not ViewMAX
+	not	bl				;make a closeure = 1
+	and	bl,7				;mask off the switch bits
+	mov	bl, pc_keymap[bx]		;map the switch byte
+pc_mouse_switch1:
+	mov	si,offset MOUSE_BT
+	cmp	[si], bx
+	jz	pc_mouse_switch_no_change
+	mov	CONTRL_STATUS, 0	; clear out control status in case kbd
+	mov	[si],bx			;save the button status
+pc_mouse_switch_no_change:
+	inc	si
+	inc	si
+	cmp	bx,[si]			;test if the same or not
+	mov	[si],bx
+	jz	pc_switch1
+	cmp	SYSDAT,0
+	jnz	pc_switch0a
+pc_switch0a:
+	mov	ax,bx
+	push	bx
+	sti
+	callf	dword ptr userbut		;call the user defined button
+	cli
+	pop	bx
+pc_switch1:	
+	and	bl,bl	
+	jnz	pc_switch_3			;handle swithches if set
+	mov	mouse_int_status,2		;set flag saying coord info
+pc_switch_2:
+	jmp	pc_mouse_int_exit0
+
+pc_switch_3:
+	mov	si,offset mouse_int_status
+	mov	al,[si]
+	mov	byte ptr [si],00000101b
+	test	al,1			;was switch pressed last time
+	jnz	pc_switch_2		;if so don't process string
+	mov	byte ptr 2[si],20h
+	test	bl,1
+	jnz	pc_mouse_switch_exit
+	inc	byte ptr 2[si]
+	test	bl,2
+	jnz	pc_mouse_switch_exit
+	inc	byte ptr 2[si]
+pc_mouse_switch_exit:
+	mov	byte ptr [si],1	;switch avail
+	jmp	pc_mouse_int_exit0
+
+eject
+public pc_mouse_int_mag_tst 
+pc_mouse_int_mag_tst:
+;---------------------
+;	tests the magnitude of delta value and doubles if appropriate
+;
+	and	ax, ax				;test the sign
+	pushf
+	jns	pc_mouse_int_mag_tst1
+	neg	ax
+pc_mouse_int_mag_tst1:	
+	cmp	ax, 5
+	jle	pc_mouse_int_mag_tst2
+;
+; For some reason wy700 has this extra bit here.
+;
+if      mouse_bigarea
+        cmp     ax, 0Fh
+        jle     pc_mouse_int_mag_tst3
+        shl     ax,1
+pc_mouse_int_mag_tst3:
+endif
+	shl	ax, 1				;if deltax is large double it
+pc_mouse_int_mag_tst2:
+	popf
+	jns	pc_mouse_int_mag_tst_done
+	neg	ax
+pc_mouse_int_mag_tst_done:
+	ret
+	
+;
+;******************************************************************************
+;keyboard_mouse_int_vector							      *
+;									      *
+;		Exit							      *
+;			mouse_status_byte				      *
+;					  = 0 nothing happened		      *
+;					  = 1 button press		      *
+;						mouse_switch_byte	      *
+;						     = character information  *
+;					  = 2 coordinate information	      *
+;						     mouse_deltax = delta x   *
+;						     mouse_deltay = delta y   *
+;									      *
+;
+;******************************************************************************
+KEYBOARD_MOUSE:
+	push	ds
+	push	bp
+	mov	FIRST_MOTN, 0ffh		;if first mouse then turn off
+	xor	dx, dx
+	mov	dx, bx
+	add	dx, cx
+	jz	keyboard_mouse_button
+	mov	mouse_status_byte, 2
+	add	bx,mouse_x			;
+	add	cx,mouse_y
+	call	clip_cross			;bx,cx = new coordinate values
+	mov	mouse_x, bx
+	mov	mouse_y, cx
+	callf	dword ptr	usermot		;call the user defined motion
+	callf	dword ptr	usercur		;call the cursor draw routine
+	jmps	keyboard_mouse_exit
+
+keyboard_mouse_button:
+	mov	mouse_status_byte, 1
+	xor	ah, ah
+	mov	MOUSE_BT,ax			;save the button status
+	push	ax
+	callf	dword ptr userbut		;call the user defined button
+	pop	ax
+	and	al, al
+	jz	kbd_mouse_switch_exit		;exit if the second call
+	mov	mouse_switch_byte,20h
+	test	al,1
+	jnz	kbd_mouse_switch_exit
+	inc	mouse_switch_byte
+	test	al,2
+	jnz	kbd_mouse_switch_exit
+	inc	mouse_switch_byte
+kbd_mouse_switch_exit:
+keyboard_mouse_exit:
+	pop	bp
+	pop	ds
+	ret
+
+
+if not VIEWMAX		;No Summagraphics support in ViewMAX drivers
+
+;-------------------------------------------------------------------------
+;
+;	Routine	:	set_mm_xy_scale
+;
+;	Purpose	:	establishes the x and y resolution of
+;			the Summagraphics tablet.
+;
+;	On entry:	AX = x axis resolution in lines/inch.
+;			DX = y axis resolution in lines/inch.
+;
+;	On exit	:	AX = actual x axis resolution set.
+;			DX = actual y axis resolution set.
+;
+;-------------------------------------------------------------------------
+
+
+SETXYSCALE	EQU	072H		; set X,Y scale command.
+XDOFF		EQU	0
+YDOFF		EQU	2
+
+		DSEG
+
+DIMENSIONTABLE	DW	90,60		; mm961  x,y in tenths of inches.
+		DW	117,117		; mm1201 x,y in tenths of inches.
+		DW	180,120		; mm1812 x,y in tenths of inches.
+
+		CSEG
+
+		PUBLIC	SET_MM_XY_SCALE
+
+SET_MM_XY_SCALE:
+		PUSH	DS			; *** must save application's
+						;     data segment !!!! ***
+		PUSH	AX
+		MOV	AX,SEG TABLET_TYPE
+		MOV	DS,AX			; DS = local data segment.
+		POP	AX
+
+		CMP	DISPMODE,0
+		JE	SET_MM_XY_SCALOK	; jump if in graphics mode.
+		JMP	SET_MM_XY_SCALEE
+
+SET_MM_XY_SCALOK:
+		CMP	TABLET_TYPE,0
+		JNE	SET_MM_XY_SCALOK1	; jump if not a mouse.
+		JMP	SET_MM_XY_SCALEE
+
+SET_MM_XY_SCALOK1:
+		PUSH	DI			; save caller's state.
+		PUSH	SI
+		PUSH	CX
+		PUSH	BX
+
+		PUSH	DX			; save y resolution.
+		PUSH	AX			; save x resolution.
+
+		MOV	DX,MOUSE_RECEIVE_PORT	; issue set x,y scale command.
+		MOV	AL,SETXYSCALE
+		CALL	SEND
+
+		MOV	BX,OFFSET DIMENSIONTABLE
+		MOV	SI,TABLET_TYPE
+		DEC	SI
+		MOV	CL,2
+		SHL	SI,CL			; SI = tablet type as index.
+
+		POP	AX			; AX = x resolution.
+		CMP	AX,TABLET_MAXLPI
+		JLE	SET_MM_XY_SCALXOK	; jump if resolution in range.
+		MOV	AX,TABLET_MAXLPI	; else, get maximum resolution.
+
+SET_MM_XY_SCALXOK:
+		MOV	TABLET_XLPI,AX		; save x resolution.
+		MOV	CX,XDOFF[BX+SI]		; CX = tablet x dimension.
+		MUL	CX
+		MOV	CX,10
+		DIV	CX
+		MOV	DI,AX			; DI = x axis resolution.
+
+		POP	AX			; AX = y resolution.
+		CMP	AX,TABLET_MAXLPI
+		JLE	SET_MM_XY_SCALYOK	; jump if resolution in range.
+		MOV	AX,TABLET_MAXLPI	; else, get maximum resolution.
+
+SET_MM_XY_SCALYOK:
+		MOV	TABLET_YLPI,AX		; save y resolution.
+		MOV	CX,YDOFF[BX+SI]		; CX = tablet y dimension.
+		MUL	CX
+		MOV	CX,10
+		DIV	CX
+
+		MOV	BX,AX			; BX = y axis resolution.
+		MOV	AX,DI			; AX = x axis resolution.
+
+		CMP	TABLET_TYPE,MM961TABLET
+		JNE	SET_MM_XY_SCAL1		; jump if not mm961 tablet.
+
+		XCHG	AX,BX			; swap axes.
+
+SET_MM_XY_SCAL1:
+
+		MOV	XSCALE_MM1201,AX	; save resolutions for
+		MOV	YSCALE_MM1201,BX	;  future tablet inits.
+
+		MOV	DX,MOUSE_RECEIVE_PORT
+
+		CALL	SEND			; output x resolution.
+		MOV	AL,AH
+		CALL	SEND
+
+		MOV	AL,BL			; output y resolution.
+		CALL	SEND
+		MOV	AL,BH
+		CALL	SEND
+
+		MOV	AX,TABLET_XLPI		; return x and
+		MOV	DX,TABLET_YLPI		;  y resolution to caller.
+		
+		POP	BX			; restore caller's state.
+		POP	CX
+		POP	SI
+		POP	DI
+
+SET_MM_XY_SCALEE:
+		POP	DS
+
+		RET
+
+
+;-------------------------------------------------------------------------
+;
+;	Routine	:	set_mm_axis_scale
+;
+;	Purpose	:	establishes the x and y resolution of
+;			the Summagraphics tablet.
+;
+;	On entry:	AX = x axis resolution in lines/axis.
+;			DX = y axis resolution in lines/axis.
+;
+;	On exit	:	AX = actual x axis resolution set.
+;			DX = actual y axis resolution set.
+;
+;-------------------------------------------------------------------------
+
+
+		CSEG
+
+		PUBLIC	SET_MM_AXIS_SCALE
+
+SET_MM_AXIS_SCALE:
+		PUSH	DS			; *** must save application's
+						;     data segment !!!! ***
+
+		PUSH	AX
+		MOV	AX,SEG TABLET_TYPE
+		MOV	DS,AX			; DS = local data segment.
+		POP	AX
+
+		CMP	DISPMODE,0
+		JE	SET_MM_AXIS_SCALOK	; jump if in graphics mode.
+		JMP	SET_MM_AXIS_SCALEE
+
+SET_MM_AXIS_SCALOK:
+		CMP	TABLET_TYPE,0
+		JNE	SET_MM_AXIS_SCALOK1	; jump if not a mouse.
+		JMP	SET_MM_AXIS_SCALEE
+
+SET_MM_AXIS_SCALOK1:
+		PUSH	DI			; save caller's state.
+		PUSH	SI
+		PUSH	CX
+		PUSH	BX
+
+		PUSH	DX			; save y resolution.
+		PUSH	AX			; save x resolution.
+
+		MOV	DX,MOUSE_RECEIVE_PORT	; issue set x,y scale command.
+		MOV	AL,SETXYSCALE
+		CALL	SEND
+
+		MOV	BX,OFFSET DIMENSIONTABLE
+		MOV	SI,TABLET_TYPE
+		DEC	SI
+		MOV	CL,2
+		SHL	SI,CL			; SI = tablet type as index.
+
+		POP	AX			; AX = x resolution in lines.
+		CMP	AX,TABLET_XMAXLIN
+		JLE	SET_MM_AXIS_SCALXOK	; jump if resolution in range.
+		MOV	AX,TABLET_XMAXLIN	; else, get maximum resolution.
+
+SET_MM_AXIS_SCALXOK:
+		MOV	CX,10
+		MUL	CX			; DX:AX = x resolution in
+						;         tenths of lines.
+
+		MOV	CX,XDOFF[BX+SI]		; CX = tablet x dimension.
+		DIV	CX
+		TEST	DX,DX
+		JZ	SET_MM_AXIS_SCAL1	; jump if no remainder.
+		INC	AX			; else, round up quotient.
+
+
+SET_MM_AXIS_SCAL1:
+		MUL	CX
+		MOV	CX,10
+		DIV	CX
+		MOV	DI,AX			; DI = true x axis resolution.
+
+		POP	AX			; AX = y resolution in lines.
+		CMP	AX,TABLET_YMAXLIN
+		JLE	SET_MM_AXIS_SCALYOK	; jump if resolution in range.
+		MOV	AX,TABLET_YMAXLIN	; else, get maximum resolution.
+
+SET_MM_AXIS_SCALYOK:
+		MOV	CX,10
+		MUL	CX			; DX:AX = y resolution in
+						;         tenths of lines.
+
+		MOV	CX,YDOFF[BX+SI]		; CX = tablet y dimension.
+		DIV	CX
+
+		TEST	DX,DX
+		JZ	SET_MM_AXIS_SCAL2	; jump if no remainder.
+		INC	AX			; else, round up quotient.
+
+SET_MM_AXIS_SCAL2:
+		MUL	CX
+		MOV	CX,10
+		DIV	CX
+
+		MOV	BX,AX			; BX = y axis resolution.
+		MOV	AX,DI			; AX = x axis resolution.
+
+		CMP	TABLET_TYPE,MM961TABLET
+		JNE	SET_MM_AXIS_SCAL3	; jump if not mm961 tablet.
+
+		XCHG	AX,BX			; swap axes.
+
+SET_MM_AXIS_SCAL3:
+
+		MOV	XSCALE_MM1201,AX	; save resolutions for
+		MOV	YSCALE_MM1201,BX	;  future tablet inits.
+
+		MOV	DX,MOUSE_RECEIVE_PORT
+
+		CALL	SEND			; output x resolution.
+		MOV	AL,AH
+		CALL	SEND
+
+		MOV	AL,BL			; output y resolution.
+		CALL	SEND
+		MOV	AL,BH
+		CALL	SEND
+
+		MOV	AX,XSCALE_MM1201	; return actual resolutions
+		MOV	DX,YSCALE_MM1201	;  to caller.
+
+		CMP	TABLET_TYPE,MM961TABLET
+		JNE	SET_MM_AXIS_SCAL4	; jump if not mm961 tablet.
+
+		XCHG	AX,DX			; swap axes.
+
+SET_MM_AXIS_SCAL4:
+
+		POP	BX			; restore caller's state.
+		POP	CX
+		POP	SI
+		POP	DI
+
+SET_MM_AXIS_SCALEE:
+		POP	DS
+
+		RET
+
+
+;-------------------------------------------------------------------------
+;
+;	Routine	:	set_mm_xy_origin
+;
+;	Purpose	:	establishes the x and y origin of
+;			the Summagraphics tablet.
+;
+;	On entry:	AX = x origin in screen units.
+;			DX = y origin in screen units.
+;
+;-------------------------------------------------------------------------
+
+		CSEG
+
+		PUBLIC	SET_MM_XY_ORIGIN
+
+SET_MM_XY_ORIGIN:
+
+		PUSH	DS			; *** must save application's
+						;     data segment !!!! ***
+
+		PUSH	AX
+		MOV	AX,SEG TABLET_XORIGIN
+		MOV	DS,AX			; DS = local data segment.
+		POP	AX
+
+		MOV	TABLET_XORIGIN,AX	; set x origin.
+		MOV	TABLET_YORIGIN,DX	; set y origin.
+
+SET_MM_XY_ORIGINE:
+		POP	DS
+
+		RET
+
+;-------------------------------------------------------------------------
+;
+;	Routine	:	get_mm_xy_dimensions
+;
+;	Purpose	:	returns the x and y dimensions of the
+;			Summagraphics tablet.
+;
+;	On exit	:	AX = x dimension in tenths of inches.
+;			DX = y dimension in tenths of inches.
+;
+;-------------------------------------------------------------------------
+
+		CSEG
+
+		PUBLIC	GET_MM_XY_DIMENSIONS
+
+GET_MM_XY_DIMENSIONS:
+
+		PUSH	DS			; *** must save application's
+						;     data segment !!!! ***
+		PUSH	AX
+		MOV	AX,SEG TABLET_XORIGIN
+		MOV	DS,AX			; DS = local data segment.
+		POP	AX
+
+		PUSH	SI			; save caller's state.
+		PUSH	CX
+
+		MOV	BX,OFFSET DIMENSIONTABLE; BX = pointer to
+						;      dimension table.
+		MOV	SI,TABLET_TYPE
+		DEC	SI
+		MOV	CL,2
+		SHL	SI,CL			; SI = tablet type as index.
+
+		MOV	AX,XDOFF[BX+SI]		; AX = tablet x dimension.
+		MOV	DX,YDOFF[BX+SI]		; DX = tablet y dimension.
+
+
+		POP	CX			; restore caller's state.
+		POP	SI
+
+		POP	DS
+
+		RET
+
+;-------------------------------------------------------------------------
+;
+;	Routine	:	set_mm_axis_alignment
+;
+;	Purpose	:	establishes rotational alignment factor for
+;			the Summagraphics tablet.
+;
+;	On entry:	AX = delta_x
+;			DX = delta_y
+;
+;			where : delta_x and delta_y are the signed
+;				lengths of the sides of a triangle whose
+;				hypotenuse lies along the intended
+;				x or y axis of the tablet.
+;
+;-------------------------------------------------------------------------
+
+		CSEG
+
+		PUBLIC	SET_MM_AXIS_ALIGNMENT
+
+SET_MM_AXIS_ALIGNMENT:
+
+		PUSH	DS			; *** must save application's
+						;     data segment !!!! ***
+
+		PUSH	AX
+		MOV	AX,SEG TABLET_XORIGIN
+		MOV	DS,AX			; DS = local data segment.
+		POP	AX
+
+		PUSH	DX
+		PUSH	CX
+		PUSH	BX
+		PUSH	AX
+
+		MOV	ALIGN_SET,0		; reset tablet alignment flag.
+
+		TEST	AX,AX
+		JZ	SET_MM_AXIS_ALIGNMENTE	; jump if delta_x = 0.
+		TEST	DX,DX
+		JZ	SET_MM_AXIS_ALIGNMENTE	; jump if delta_y = 0.
+
+		MOV	ALIGN_SET,1		; set tablet alignment flag.
+
+		MOV	BX,AX
+		TEST	BX,BX
+		JNS	DXPOS			; jump if delta_x positive
+
+		NEG	BX			; make delta_x positive.
+
+DXPOS:
+		MOV	CX,DX
+		TEST	CX,CX
+		JNS	DYPOS			; jump if delta_y positive.
+
+		NEG	CX			; make delta_y positive
+
+DYPOS:						; BX = abs(delta_x).
+						; CX = abs(delta_y).
+		CMP	BX,CX
+		JGE	DXGE			; jump if delta_x >= delta_y.
+
+		XCHG	AX,DX
+		NEG	AX
+
+DXGE:						; AX = delta_independent.
+						; DX = delta_dependent.
+		MOV	BX,DX
+		CWD
+		IDIV	BX			; AX = delta_x / delta_y.
+
+		MOV	TABLET_ALIGN,AX		; set alignment factor.
+
+SET_MM_AXIS_ALIGNMENTE:
+
+		POP	AX
+		POP	BX
+		POP	CX
+		POP	DX
+
+		POP	DS
+
+		RET
+
+endif	;not ViewMAX
+

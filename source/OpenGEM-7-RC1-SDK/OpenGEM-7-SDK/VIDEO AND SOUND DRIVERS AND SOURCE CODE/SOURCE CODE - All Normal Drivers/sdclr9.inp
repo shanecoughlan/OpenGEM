@@ -1,0 +1,18 @@
+sdclr9.vga= entry, clr_zyxg,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+clr_drv,
+crpttxt1,
+crpttxt2,
+crptdraw,
+clrmblit,
+clrblit,
+clrpat,
+enddseg,
+5x7font[nop]
+
+                                                                                                                                                                                                                

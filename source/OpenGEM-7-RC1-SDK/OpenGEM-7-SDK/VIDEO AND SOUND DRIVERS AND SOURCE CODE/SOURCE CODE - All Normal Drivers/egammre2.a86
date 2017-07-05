@@ -1,0 +1,1616 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+;History
+;Fix #	Name	Date	Description
+;1	DH	5/29/85	Line shortening routine in Tennis used wrong polarity
+;			for LSTLIN flag
+;2	DH	5/29/85	Added line shortening into xline
+;	n = vec_len(delta_x, delta_y);
+;
+
+
+vec_len:
+		push	bp
+		mov	bp, sp
+
+; Check for zeroes.
+		cmp	word ptr 4[bp], 0
+		jne	x_squared
+		cmp	word ptr 6[bp], 0
+		jne	x_squared
+		xor	bx, bx				; return value
+		jmp	search_loop_end
+
+; Calculate delta_x squared.
+x_squared:
+		mov	dx, 4[bp]		; delta_x parameter
+		mov	ax, dx
+		imul	dx
+		mov	vec_len_high, dx		; save high word of square
+		mov	vec_len_low, ax			; save low word of square
+
+; Calculate delta_y squared and add to delta_x squared.
+		mov	dx, 6[bp]		; delta_y parameter
+		mov	ax, dx
+		imul	dx
+
+		add	vec_len_low, ax
+		adc	vec_len_high, dx		; high/low = sum of squares
+
+; Get the initial binary search boundaries.  This is done by taking an
+;   approximate square root based on the highest order set bit in the
+;   high/low bit string.
+		cmp	vec_len_high, 0
+		je	no_high_byte
+
+		mov	ax, vec_len_high		; check on high order byte
+		mov	cl, 16
+		jmp	bounds_loop
+
+no_high_byte:
+		mov	ax, vec_len_low			; check on low order byte
+		sub	cl, cl
+
+bounds_loop:
+		cmp	ax, 1			; done yet?
+		je	bounds_loop_end
+		inc	cl
+		shr	ax, 1
+		jmp	bounds_loop
+
+bounds_loop_end:
+		shr	cl, 1
+		mov	bx, 1
+		shl	bx, cl			; bx = initial low bound
+		mov	cx, bx
+		shl	cx, 1			; cx = initial high bound
+
+; Perform a binary search for a square root (somewhat brutishly).
+search_loop:
+		mov	ax, cx
+		sub	ax, bx
+		cmp	ax, 1			; done with the search?
+		jle	search_loop_end
+
+		shr	ax, 1
+		add	ax, bx			; candidate = (high+low)/2
+		mov	si, ax			; save a copy for next pass
+		mul	ax			; dx/ax = candidate square
+
+		cmp	dx, vec_len_high		; check against high word
+		ja	high_adjust
+		jb	low_adjust
+
+		cmp	ax, vec_len_low			; check against low word
+		ja	high_adjust
+		jb	low_adjust
+
+		mov	bx, si			; exact root found!
+		jmp	search_loop_end
+
+high_adjust:
+		mov	cx, si			; adjust high value down
+		jmp	search_loop
+
+low_adjust:
+		mov	bx, si			; adjust low value up
+		jmp	search_loop
+
+search_loop_end:
+		mov	ax, bx			; ax = solution
+
+		pop	bp
+		ret
+
+;
+;***************************************************************************
+;
+; SMUL_DIV (m1,m2,d1)
+;
+;	 ( ( ( m1 * m2 ) / d1 ) + 1 / 2	
+;	m1 = signed 16 bit integer
+;	m2 = snsigned 15 bit integer
+;	d1 = signed 16 bit integer
+;
+;***************************************************************************
+SMUL_DIV:
+	push	bp		;save the callers bp
+	mov	bp,sp
+	mov	ax,06[bp]
+	mov	bx,04[bp]
+	imul	bx		; m2 * m1
+	mov	si, 1
+	and	dx, dx
+	jns	smul_div_1
+	neg	si
+smul_div_1:
+	mov	bx,08[bp]
+	idiv	bx		; m2 * m1 / d1
+	pop	bp
+	and	bx, bx		; test if divisor is negative
+	jns	smul_div_2
+	neg	si
+	neg	bx		; make it positive
+smul_div_2:
+	and	dx, dx		; test if remainder is negative
+	jns	smul_div_3
+	neg	dx		; make remainder positive
+smul_div_3:
+	shl	dx, 1		; see if 2 * remainder is > divisor
+	cmp	dx, bx
+	jl	smul_div_4
+	add	ax, si
+smul_div_4:
+	ret
+eject
+EJECT
+;************************************************************************
+;TENNIS 								*
+;	Entry	CX - delta count for ABLINE (count includes last point) *
+;	Exit	CX is decremented by one if:				*
+;			XOR writing mode and the line about to be	*
+;			drawn is not the last of the poly line		*
+;			else Cx is left alone				*
+;	Purpose:  Xor does not Xor itself at intersection points of	*
+;		  polline or plydpl of fill				*
+;************************************************************************
+tennis:
+	cmp	WRT_MODE, 2		; check if xor
+	jnz	jimmy	 
+	cmp	LSTLIN, 0		; check if XOR and last line of pollin
+	jnz	jimmy			; if false go around 
+	cmp	cx, 1
+	jz	jimmy
+	dec	cx
+jimmy:	ret
+;****************************************************************
+;Subroutine	abline						*
+;    Entry:	X1-coordinate					* 
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		Y2-coordinate					*
+;    Purpose:							*
+;		This routine will draw a line from (x1,y1) to	*
+;		(x2,y2) using Bresenham's algorithm.		*
+;								*
+;								*
+;    Variables: for Bresenham's algorithm defined for		*
+;		delta y > delta x after label "ckslope".	*
+;		delta y <= delta x				*
+;****************************************************************
+ABLINE:	push	bp
+	call	do_line
+	mov	LN_MASK, bx		; update the line mask reg after rot
+	pop	bp
+	ret
+do_line: 
+	if	VESA_MULTISEG
+	 mov	ax, cs:VID_SEG
+	else
+	 mov	ax, graph_plane
+	endif
+	mov	es, ax			; load up the initial seg reg
+do_line_1:
+	mov	cx,x2
+	sub	cx,x1			;is line vertical?
+notver: jc	swap			; if x1>x2 then swap pairs
+	push	cx			; save delta x
+	mov	bx, x1
+	mov	ax, y1		
+	call	concat			;get phys. address of initial (X1,Y1)
+	mov	si, offset ortbl	;or mask table address
+	add	si, bx			;   index into table
+	mov	bh,bl
+	mov	bl,[ si ]		;get initial OR table mask.
+	pop	cx
+	mov	dx,y2
+	sub	dx,y1			; is line horizontal?
+	jnz	nothor			; dx is delta y
+	call	xline_noswap
+	mov	bx, LN_MASK
+	ret
+swap:
+	push	cx
+	mov	bx, x2
+	mov	ax, y2		
+	call	concat			;get phys. address of initial (X1,Y1)
+	mov	si, offset ortbl	;or mask table address
+	add	si, bx			;   index into table
+	mov	bh,bl
+	mov	bl,[ si ]		;get initial OR table mask.
+	pop	cx
+	neg	cx
+	mov	dx,y1
+	sub	dx,y2			;dx is delta y
+	jnz	nothor
+	call	xline_swap
+	mov	bx, LN_MASK
+	ret
+nothor: 
+	mov	yinc,next_line		; positive to next segment
+	jnc	abnorm			;is delta y positive
+	neg	dx			; make delta y positive
+	mov	yinc,neg_next_line
+abnorm:
+					;BL - contains OR table mask
+					;DI - Physical Address
+					;ES - graphics segment address
+	cmp	cx, dx			;if dx - dy is negative
+	jnc	dxgedy
+	jmp	dygtdx			;   then dy > dx.
+dxgedy: 	
+	mov	ax,cx
+	inc	cx
+	call	tennis
+	shl	dx, 1			;e1 := 2dy
+	mov	epsilon1, dx		;e1 stored in si
+	sub	dx, ax			;epsilon := dx = (2dy -dx)
+	mov	si, dx			;si = epsilon
+	mov	bp, dx			;e2 is stored in bp
+	sub	bp, ax			;e2 := (2dy - 2dx)
+	mov	ax, bx			;al = bit mask
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	mov	bx, dxgedy_tbl[bx]
+	call	bx
+	mov	al, 0ffh
+	out	dx, al
+	ret
+;*******************************
+;  dxgedy_replace
+;
+;*******************************	
+dxgedy_replace:
+	push	ax			;save the mask
+	mov	bl, num_colors - 1	;enable all planes to draw
+	call	box_plane_enable
+	mov	bx, FG_BP_1
+	not	bx
+	xchg	bh, bl
+	and	bh, num_colors - 1	;set the planes with ix=0 to set/res
+	mov	bl, 00000000b		;set to no rotate and an replace op
+	call	box_ega_init
+	mov	dx, ega_graphic_add	;now set the planes to reset
+	mov	al, ega_setres_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	mov	al, 0
+	out	dx, al
+	pop	ax
+	mov	bx, LN_MASK
+	call	line_dxge
+	ret
+;*******************************
+;  dxgedy_tran
+;
+;*******************************	
+dxgedy_tran:
+	mov	bx, FG_BP_1
+	and	bl, num_colors - 1
+	jz	dxgedy_tran_next	;if no planes to draw then don't
+	push	ax
+	mov	ax, LN_MASK		;DRI bug: if we draw the line twice,
+	mov	old_ln_mask, ax		;the first iteration must restore
+					;LN_MASK. If we only do it once, it
+					;mustn't.
+	call	box_plane_enable	;enable the planes to be drawn with 1's
+	mov	bh, 0			;don't allow any planes to use set/res
+	mov	bl, 00010000b		;set to no rotate and an or op
+	call	box_ega_init
+	pop	ax			;save the bit mask	
+	push	ax
+	push	cx			;save the count
+	push	si			;save the initial epsilon
+	push	di			;save the start pointer
+	mov	bx, LN_MASK
+	cmp	WRT_MODE, 1		;is this really trans mode
+	jz	dxgedy_tran_ok
+	not	bx
+	call	line_dxge
+	not	bx
+	jmps	dxgedy_tran_ok_1
+dxgedy_tran_ok:
+	call	line_dxge
+dxgedy_tran_ok_1:
+	mov	LN_MASK, bx
+	pop	di
+	pop	si
+	pop	cx
+	pop	ax
+	mov	bx, FG_BP_1		;Now, if we're going to draw
+	not	bx			;the second half of the line,
+	and	bl, num_colors - 1	;restore LN_MASK.
+	jz	dxgedy_tran_done
+	push	ax
+	mov	ax, old_ln_mask
+	mov	LN_MASK, ax
+	jmps	dxgedy_tran_next2
+
+dxgedy_tran_next:
+	mov	bx, FG_BP_1
+	not	bx
+	and	bl, num_colors - 1
+	jz	dxgedy_tran_done
+	push	ax			;save the mask
+dxgedy_tran_next2:
+	call	box_plane_enable
+	mov	dx, ega_graphic_add	;set up the writing mode to be applied
+	mov	al, ega_datarot_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	mov	al, 00001000b		;set to no rotate with an and op
+	out	dx, al
+	pop	ax
+	cmp	WRT_MODE, 1
+	mov	bx, LN_MASK
+	jnz	dxgedy_tran_last_ok
+	not	bx
+	call	line_dxge
+	not	bx
+	mov	LN_MASK, bx
+	jmps	dxgedy_tran_done
+dxgedy_tran_last_ok:
+	call	line_dxge
+	mov	LN_MASK, bx
+dxgedy_tran_done:
+	mov	bx, LN_MASK
+	ret
+;*******************************
+;  dxgedy_xor
+;
+;*******************************	
+dxgedy_xor:
+	push	ax			;save the mask
+	mov	bl, num_colors - 1
+	call	box_plane_enable	;enable the planes to be drawn with 1's
+	mov	bh, 0			;don't allow any planes to use set/res
+	mov	bl, 00011000b		;set to no rotate and an or op
+	call	box_ega_init
+	pop	ax
+	mov	bx, LN_MASK
+	call	line_dxge
+	ret
+;
+	if	VESA_MULTISEG
+add_yinc:
+	push	ax
+	mov	ax, yinc
+	cmp	ax, 8000h
+	jc	yplus
+	mov	ax, -1
+	add	di, yinc
+	jnc	either_wrap
+	pop	ax
+	ret
+;
+yplus:	mov	ax, 1
+	add	di, yinc
+	jc	either_wrap
+	pop	ax
+	ret
+;
+either_wrap:
+	add	ax, cs:VESA_SLICE
+	mov	cs:VESA_SLICE, ax
+	call	setslice
+	pop	ax
+	ret
+
+	endif	;VESA_MULTISEG
+
+;line_dxge
+;
+;entry
+;	al = mask
+;	ah = temp register
+;	bx = line mask ( may be swapped depending on x lsb or y lsb
+;	cx = line count
+;	dx = mask port address
+;	si = epsilon
+;	di = dest pointer
+;	bp = epsilon2
+;	epsilon1 = epsilon1
+;	yinc = distance to next scan line
+;
+;
+line_dxge:
+	mov	dx, ega_graphic_add
+	xchg	ah, al
+	mov	al, ega_bitmask_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	xchg	ah, al
+line_dxge_loop:
+	out	dx, al			;load the mask up
+	mov	ah, es:[di]		;read the dest to set mask
+	xor	ah, ah
+	rol	bx, 1			;rotate the pattern
+	jnc	line_dxge_set_0
+	not	ah
+line_dxge_set_0:	
+	mov	es:[di], ah		;apply the pattern
+	ror	al, 1
+	jnc	line_dxge_notincdest
+	inc	di
+line_dxge_notincdest:
+	cmp	si, 0			;if epsilon < 0
+	js	line_dxge_samey
+	add	si, bp			;else epsilon += epsilon2
+	if	VESA_MULTISEG
+	 call	add_yinc
+	else	
+	 add	di, yinc		;     goto next scan line
+	endif
+	loop	line_dxge_loop
+	ret
+line_dxge_samey:
+	add	si, epsilon1
+	loop	line_dxge_loop
+	ret
+;
+dygtdx: 	
+	xchg	cx,dx			;make dx and dy same as above
+	mov	ax,cx			;dx=dx, ax=dy, cx=count
+	inc	cx
+	call	tennis
+	shl	dx, 1			;e1 := 2dx
+	mov	epsilon1, dx
+	sub	dx, ax			;epsilon := dx = (2dx - dy)
+	mov	si, dx			;si = epsilon
+	mov	bp, dx
+	sub	bp, ax			;e2 := (2dx - 2dy)	
+	mov	ax, bx			;al = bit mask
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	mov	bx, dygedx_tbl[bx]
+	call	bx
+	mov	al, 0ffh
+	out	dx, al
+	ret
+;*******************************
+;  dygedx_replace
+;
+;*******************************	
+dygedx_replace:
+	push	ax			;save the mask
+	mov	bl, num_colors - 1	;enable all planes to draw
+	call	box_plane_enable
+	mov	bx, FG_BP_1
+	not	bx
+	xchg	bh, bl
+	and	bh, num_colors - 1	;set the planes with ix=0 to set/res
+	mov	bl, 00000000b		;set to no rotate and an replace op
+	call	box_ega_init
+	mov	dx, ega_graphic_add	;now set the planes to reset
+	mov	al, ega_setres_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	mov	al, 0
+	out	dx, al
+	pop	ax
+	mov	bx, LN_MASK
+	call	line_dyge
+	ret
+;*******************************
+;  dygedx_tran
+;
+;*******************************	
+dygedx_tran:
+	mov	bx, FG_BP_1
+	and	bl, num_colors - 1
+	jz	dygedx_tran_next	;if no planes to draw then don't
+	push	ax
+	mov	ax, LN_MASK		;DRI bug: if we draw the line twice,
+	mov	old_ln_mask, ax		;the first iteration must restore
+					;LN_MASK. If we only do it once, it
+					;mustn't.
+	call	box_plane_enable	;enable the planes to be drawn with 1's
+	mov	bh, 0			;don't allow any planes to use set/res
+	mov	bl, 00010000b		;set to no rotate and an or op
+	call	box_ega_init
+	pop	ax			;save the bit mask	
+	push	ax
+	push	cx			;save the count
+	push	si			;save the initial epsilon
+	push	di			;save the start pointer
+	mov	bx, LN_MASK
+	cmp	WRT_MODE, 1		;is this really trans mode
+	jz	dygedx_tran_ok
+	not	bx
+	call	line_dyge
+	not	bx
+	jmps	dygedx_tran_ok_1
+dygedx_tran_ok:
+	call	line_dyge
+dygedx_tran_ok_1:
+	mov	LN_MASK, bx
+	pop	di
+	pop	si
+	pop	cx
+	pop	ax
+	mov	bx, FG_BP_1
+	not	bx
+	and	bl, num_colors - 1
+	jz	dygedx_tran_done
+	push	ax			;save the mask
+	mov	ax, old_ln_mask
+	mov	LN_MASK, ax
+	jmps	dygedx_tran_next1
+
+dygedx_tran_next:
+	mov	bx, FG_BP_1
+	not	bx
+	and	bl, num_colors - 1
+	jz	dygedx_tran_done
+	push	ax			;save the mask
+dygedx_tran_next1:
+	call	box_plane_enable
+	mov	dx, ega_graphic_add	;set up the writing mode to be applied
+	mov	al, ega_datarot_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	mov	al, 00001000b		;set to no rotate with an and op
+	out	dx, al
+	pop	ax
+	cmp	WRT_MODE, 1
+	mov	bx, LN_MASK
+	jnz	dygedx_tran_last_ok
+	not	bx
+	call	line_dyge
+	not	bx
+	mov	LN_MASK, bx
+	jmps	dygedx_tran_done
+dygedx_tran_last_ok:
+	call	line_dyge
+	mov	LN_MASK, bx
+dygedx_tran_done:
+	mov	bx, LN_MASK
+	ret
+;*******************************
+;  dygedx_xor
+;
+;*******************************	
+dygedx_xor:
+	push	ax			;save the mask
+	mov	bl, num_colors - 1
+	call	box_plane_enable	;enable the planes to be drawn with 1's
+	mov	bh, 0			;don't allow any planes to use set/res
+	mov	bl, 00011000b		;set to no rotate and an or op
+	call	box_ega_init
+	pop	ax
+	mov	bx, LN_MASK
+	call	line_dyge
+	ret
+;line_dyge
+;
+;entry
+;	al = mask
+;	ah = temp register
+;	bx = line mask ( may be swapped depending on x lsb or y lsb
+;	cx = line count
+;	dx = mask port address
+;	si = epsilon
+;	di = dest pointer
+;	bp = epsilon2
+;	epsilon1 = epsilon1
+;	yinc = distance to next scan line
+;
+;
+line_dyge:
+	mov	dx, ega_graphic_add
+	xchg	ah, al
+	mov	al, ega_bitmask_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	xchg	ah, al
+line_dyge_loop:
+	out	dx, al			;load the mask up
+	mov	ah, es:[di]		;read the dest to set mask
+	xor	ah, ah
+	rol	bx, 1			;rotate the pattern
+	jnc	line_dyge_set_0
+	not	ah
+line_dyge_set_0:	
+	mov	es:[di], ah		;apply the pattern
+	if	VESA_MULTISEG
+	 call	add_yinc
+	else	
+	 add	di, yinc
+	endif
+	cmp	si, 0
+	js	line_dyge_samex
+	ror	al, 1
+	jnc	line_dyge_notincdest
+	inc	di
+line_dyge_notincdest:
+	add	si, bp			;else epsilon += epsilon2
+	loop	line_dyge_loop
+	ret
+line_dyge_samex:
+	add	si, epsilon1
+	loop	line_dyge_loop
+	ret
+;
+EJECT
+;****************************************************************
+;Subroutine	HABLINE						*
+;	Entry:	X1-coordinate					*
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		patptr - pointer to fill pattern table		*
+;								*	
+;	Purpose:						*
+;		This routine will draw a line from (X1,Y1) to	*
+;		(X2,Y1) using a horizontal line algorithm.	*
+;****************************************************************
+HABLINE:
+	push	bp
+	push	Y2
+	mov	ax, Y1
+	mov	Y2, ax
+	call	BOX_FILL
+	pop	Y2
+	pop	bp
+	ret
+;
+EJECT
+;******************************************************************************
+; xline
+;	Draw a horizontal line with pattern
+;
+;	Entry	X1,Y1 = left edge  inclusive
+;		X2,Y1 = right edge inclusive
+;		WRT_MODE = writing mode ( 0 - 3 )
+;
+;******************************************************************************
+xline_swap:			; must swap X1 X2 es already loaded and di ok
+	and	di, 0fffeh	; make sure on word boundary
+	mov	ax, X1
+	mov	bx, X2
+	mov	X1, bx
+	mov	X2, ax
+	push	X1
+	push	X2
+	push	patmsk
+	push	patptr
+	mov	patptr, offset LN_MASK
+	mov	patmsk, 0
+	push	NEXT_PAT
+	mov	NEXT_PAT, 0
+	cmp 	WRT_MODE, 2	; is it xor mode
+	jnz	xline_swap_doit
+	cmp	LSTLIN, 0
+	jnz	xline_swap_doit
+	inc	x1		; shorten the edge if xor mode
+	mov	bx, X1
+	mov	ax, Y1
+	call	concat
+	and	di, 0fffeh
+xline_swap_doit:		
+	call	BOX_FILL_LINE
+	pop	NEXT_PAT
+	pop	patptr
+	pop	patmsk
+	mov	ax, LN_MASK
+	pop	X1
+	pop	X2
+	ret
+xline_noswap:			; es ok di ok must push x1,x2,y1
+	and	di, 0fffeh
+	push	patmsk
+	push	patptr
+	mov	patptr, offset LN_MASK
+	mov	patmsk, 0
+	push	NEXT_PAT
+	mov	NEXT_PAT, 0
+	push	X2
+	cmp	WRT_MODE, 2
+	jnz	xline_noswap_doit
+	cmp	LSTLIN, 0
+	jnz	xline_noswap_doit
+	mov	ax, X1
+	cmp	ax, X2
+	jz	xline_noswap_doit
+	dec	X2
+xline_noswap_doit:
+	call	BOX_FILL_LINE
+	pop	X2
+	pop	NEXT_PAT
+	pop	patptr
+	pop	patmsk
+	mov	ax, LN_MASK
+	ret
+EGA_KLUG:
+	push	bx
+	push	dx
+	push	ax
+	xor	bx, bx
+	call	box_ega_init
+        mov     bl, 0Fh                 ;These 2 lines
+        call    box_plane_enable        ;new in ViewMAX/II
+	mov	dx, ega_graphic_add
+	mov	al, ega_rmapmask_reg
+	out	dx, al
+	pop	ax
+	pop	dx
+	pop	bx
+	ret
+;
+EJECT
+;****************************************************************
+;DIS_CUR display the cursor					*
+;	Turn the cursor on for first time			*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+DIS_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli				;turn off interrupts while drawing first
+	mov	ax, HIDE_CNT
+	mov	bx, seg	HIDE_CNT	;load up the other segment
+	mov	ds, bx
+	call	EGA_KLUG		; make sure the ega is ok
+	mov	HIDE_CNT, ax
+	dec	HIDE_CNT
+	jg	dis_cur_1
+	mov	HIDE_CNT, 0		; don't allow negative
+;
+; New in ViewMAX: KBD_MOUSE_STS toggles pointer visibility for 
+; keyboard-only mouse
+;
+	cmp	mouse_type,0
+	jnz	dis_cur_0
+	test	KBD_MOUSE_STS, 0FFh
+	jz	dis_cur_1
+dis_cur_0:
+;
+; End of ViewMAX new bit
+;
+	mov	mouse_lock, 1
+	popf
+	call	mouson			;draw new x,y
+	pushf
+	cli
+	mov	mouse_lock, 0
+dis_cur_1:
+	mov	ax, HIDE_CNT
+	popf	
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+;****************************************************************
+;HIDE_CUR turn off the cursor					*
+;	Turn the cursor off					*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+HIDE_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli
+	mov	ax, HIDE_CNT
+	mov	bx, SEG HIDE_CNT
+	mov	ds, bx
+	call	EGA_KLUG
+	mov	HIDE_CNT, ax
+	inc	HIDE_CNT
+	cmp	HIDE_CNT,1		;is cursor on
+	jnz	hide_cur_1
+;
+; New in ViewMAX: KBD_MOUSE_STS toggles pointer visibility for 
+; keyboard-only mouse
+;
+	cmp	mouse_type,0
+	jnz	hide_cur_0
+	test	KBD_MOUSE_STS, 0FFh
+	jz	hide_cur_1
+hide_cur_0:
+;
+; End of ViewMAX new bit
+;
+	mov	mouse_lock, 1
+	popf
+	call	mousoff			;turn cursor off
+	pushf
+	cli
+	mov	mouse_lock, 0
+hide_cur_1:
+	mov	ax, HIDE_CNT
+	popf
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+;****************************************************************
+;move_cross							*
+;	Undraw old cross hair					*
+;								*
+;	Draw new cross hair					*	
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;		bx,cx are new x,y				*
+;	Exit	none						*
+;								*
+;****************************************************************
+MOV_CUR:
+	push	bp
+	push	ds
+	mov	ax,seg HIDE_CNT
+	mov	ds,ax
+	push	bx
+	push	cx			;save new x,y
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_1
+	call	EGA_KLUG
+	call	mousoff			;undraw old x,y
+mov_cur_1:
+	pop	cx
+	pop	bx
+curon:
+	mov	gcurx,bx
+	mov	gcury,cx
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_2
+	call	mouson			;draw new x,y
+mov_cur_2:
+	pop	ds
+	pop	bp
+	retF
+EJECT
+;****************************************************************
+;clip_cross							*
+;	Routine will clip the x,y location to the current	*
+;	addressable space					*
+;								*
+;	Entry	reg pair bx = new cursor x			*
+;		reg pair cx = new cursor y			*
+;	Exit	none						*
+;								*
+;****************************************************************
+clip_cross:
+	mov	al, bh
+	rcl	al, 1			; test if new x is < 0.
+	jnc	clipx1
+	xor	bx, bx			;   yes, then clip at 0
+	jmps	clipy
+clipx1:
+	mov	ax, XRESMX
+	sub	ax, bx
+	jnc	clipy			; if newx <= xresmax then clip newy
+	mov	bx, XRESMX		;   else newx = XRESMX
+clipy:
+	mov	al, ch
+	rcl	al, 1			; test if new y is < 0.
+	jnc	clipy1			; if newy >= 0 then test if < yresmx
+	xor	cx, cx			;   else clip y at 0.
+	jmp	clipdn
+clipy1:
+	mov	ax, true_yresmx
+	sub	ax, cx
+	jnc	clipdn			; if newy <= yresmax then exit
+	mov	cx, true_yresmx		;   else newy = yresmx
+clipdn:
+	ret
+;
+rmax		dw	xresmx - 16
+wrmax		dw	xresmx - 31
+;
+;
+mouson:	mov	mclip, 0	; assume no clipping
+	mov	yclip, 0
+	mov	ax, gcurx	; input mouse x-coord.
+ 	sub	ax, mxhot	; new x (ax) = gcurx - mxhot
+ 	jge	mxbig
+	add	ax,16
+	mov	mclip, -1
+mxbig:	cmp	ax, rmax	; rmax = xres_max - 16
+ 	jle	mxok
+;	x starts too big,
+;	can't draw the full mouse form with out drawing outside the screen,
+;	adjust mx start to rmax, and draw the first word only
+ 	mov	mclip, 1	; set flag
+ 	and	ax, 0fh		; start X mod 16
+ 	add	ax, wrmax	; adjust the start byte position to inside
+				; screen area
+mxok:	mov	cx, ax
+	and	cx, 0fh		; x mod 16 = shift count for bit alignment
+	inc	cx		; this is for the intel loop instruction
+	mov	mshft, cx	; save the shift count
+;
+;
+	mov	dx, gcury	; Cursor y-coordinate coord (upper left)
+;+++++++++++++++++++++++++++++++;
+; 	mov	cx, true_yresmx	; Nop's for Raster Coord. space
+;	sub	cx, dx		;
+;	mov	dx, cx		; dx = y-coordinate swapped
+;+++++++++++++++++++++++++++++++;
+ 	sub	dx, myhot	; dx = my-start
+ 	jb	myclip
+	mov	bx, true_yresmx	; ymax - mystart = no. of scan lines from
+ 	sub	bx, dx		;         ystart to bottom of screen
+ 	jnl	setht		; y start too big ?
+ 	mov	bx, 1		; draw one scan line of mouse form at bottom
+ 	mov	dx, true_yresmx	; set my-start to bottom of screen
+	jmps    htok
+setht:	cmp	bx, mheight	; set the no. of scan lines to draw	
+ 	jl	htok		; mheight = max scan lines to draw
+ 	mov	bx, mheight	; set to max mouse form height (16 is default)
+	jmps	htok
+myclip:
+	mov	cx,mheight
+	add	dx,cx
+	jnl	setht1
+	mov	dx,1
+setht1:
+	mov	bx,dx
+	sub	cx,bx
+	shl	cx,1
+	mov	yclip,cx
+	xor	dx,dx
+htok:	inc	bx		; this is for intel loop instruction
+	mov	mht, bx		; vertical scan line loop count
+ 	mov	oldmht, bx	; save for move cursor
+;
+;	3 - Compute mouse form start address
+;		ax = x-coord
+;	    	dx = y-coord
+;
+	mov	bx, ax		; bx = X coord
+;	mov	ax,true_yresmx
+;	sub	ax, dx		; ax = Y coord
+	mov	ax,dx
+	call	concat		; compute physical screen address
+				; returns di:bx (ead:dad)
+	if	VESA_MULTISEG
+	 mov	ax, cs:VESA_SLICE
+	 mov	oldslice, ax
+	endif
+	and	di, 0fffeh	; always draw 2 words, put address on
+				; word boundary
+	mov	oldul, di	; save old cursor address (upper left corner)
+	mov	si, di		; es:si has screen segment:offset
+	if	VESA_MULTISEG
+	 mov	ax, cs:VID_SEG
+	else
+	 mov	ax, graph_plane
+	endif
+	mov	es, ax
+	mov	di, offset mmask	; di = address of mouse data mask
+                     		; di has mouse data mask address
+				; 16 words mouse mask followed by 16 words
+				; mouse form
+	add	di, yclip	; adjust for clipping (clipped -y rows)
+;
+;	4 - Display mouse
+;
+	if	VESA_MULTISEG
+	 push	cs:VESA_SLICE
+	endif
+	call	mdraw	
+	if	VESA_MULTISEG
+	 pop	cs:VESA_SLICE
+	 call	setslice
+	endif
+	ret
+;
+if ( num_planes gt 1 ) and not (segment_access )
+mdraw:	
+	mov	al, mous_col_map			; get the two bit pel
+	mov	mous_col, al
+	lea	bx, mousbuf	; memory buffer area (32 words area)
+	mov	mousbuf_ptr,bx
+	mov	al, byte ptr true_planes
+	mov	plane_loop_count, al		; load up the plane count
+	mov	ax, 1			; set up the mask bit for plane/color
+mdraw_0:
+	if	VESA_MULTISEG		;Each time round, go back to the
+	 push	ax			;slice that was in force
+	 mov	ax, oldslice
+	 mov	cs:VESA_SLICE, ax
+	 call	setslice
+	 pop	ax
+	endif
+;   init the plane select port
+	mov	dx, plane_sel_port
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	mov	ax, bx
+	shl	ax, 1			; move the bit mask over one
+	push	ax
+	push	si
+	push	di
+	push	es
+	push	ds
+	mov	dx, mht		; vertical loop count
+	mov	ratht, dx
+	push	mousbuf_ptr
+	mov	bl, mous_col
+	and	bx, 3
+	shl	bx, 1
+	mov	bx, mous_jmp_tbl[bx]			; get the draw add
+	mov	mous_jmp,bx
+	shr	mous_col,1
+	shr	mous_col,1				; setup for next plane
+	sub	sp, 2		; save 1 word on stack
+	mov	bp, sp		; 2[bp] = mouse buffer offset address on stack
+;	setup es:di = mouse buffer pointer to use the stosw instruction
+	push	es
+	mov	ax, ds		; swap ds and es
+	pop	ds		; ds:si now point to screen mouse area
+	mov	es, ax		; es:[2[bp]] now point to memory mouse buffer
+	call	nextmy		; start mouse copy 
+	add	sp,4
+	pop	ds
+	pop	es
+	pop	di
+	pop	si
+	pop	ax
+	add	mousbuf_ptr,64
+;	add	di,64		; point to next mask/data set for screen
+	dec	plane_loop_count	; is line done
+	jnz	mdraw_0
+	ret
+;
+else
+mdraw:	
+	lea	bx, mousbuf	; memory buffer area (32 words area)
+	mov	mousbuf_ptr,bx
+	mov	al, byte ptr true_planes
+	mov	plane_loop_count, al		; load up the plane count
+	mov	al, mous_col_map			; get the two bit pel
+	mov	mous_col, al
+mdraw_0:
+	push	si
+	push	di
+	push	es
+	push	ds
+	mov	dx, mht		; vertical loop count
+	mov	ratht, dx
+	push	mousbuf_ptr
+	mov	bl, mous_col
+	and	bx, 3
+	shl	bx, 1
+	mov	bx, mous_jmp_tbl[bx]			; get the draw add
+	mov	mous_jmp,bx
+	shr	mous_col,1
+	shr	mous_col,1				; setup for next plane
+	sub	sp, 2		; save 1 word on stack
+	mov	bp, sp		; 2[bp] = mouse buffer offset address on stack
+;	setup es:di = mouse buffer pointer to use the stosw instruction
+	push	es
+	mov	ax, ds		; swap ds and es
+	pop	ds		; ds:si now point to screen mouse area
+	mov	es, ax		; es:[2[bp]] now point to memory mouse buffer
+	call	nextmy		; start mouse copy 
+	pop	ax
+	pop	ax
+ 	pop	ds
+ 	pop	es
+ 	pop	di
+ 	pop	si
+	add	mousbuf_ptr,64
+;	add	di,64		; point to next mask/data set for screen
+	mov	ax, es			; 
+	add	ax, next_plane
+	mov	es, ax			; point to the next plane
+	dec	plane_loop_count	; is line done
+	jnz	mdraw_0
+	ret
+endif
+;
+;	loop count = mouse height (ratht)
+;
+;	1 - copy from mouse area (screen) to mouse buffer (memory)
+;           (two words)
+; 
+mdlp:	mov	ax, [si]	; first word from mouse area
+	xchg	di, 2[bp]	; mouse buffer offset in [di]
+	stosw			; copy first word to buffer
+	mov	ax, 2[si]	; second word from mouse area
+	stosw			; old data on screen mouse area into mousbuf
+;
+;	2 - load and align mask	in ax,dx
+;
+	xchg	di, 2[bp]	; di has the pointer to mouse mask data	
+	mov	ax, es:[di]	; es = old ds, load mouse mask
+	sub	dx, dx		; set up 32 bits (2 words) mask
+;	not	dx		; mask = all 1's
+	mov	cx, es:mshft	; get the bit alignment shift count
+;	stc			; mask = 1's
+	clc			; mask = 0's
+	jmps	rotmask
+rotlp:	rcr	ax, 1
+	rcr	dx, 1
+rotmask:loop	rotlp		; ax,dx has correct mouse mask
+;
+;	3 - load and align mouse form in ax,bx
+;
+	mov	[bp], ax	; save first mask word on stack
+	mov	ax, es:32[di]	; mouse form follows the mouse mask
+	add	di, 2		; update to next mouse data scan line
+	sub	bx, bx		; clear second word for mouse form data
+	mov	cx, es:mshft	; bit alignment shift count
+	jmps	rotmous
+rotlp1:	shr	ax, 1		; shift mouse data (ax)
+	rcr	bx, 1		; carry into second word (bx)
+rotmous:loop	rotlp1		; ax:bx = mouse form aligned
+	mov	cx, [bp]	; get first word of mask, cx:dx = mask aligned
+;
+;	4 - Take care of mouse clipping
+;
+	cmp	es:mclip, 0	; clipped ?
+	je	lmform		; mouse not clipped
+	jl	mkuse2		; negative clip
+;	mouse clipped to the right of the screen (xmax)
+;	The first word in mouse area should be unchanged,
+;	followed by the first part of mouse form (cx).
+	mov	dx, cx		; dump the second part of mask 
+	xor	cx, cx
+;	mov	cx, 0ffffh	; set mask to leave the first word unchanged
+	mov	bx, ax		; dump the second part of mouse form
+	xor	ax, ax		; leave the first word unchanged
+	jmp	lmform
+mkuse2:
+;	mouse clipped to the left of the screen (x=0)
+;	The first word in mouse area should be the second part (dx) of
+;	mouse form, leave the second word in mouse area unchanged
+	mov	cx, dx		; dump the first part of mouse mask
+;	mov	dx, 0ffffh	; leave the second word unchanged
+	xor	dx, dx
+	mov	ax, bx		; dump the first part of mouse form
+	xor	bx, bx		; second word mask
+;
+;	5 - Apply the mask (cx,dx) then copy mouse data (ax,bx) into mouse area
+;
+lmform:
+if not byte_swap	
+	xchg	ah, al		; this is for intel
+	xchg	bh, bl
+	xchg	ch, cl
+	xchg	dh, dl
+endif
+;
+	push	di
+	mov	di, es:mous_jmp
+	jmp	di
+
+mous_to_00:
+if not rev_vid
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 2[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	or	cx, [si]
+	or	dx, 2[si]
+	or	cx, ax
+	or	dx, bx
+endif
+	jmps	nextsmy
+;
+mous_to_01:
+if not rev_vid
+	or	cx, [si]
+	or	dx, 2[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 2[si]
+	or	cx, ax
+	or	dx, bx
+endif
+	jmps	nextsmy
+;
+mous_to_10:
+if rev_vid
+	or	cx, [si]
+	or	dx, 2[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 2[si]
+	or	cx, ax
+	or	dx, bx
+endif
+	jmps	nextsmy
+;
+mous_to_11:
+if rev_vid
+	not	cx
+	not	dx
+	and	cx, [si]
+	and	dx, 2[si]
+	not	ax
+	not	bx		; data inverted to set to zero
+	and	cx, ax
+	and	dx, bx
+else
+	or	cx, [si]
+	or	dx, 2[si]
+	or	cx, ax
+	or	dx, bx
+endif
+;
+;	6 - update screen mouse area to next y scan line
+;
+nextsmy:
+	mov	[si], cx	; new mouse area = [old AND mask] xor mouse
+	mov	2[si], dx
+	pop	di
+	add	si, next_line	; offset to next y scan line
+if	VESA_MULTISEG
+	 jnc	nextmy
+	 inc	cs:VESA_SLICE
+	 call	setslice
+endif	 
+if multiseg
+	cmp	si, plane_size	; check against the edge of graph plane
+	jc	nextmy
+	add	si, move_to_first	; wrap back
+endif
+nextmy:	dec	es:ratht	; decrement vertical scan line count
+	jz	gmexit
+	jmp	mdlp		; loop until done
+gmexit:
+	ret
+;
+;
+mousoff:
+	if	VESA_MULTISEG
+	 push	cs:VESA_SLICE
+	 mov	ax, cs:VID_SEG
+	 call	xmousoff
+	 pop	cs:VESA_SLICE
+	 call	setslice
+	 ret
+;
+xmousoff:
+	else
+	 mov	ax, graph_plane
+	endif
+	mov	di, oldul	; setup es:di to screen old mouse area
+	mov	es, ax
+	lea	si, mousbuf	; setup ds:si to mouse buffer
+	mov	cx, oldmht	; no. of scan lines drawn (old mouse)
+if num_planes eq 1
+	call	mofflp
+	ret
+endif
+;
+if ( num_planes gt 1 ) and not (segment_access )
+	mov	al, byte ptr true_planes
+	mov	plane_loop_count, al	; load up the plane count
+	mov	ax, 1			; set up the mask bit for plane/color
+mousoff_0:
+;   init the plane select port
+	mov	dx, plane_sel_port
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	mov	ax, bx
+	shl	ax, 1			; move the bit mask over one
+	push	ax
+	push	cx
+	push	si
+	push	di
+	if	VESA_MULTISEG
+	 push	ax			;Select slice every time
+	 mov	ax, oldslice
+	 mov	cs:VESA_SLICE, ax
+	 call	setslice	
+	 pop	ax
+	endif
+	call	mofflp			; start mouse copy 
+	pop	di
+	pop	si
+	pop	cx
+	pop	ax
+	add	si,64			; point to next saved area
+	dec	plane_loop_count	; is line done
+	jnz	mousoff_0
+	ret
+endif
+;
+if (num_planes gt 1) and segment_access
+	mov	al, byte ptr true_planes
+	mov	plane_loop_count, al	; load up the plane count
+mousoff_0:
+	push	cx
+	push	si
+	push	di
+	if	VESA_MULTISEG
+	 push	ax			;Select slice every time
+	 mov	ax, oldslice
+	 mov	cs:VESA_SLICE, ax
+	 call	setslice	
+	 pop	ax
+	endif
+	call	mofflp			; start mouse copy 
+	pop	di
+	pop	si
+	pop	cx
+	add	si,64			; point to next saved area
+	mov	ax, es			; 
+	add	ax, next_plane
+	mov	es, ax			; point to the next plane
+	dec	plane_loop_count	; is line done
+	jnz	mousoff_0
+	ret
+endif
+;
+
+copylp:	lodsw			; data from buffer
+	mov	es:[di], ax	; data back to screen mouse area
+	lodsw
+	mov	es:2[di], ax	; mouse area is always two words
+;
+;	Update screen mouse area to next y scan line
+;
+	add	di, next_line	; offset to next y scan line
+	if	VESA_MULTISEG
+	 jnc	mofflp
+	 inc	cs:VESA_SLICE
+	 call	setslice
+	endif
+if multiseg
+	cmp	di, plane_size	; check against the edge of graph plane
+	jc	mofflp
+	add	di, move_to_first	; wrap back
+endif
+mofflp:	loop	copylp
+	ret
+
+EJECT
+dseg
+;******************************************************************************
+;*				DATA TO BE REASSEMBLED			      *
+;*			contains device dependent information		      *
+;******************************************************************************
+	public	Y1,Y2,X1,X2
+	public	LSTLIN
+	public	LN_MASK
+	public	FG_BP_1
+	public	txt_blt_mode
+	public	TMP_FG_BP
+	public	plane_loop_count
+if (num_planes gt 1 ) and (not segment_access )
+	public	plane_port_tbl
+	public	plane_read_tbl
+endif
+	public	WRT_MODE
+	public	GCURX,GCURY
+	public	HIDE_CNT
+	public	WORD_MASK_TABLE
+	public	byte_mask
+	extrn	contrl_ptr:dword	;pointer to the users contrl array
+;	extrn	chrptr:word		;pointer to the character pattern
+	extrn	patptr:word		;pointer to pattern fill style
+	extrn	patmsk:word		;the mask for the pattern fills in y
+	extrn	fill_int:word
+;;	extrn	y:word			;not used
+	extrn	mous_ci_mask:word
+	extrn	mous_ci_data:word
+	extrn	mous_col_map:byte
+	extrn	mous_col:byte
+	extrn	mxhot:word
+	extrn	myhot:word
+	extrn	mmask:word
+	extrn	udpt_np:word
+	extrn	ud_patrn:word
+	extrn   NEXT_PAT:word
+	extrn	hollow:word
+	extrn	solid:word
+;
+if msb_first
+ortbl		db	128		; 'or' mask table in stpixl
+		db	64
+		db	32
+		db	16
+		db	8
+		db	4
+		db	2
+		db	1
+else
+ortbl		db	1
+		db	2
+		db	4
+		db	8
+		db	16
+		db	32
+		db	64
+		db	128
+endif
+;
+dxgedy_tbl	dw	offset	dxgedy_replace
+		dw	offset	dxgedy_tran
+		dw	offset	dxgedy_xor
+		dw	offset	dxgedy_tran
+dygedx_tbl	dw	offset	dygedx_replace
+		dw	offset	dygedx_tran
+		dw	offset	dygedx_xor
+		dw	offset	dygedx_tran
+;
+box_optbl	dw	offset	box_replace_mode
+		dw	offset	box_tran_mode
+		dw	offset	box_xor_mode
+		dw	offset	box_invtran_mode
+byte_mask	db	11111111b
+		db	01111111b
+		db	00111111b
+		db	00011111b
+		db	00001111b
+		db	00000111b
+		db	00000011b
+		db	00000001b
+		db	00000000b
+if byte_swap
+word_mask_table	dw	0ffffh
+		dw	0ff7fh
+		dw	0ff3fh
+		dw	0ff1fh
+		dw	0ff0fh
+		dw	0ff07h
+		dw	0ff03h
+		dw	0ff01h
+		dw	0ff00h
+		dw	07f00h
+		dw	03f00h
+		dw	01f00h
+		dw	00f00h
+		dw	00700h
+		dw	00300h
+		dw	00100h
+		dw	0
+else
+word_mask_table	dw	0ffffh
+		dw	07fffh
+		dw	03fffh
+		dw	01fffh
+		dw	00fffh
+		dw	007ffh
+		dw	003ffh
+		dw	001ffh
+		dw	000ffh
+		dw	0007fh
+		dw	0003fh
+		dw	0001fh
+		dw	0000fh
+		dw	00007h
+		dw	00003h
+		dw	00001h
+		dw	0
+endif
+left_word_mask	dw	0
+right_word_mask	dw	0
+patcnt		dw	0	
+BOX_MODE	dw	0	
+;			
+	
+gcurx	dw	0			;current cursor X-coordinate
+gcury	dw	0			;current cursor Y-coordinate
+HIDE_CNT	dw	1
+;
+;variables used in abline
+; 
+WRT_MODE	dw	0
+LSTLIN		dw	0		;flag for last line of polline
+LN_MASK		dw	0ffffh		;line style
+TMP_FG_BP	dw	0
+txt_blt_mode	dw	0
+FG_BP_1		dw	0
+;
+old_ln_mask	dw	0
+epsilon1	dw	0
+yinc		dw	0
+					;0ffh for last line
+					; 0   not last line
+;
+X1	dw	0		;variables used in line drawing routine
+Y1	dw	0
+X2	dw	0
+Y2	dw	0
+;
+;;;	rs	3		; Does ViewMAX use these 3 bytes for anything?
+;
+mheight		dw	16		; default mouse height = 16 scanlines
+mshft		dw	0		; mouse form and mask bit alignment shift count
+mht		dw	16		; default mouse height = 16 lines
+oldul		dw	0		; old mouse upper left byte address
+		if	VESA_MULTISEG
+oldslice	 dw	0
+		endif
+oldmht		dw	16		; old mouse height
+ratht		dw	16		; mouse display loop count = mht
+mclip		dw	0		; mouse clipped flag
+					; 0 = not clipped, -1 = neg. clipped
+yclip		dw	0		; no. of mouse rows clipped (y < 0) 
+mon		dw	0		; mouse on flag
+mousbuf_ptr	dw	0		; temporary pointer storage for plane
+					; based mouse
+mousbuf		rw	32 * num_planes ; make sure buffer is large enough
+mous_jmp	dw	0
+mous_jmp_tbl	dw	offset	mous_to_00
+		dw	offset	mous_to_01
+		dw	offset	mous_to_10
+		dw	offset	mous_to_11
+vec_len_high		dw	1
+vec_len_low		dw	1
+plane_loop_count	db	num_planes
+if (num_planes gt 1) and (not segment_access)
+plane_port_tbl		db	plane_1_port_val	;0
+			db	plane_1_port_val	;1
+			db	plane_2_port_val	;2
+			db	plane_2_port_val	;3
+			db	plane_3_port_val	;4
+			db	plane_3_port_val	;5
+			db	plane_3_port_val	;6
+			db	plane_3_port_val	;7
+			db	plane_4_port_val	;8
+plane_read_tbl		db	plane_1_read_val	;0
+			db	plane_1_read_val	;1
+			db	plane_2_read_val	;2
+			db	plane_2_read_val	;3
+			db	plane_3_read_val	;4
+			db	plane_3_read_val	;5
+			db	plane_3_read_val	;6
+			db	plane_3_read_val	;7
+			db	plane_4_read_val	;8
+endif
+
+
+
+plygn_bez	dw 0
+flit_bez	dw 0
+flit_bez_off	dw 0
+plygn_rrot	db 0
+
+

@@ -1,0 +1,713 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1984, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+;**************************************************************************
+;*			    DEVICE SPECIFIC ROUTINES			  *
+;*									  *   
+;*		These routines and equates are device dependant.	  *
+;*									  *
+;*									  *
+;*									  *
+;**************************************************************************
+;Hist
+;Name	Date	Modification
+;
+include externs.a86
+include bbcregs.a86
+cseg
+;
+	public	INIT_G,DINIT_G
+	public	CONCAT
+	if not GSX
+	 public	TRAN_FM
+	 public	EX_TIMV
+	endif
+	public	S_COLMAP
+	public	I_COLMAP
+	public	CONTRL, INTIN, INTOUT, PTSIN, PTSOUT
+	public	MAP_COL
+	public	graph_plane
+	public	ccpm_dseg
+	public	update_screen
+;
+	extrn	entry:near		;the place to jump to if this module
+;integer array indexing equates
+	W_1	equ	word ptr 0
+	W_2	equ	word ptr 2
+	W_3	equ	word ptr 4
+	W_4	equ	word ptr 6
+	W_5	equ	word ptr 8
+	W_6	equ	word ptr 10
+	W_7	equ	word ptr 12
+	W_8	equ	word ptr 14
+	W_9	equ	word ptr 16
+	W_10	equ	word ptr 18
+CCPM_RLR	equ	word ptr .68h	;CCP/M-86 Ready List Root
+DOSPLUS_RLR	equ	word ptr .4Eh	;CCP/M-86 Ready List Root
+;
+
+ibmvdi	equ 0			;leave out the old code if for retail
+pc1512	equ 	false		;PC1512 various special cases
+;
+;
+;****************************************************************
+;		IBM STANDARD ROM BIOS CALLS			*
+;****************************************************************
+direct		equ	false		; direct = true --> don't use ROS calls
+					;   (for example, for two-screen stuff)
+					; set to false for PCjr
+
+SCREEN	equ	10H			;interrupts to use for rom routine I/O
+KEYBD	equ	16H
+rev_vid_on	equ	70h		;turn on reverse video bits
+rev_vid_off	equ	07h		;turn off reverse video bits 
+;
+read_cur_pos	equ	3			;bios rom calls for char I/O
+set_cur_pos	equ	2
+read_char	equ	8
+write_char	equ	9
+set_palette	equ	0bh
+get_character	equ	0			;keyboard read
+;
+EJECT
+;
+	jmp	entry		;if we come in from here, go to real entry
+
+;****************************************	
+;escape func 2
+; Enter Graphics Mode 
+;****************************************	
+INIT_G:
+	pushf
+	mov	ax,cs
+	mov	usermot+2,ax		;init the user call vectors segs
+	mov	userbut+2,ax
+	mov	usercur+2,ax
+	mov	ax,offset umotvec
+	mov	usermot,ax
+	mov	ax,offset ubutvec
+	mov	userbut,ax
+	mov	ax,offset mov_cur
+	mov	usercur,ax
+	popf
+;
+; Get the CCP/M data segment
+;
+	int	0FEh
+	mov	ccpm_dseg, ax
+	call	init_acorn
+escfn2: 
+	cmp	dispmode,0
+	jnz	escfn2_ok
+	ret
+escfn2_ok:
+	mov	dispmode,0		; 
+
+;	call	escfn8			; home alpha cursor.
+;	call	escfn9			; clear alpha display.
+if not direct
+	mov	ah, 0Fh
+	int	10h
+  	mov	mode_save,al		;save it
+endif
+  	mov	ax, 7			;Mode 7 : BBC Native
+  	int	screen
+	mov	al, 0			;DOS Plus is always console 0
+	cmp	xios_id, 100h
+	jnz	got_id
+	push	ds
+	mov	ds, ccpm_dseg
+	mov	bx, CCPM_RLR		; Get the current process 
+	mov	al, 32[bx]		; Get its console number	
+	pop	ds
+got_id:	push	ax			; AL = console number
+	call	clearmem		; clear graphics display
+	mov	ax, 83h			; Set up host screen
+	mov	bx, graph_plane
+	mov	cx, 2
+	pop	dx			; DL = console number
+	call	_xios
+if mouse
+	mov	bl,1
+	call	mouse_function		;initialize the mouse
+	mov	bl,2
+	call	mouse_function
+	mov	bl,1
+	call	mouse_function
+endif
+	ret
+;
+;****************************************	
+;escape func 3
+; Exit Graphics Mode
+;****************************************	
+DINIT_G:
+escfn3: 
+	cmp	dispmode,0
+	jz	escfn3_ok
+	ret
+escfn3_ok:				; 
+if mouse
+	mov	bl,2
+	call	mouse_function
+endif
+	mov	dispmode,1
+	mov	ax,graph_plane		; ld in graphics memory address
+	mov	es,ax
+	mov	cx,plane_size/2 	;number of bytes to zero
+	xor	ax,ax
+	mov	di,0
+	rep	stosw			; store plane_size zeros in graphmem
+if direct
+	mov	si,offset crt_init_table_a
+	call	crt_init
+else
+	mov	dl,mode_save		;get screen adapter
+	push	ds
+	mov	ax,0
+	mov	ds,ax
+	mov	bx,410h
+	mov	[bx],dl 		;select default card
+	mov	ah,0
+	mov	al,3			;alpha mode
+	int	screen
+	pop	ds
+endif
+	mov	attribute,rev_vid_off
+if ibmvdi
+	call	escfn8			;home
+	call	escfn9			;clear to end of screen
+else
+	mov	ah,2				;set cursor position 0,0
+	xor	dx, dx
+	mov	bh, dh
+	int	10h
+	mov	ah, 9
+	xor	bh, bh
+	mov	cx, 2000
+	mov	al, 20h
+	mov	bl, 7
+	int	10h
+endif
+	ret
+EJECT
+;****************************************************************
+;I_COLMAP							*	
+;	ENTRY	                                        	*
+;		INTIN[0] = color index				*
+;		INTIN[1] = req or actual flag			*
+;								*
+;	EXIT	                             			*
+;		INTOUT[0] = color index				*
+;		INTOUT[1] = RED					*
+;		INTOUT[2] = GRN					*
+;		INTOUT[3] = BLU					*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+I_COLMAP:
+	mov	bx, INTIN		;check if the index is in range of dev
+	cmp	bx, 0
+	jge	i_colmap_chkix
+	jmps	i_colmap_badix
+i_colmap_chkix:
+	cmp	bx, num_colors-1	;test if index is too high
+	jle	i_colmap_ixok
+	jmps	i_colmap_badix
+i_colmap_ixok:
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	mov	di, bx			; di = ptr to act/req col tbls
+	shl	di, 1
+	shl	di, 1
+	add	di, bx
+	add	di, bx			; mpy ix by 6 to point into table
+	mov	si, offset INTOUT+2
+	mov	cx, 3
+	mov	INTOUT, bx		; return the color index
+	mov	bx, offset req_col_tbl
+	test	INTIN+2, 0ffffh		; if != 0 then return actual values
+	jz	i_colmap_load
+	mov	bx, offset act_col_tbl
+i_colmap_load:
+	mov	ax, [bx+di]
+	mov	[si], ax
+	add	di, 2
+	add	si, 2
+	loop	i_colmap_load
+	ret
+i_colmap_badix:
+	mov	INTOUT, -1
+	ret	
+EJECT
+;****************************************************************
+;S_COLMAP							*	
+;	ENTRY	                                        	*
+;		INTIN[0] = color index				*
+;		INTIN[1] = RED 0 - 1000				*
+;		INTIN[1] = GRN 0 - 1000				*
+;		INTIN[1] = BLU 0 - 1000				*
+;								*
+;	EXIT	                             			*
+;		                           			*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+S_COLMAP:
+	mov	bx, INTIN		;check if the index is in range of dev
+	cmp	bx, 0
+	jge	s_colmap_chkix
+	jmp	s_colmap_exit
+s_colmap_chkix:
+	cmp	bx, num_colors-1	;test if index is too high
+	jle	s_colmap_ixok
+	jmp	s_colmap_exit
+s_colmap_ixok:
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	mov	di, bx			; di = ptr to act/req col tbls
+	shl	di, 1
+	shl	di, 1
+	add	di, bx
+	add	di, bx			; mpy ix by 6 to point into table
+	mov	dx, INTIN+2		; get the red value
+	call	s_colmap_val
+	mov	dx, INTIN+4		; get the grn value
+	call	s_colmap_val
+	mov	dx, INTIN+6		; get the blu values 
+	call	s_colmap_val
+s_colmap_exit:
+	ret
+; 
+s_colmap_val:
+	mov	req_col_tbl[di], dx	; save the requested value
+	add	di, 2			; move to the next value 
+	ret
+
+	if not GSX
+
+;****************************************************************
+;TRAN_FM							*	
+;	ENTRY	                                        	*
+;		                                     		*
+;								*
+;	EXIT	                             			*
+;		                           			*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+TRAN_FM:
+	push	bp	
+	push	es
+	push	ds
+	les	di,contrl_ptr
+	mov	ax, es: word ptr 14[di]
+	mov	bx, es: word ptr 16[di]		; get smfdb pointer
+	mov	dx, es: word ptr 18[di]
+	mov	bp, es: word ptr 20[di]		; get dmfdb pointer
+	mov	es, bx
+	mov	di, ax				; set es:di to it
+	mov	ax, es: word ptr 12[di]		; get num of planes in source
+; xform n to n planes
+	push	ax				; save the plane count
+	call	calc_src_form
+	call	calc_des_form
+	call	calc_seg_off
+	pop	bx				; get the plane count back
+col_to_col_lp:
+	push	si
+	push	di
+	push	bx
+	push	cx
+col_to_col_loop:
+	lodsw
+if not byte_swap
+	xchg	ah,al
+endif
+if rev_vid
+	not	ax
+endif
+	stosw
+	loop	col_to_col_loop
+	pop	cx
+	pop	bx
+	pop	di
+	pop	si
+	call	tran_next_seg
+	dec	bx
+	jnz	col_to_col_lp
+	pop	ds
+	pop	es
+	pop	bp
+	ret
+tran_next_seg:
+	push	cx
+	mov	ax, cx
+	mov	cl, 3
+	shr	ax, cl			;get the segment increment
+	mov	bp, es
+	add	bp, ax
+	mov	es, bp
+	mov	bp, ds
+	add	bp, ax
+	mov	ds, bp
+	pop	cx
+	mov	ax, cx			;get the byte increment
+	and	ax, 0007h
+	shl	ax, 1
+	add	si, ax
+	add	di, ax
+	ret
+;
+calc_seg_off:
+	mov	bp, cx				; find the next seg
+	shr	bp,1
+	shr	bp,1
+	shr	bp,1
+	mov	dx, cx
+	shl	dx, 1
+	and	dx, 000fh			; find the incremental offset
+;	mov	bx,num_planes
+	ret
+;
+calc_des_form:
+	mov	ds, bp
+	mov	si, dx				; load dmfdb pointer
+	not	bx
+	and	bx,1				; invert format
+	mov	10[si],bx			; toggle dest form
+	mov	ax, es: word ptr 2[di]		; get source ptr seg
+	mov	di, es: word ptr [di]		; offset
+	mov	es, ax
+	mov	ax, 2[si]
+	mov	si, [si]			; get dest ptr seg,offset
+	mov	ds, ax
+	xchg	si,di				; swap pointers
+	mov	ax, es
+	mov	dx, ds
+	mov	es, dx
+	mov	ds, ax
+	ret
+;
+calc_src_form:
+	mov	bx, es: word ptr 10[di]		; get the format flag
+	mov	ax, es: word ptr 8[di]		; get the width in words
+	mov	cx, es: word ptr 6[di]		; get the height in pixels
+	push	dx
+	mul	cx
+	pop	dx
+	mov	cx, ax				; cx = word count
+	and	bx,bx				; if bx = 0 then dev spec form
+	ret
+
+EJECT
+;****************************************************************
+;EX_TIMV							*	
+;	ENTRY	                                        	*
+;		CONTRL 7,8 = NEW VEC                            *
+;	EXIT	                             			*
+;		                           			*
+;		CONTRL 9,10 = OLD VEC				*
+;               INTOUT [0] = TIMER TICK COUNT IN MILLISECS	*
+;								*
+;****************************************************************
+EX_TIMV:
+	pushf
+	cli
+	push	es
+	push	ds
+	les	di,contrl_ptr
+	xor	ax,ax
+	mov	ds,ax
+	mov	si,4 * 1ch		;setup the offset to timer int vector
+	mov	ax,[si]
+	mov	es:word ptr 18[di],ax	;save old timer vector
+	mov	ax,2[si]
+	mov	es:word ptr 20[di],ax
+	mov	ax, es:word ptr 14[di]
+	mov	[si],ax
+	mov	ax, es:word ptr 16[di]
+	mov	2[si],ax
+	pop	ds
+	pop	es
+	popf
+	mov	ax,1
+	mov	CONTRL+8,ax		; flag that data is to be returned 
+	mov	ax, 40	
+	mov	INTOUT, ax		; return the millisec/tick count 
+	ret
+
+	endif
+
+if direct
+;
+;*****************************************************************
+;crt_init
+;	initializes the display controller with data from table
+;*****************************************************************
+crt_init:
+	mov	dx,03d4h		;select port
+	mov	bl,0			;select register
+	mov	cl,length crt_init_table_a
+crt_init_loop:
+	mov	al,bl
+	out	dx,al
+	inc	bx
+	inc	dx
+	lodsb
+	out	dx,al
+	dec	dx
+	loop	crt_init_loop
+	inc	dx
+	inc	dx
+	inc	dx
+	inc	dx
+	lodsb
+	out	dx,al
+	inc	dx
+	lodsb
+	out	dx,al
+	ret
+endif
+EJECT
+;****************************************************************
+;CONCAT 							*	
+;	ENTRY	Reg. BX - X-coordinate (dev. coord.)		*
+;		Reg. AX - Y-coordinate (dev. coord.)		*
+;								*
+;	EXIT	Reg. DI - Physical address			*
+;		Reg. BL - Byte index				*	
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+concat:
+	mov	cx, bytes_line
+	mul	cx			;AX = start of row
+	and	bx, 03ffh		;mask off 10 lsb for x-coord.
+	mov	di, bx
+	and	bx, 7			;BX = position within byte
+	mov	cl, 3
+	shr	di, cl			;DI = offset of byte
+	add	di, ax
+	ret
+
+EJECT
+ccpm_dseg	dw	0
+xios_id		dw	0
+graph_plane	dw	0
+
+init_acorn:
+	mov	ax, 80h			;Get XIOS version
+	call	_xios
+	mov	xios_id, cx
+	cmp	cx, 0100h		;CDOS?
+	jz	is_okdos
+	cmp	cx, 0200h		;DOSPLUS?
+	mov	dx, offset bados
+	jz	is_okdos
+diewith:
+	mov	ah, 9
+	int	21h
+	mov	ah, 0
+	int	21h
+;
+is_okdos:
+;
+; We can't put the framebuffer in the driver's stack segment like GEM/2 does,
+; because something (be it GEM/3 or DOS Plus) won't load a driver that's
+; bigger than 64k (it only loads (driver size % 64k) bytes). So allocate it
+; like the mono one does under CDOS.
+;
+	mov	cl, 37h
+	mov	dx, offset mcb
+	int	0E0h
+	or	al, al
+	mov	dx, offset nomem
+	jnz	diewith
+	mov	ax, mcb
+	mov	graph_plane,ax
+	ret
+;
+; NB: The first call (to XIOS fn 80h) is done before xios_id is set.
+; Fortunately XIOS function 80h doesn't care what ES is set to (we hope!) 
+;
+_xios:	cmp	xios_id, 200h
+	jz	xios_dosplus
+	push	ds
+	mov	ds, ccpm_dseg
+	mov	si, CCPM_RLR
+	push	es
+	mov	es, 16[si]	;Process UDA
+goxios:	callf	XIOS
+	pop	es
+	pop	ds
+	ret
+;
+xios_dosplus:
+	push	ds
+	mov	ds, ccpm_dseg
+	push	es
+	mov	es, DOSPLUS_RLR
+	jmps	goxios
+;
+update_screen:
+	cmp	touched, 0
+	jz	no_update
+	call	get_upd_rect
+if num_planes eq 1
+	mov	ax, 84h		;Update B/W rectangle
+else
+	mov	ax, 8Ch		;Update colour rectangle
+endif
+	mov	bx, graph_plane
+	call	_xios
+	mov	touched, 0
+no_update:
+	ret
+;
+; Convert the pixel-based update rectangle to character cells
+;
+get_upd_rect:
+	mov	cl, 3
+	mov	ax, update_top
+	cmp	ax, yresmx
+	jc	gr1
+	xor	ax, ax
+gr1:	shr	ax, cl
+	mov	ch, al		;CH = top row
+	mov	ax, update_bottom
+	cmp	ax, yresmx
+	jc	gr2
+	mov	ax, yresmx
+gr2:	shr	ax, cl
+	mov	dh, al		;DH = bottom row
+	mov	ax, update_right
+	cmp	ax, xresmx
+	jc	gr3
+	mov	ax, xresmx
+gr3:	shr	ax, cl
+	mov	dl, al		;DL = right column
+	mov	ax, update_left
+	cmp	ax, xresmx
+	jc	gr4
+	xor	ax, ax
+gr4:	shr	ax, cl
+	mov	cl, al		;CL = left column
+	cmp	cl, chars_line
+	jc	gr5
+	mov	cl, chars_line - 1
+gr5:	cmp	dl, chars_line
+	jc	gr6
+	mov	dl, chars_line - 1
+gr6:	cmp	cl, dl
+	jc	gr7
+	xchg	cl, dl
+gr7:	cmp	ch, lines_page
+	jc	gr8
+	mov	ch, lines_page - 1
+gr8:	cmp	dh, lines_page
+	jc	gr9
+	mov	dh, lines_page - 1
+gr9:	cmp	ch, dh
+	jc	gr10
+	xchg	ch, dh
+gr10:	ret
+;
+; No changeable palettes
+;
+escf60:	ret	
+;
+EJECT
+include	ibmmdvsp.a86
+include update.a86
+if mouse
+cseg
+include bbcmouse.a86
+endif
+cseg
+include monmmre1.a86
+include monmmre2.a86
+dseg
+include bbcdev.a86
+if direct
+;
+crt_init_table_g   db	38h,28h,2dh,0ah,7fh,6h,64h,70h,2,1,0,0bh,0,0,0,0
+		   db	1eh,3fh
+;
+crt_init_table_a   db	71h,50h,5ah,0ah,1fh,6h,19h,1ch,2,7,6,7,0,0,0,0
+		   db	29h,30h
+endif
+dispmode	dw	1
+mode_save	db	0
+if not rev_vid
+act_col_tbl	dw	   0,    0,    0	;black
+		dw	1000, 1000, 1000	;white
+req_col_tbl	dw	   0,    0,    0	;black
+		dw	1000, 1000, 1000	;white
+else
+act_col_tbl	dw	1000, 1000, 1000	;white
+		dw	   0,    0,    0	;black
+req_col_tbl	dw	1000, 1000, 1000	;white
+		dw	   0,    0,    0
+endif
+;
+; Mimic what the original driver did, though I think it's wrong.
+;
+MAP_COL		dw	0
+		dw	1		;red
+		dw	2		;green
+		dw	3		;blue
+		dw	0		;cyan
+		dw	1		;yellow	
+		dw	2		;magenta
+		dw	3		;white
+		dw	0
+		dw	1
+		dw	2
+		dw	3
+		dw	0
+		dw	1
+		dw	2
+		dw	3
+
+mcb		dw	0		;Segment
+		dw	plane_size/8	;Paragraphs
+		db	0		;Extra
+
+bados		db	'Not Acorn CCP/M or DOS Plus',13,10,'$'
+nomem		db	'Cannot allocate framebuffer',13,10,'$'
+
+CONTRL          rw      CONTRL_SIZE
+INTIN           rw      INTIN_SIZE
+PTSOUT          rw      PTSOUT_SIZE
+		include	date.a86
+		db ' Acorn Second Processor mono driver '
+		include copyrt.a86
+		rs offset PTSIN + 2 * PTSIN_SIZE + 4 - offset $
+
+INTOUT		rw INTOUT_SIZE
+
+
+

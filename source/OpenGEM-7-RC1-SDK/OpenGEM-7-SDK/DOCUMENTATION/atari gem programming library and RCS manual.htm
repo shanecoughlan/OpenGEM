@@ -1,0 +1,802 @@
+<!doctype html public "-//w3c//dtd html 4.0 transitional//en">
+<html>
+<head>
+   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+   <meta name="GENERATOR" content="Mozilla/4.73 [en] (Win98; U) [Netscape]">
+</head>
+<body>
+
+<center>
+<h1>
+MadMan</h1></center>
+
+<center>
+<h2>
+A manual for MAD</h2></center>
+
+<h3>
+Introduction</h3>
+MAD is a simple 'inter-library' based on GEM, which sits above a real library.
+It was originally written as a more entertaining way of porting an ST program
+with a large rsc-file to svgalib in Linux than a line-by-line translation
+of the source, but it has been used for several of my programs and may
+be of more general use.
+<p>The current version uses Allegro, which is a very useful multi-platform
+graphics library, and has been tested in Windos and Linux.
+<p>The basic theory behind MAD is that you can do most of what you want
+in an application by using plain C for data manipulation and GEM for the
+GUI functions, if your application can call routines in some other library
+to mimic the effect of the GEM calls, and the other library needs to be
+no more visible than the TOS.
+<p>Handles and windows are not properly supported because I am only working
+at the application level, but all the GEM calls I used on the ST have near
+equivalents in MAD.
+<br>&nbsp;
+<h3>
+Legalities</h3>
+Use of MAD is under my <a href="../madalleg/base/beware.html">BeWare</a>
+License; if this restricts your use of it, let me know.
+<br>&nbsp;
+<h3>
+Structures and Routines</h3>
+Many of these are boring and old hat to long-time ST users, but, after
+all, that's the whole idea.
+<br>&nbsp;
+<h3>
+Tos and General</h3>
+<a href="#Getrez">short Getrez()</a>
+<p><a href="#Physbase">char *Physbase()</a>
+<p><a href="#Logbase">char *Logbase()</a>
+<p><a href="#Setscreen">void Setscreen(int, int)</a>
+<h3>
+Palette Routines</h3>
+<a href="#palette">Palette overview</a>
+<p><a href="#Setpalette">void Setpalette()</a>
+<p><a href="#Getpalette">int Getpalette()</a>
+<p><a href="#Resetpalette">int Resetpalette(int number)</a>
+<p><a href="#Setcolor">int Setcolor(int colorno, unsigned char *color)</a>
+<p><a href="#Palettize">void Palettize(int lemgth, unsigned char *index,
+unsigned char *palette)</a>
+<p><a href="#Storepalette">void Storepalette(short from, short total, char
+*colors)</a>
+<p><a href="#Forcepalette">void Forcepalette(short from, short total, char
+*colors)</a>
+<p><a href="#Defaultpalette">void Defaultpalette()</a>
+<p><a href="#Getcolor">void Getcolor(int colno, unsigned char *savecolor)</a>
+<p><a href="#Grabpalette">int Grabpalette(unsigned char *savepalette)</a>
+<br>&nbsp;
+<h3>
+VDI Routines</h3>
+Under TOS, the handle, which is the first parameter in all the VDI routines
+is assigned to a workstation by the operating system, and used by the operating
+system to determine which workstation the operation takes effect in, but
+there is no easy way to translate this to other systems, so the only use
+MAD makes of handles is to decide which screen to operate on.
+<p><a href="#vsl_color">int vsl_color(int handle, int color)</a>
+<p><a href="#vsf_color">int vsf_color(int handle, int color)</a>
+<p><a href="#vst_color">int vst_color(int handle, int color)</a>
+<p><a href="#vst_effects">int vst_effects(int handle, int effects)</a>
+<p><a href="#vst_font">int vst_font(int handle, int fontno)</a>
+<p><a href="#vst_load_font">int vst_load_font(int handle, const char *fontname)</a>
+<p><a href="#vst_user_font">int vst_user_font(int handle, GFONT *font)</a>
+<p><a href="#vst_unload_font">int vst_unload_font(int handle, int fontno)</a>
+<p><a href="#v_gtext">void v_gtext(int handle, int ox, int oy, const char
+*text)</a>
+<p><a href="#v_pline">void v_pline(int handle, int count, short *pxy)</a>
+<p><a href="#v_bar">void v_bar(int handle, short *pxy)</a>
+<p><a href="#v_opnvwk">int v_opnvwk(int *handle);</a>
+<p><a href="#v_clrwk">void v_clrwk(int handle)</a>
+<p><a href="#v_clsvwk">void v_clsvwk(int handle)</a>
+<p><a href="#vs_clip">void vs_clip(int handle, int flag, short *pxy);</a>
+<p><a href="#v_hide_c">void v_hide_c(int handle);</a>
+<p><a href="#v_show_c">void v_show_c(int handle, int count)</a>
+<p><a href="#vq_mouse">void vq_mouse(int handle, short *butn, short *x,
+short *y)</a>
+<p><a href="#vq_key_s">void vq_key_s(int handle, short *kbstat)</a>
+<p><a href="#vq_keybd">int vq_keybd(int handle)</a>
+<p><a href="#vro_cpyfm">void vro_cpyfm(int handle, int mode, short *pxy,
+FDB *src, FDB *dest)</a>
+<h3>
+AES Routines</h3>
+The AES holds the highest level of user interface routines and a surprising
+number of them were built entirely from other MAD routines, which makes
+them instantly portable to other platforms when you have puzzled your way
+through translating the lower routines.
+<br>&nbsp;
+<h3>
+Initialization and Exit</h3>
+<a href="#appl_init">int appl_init(int res)</a>
+<p><a href="#appl_exit">int appl_exit()</a>
+<h3>
+Resource routines</h3>
+<a href="#resources">Resource description</a>
+<p><a href="#rsrc_load">int rsrc_load(const char *filename)</a>
+<p><a href="#rsrc_free">int rsrc_free()</a>
+<p><a href="#rsrc_include">int rsrc_include(void *array)</a>
+<p><a href="#rsrc_gaddr">int rsrc_gaddr(int type, int index, void *address)</a>
+<p><a href="#objc_draw">int objc_draw(OBJECT *dialog, int startobj, int
+depth, int clipx, int clipy, int clipw, int cliph)</a>
+<p><a href="#objc_find">int objc_find(OBJECT *dialog, int seekobj, int
+depth, int mx, int my)</a>
+<p><a href="#objc_offset">int objc_offset(OBJECT *dialog, int seekobj,
+int depth, short *screenx, short *screeny)</a>
+<p><a href="#graf_rubberbox">int graf_rubberbox(int ox, int oy, int minw,
+int minh, short *lastw, short *lasth)</a>
+<p><a href="#graf_dragbox">int graf_dragbox(int movew, int moveh, int ox,
+int oy, int bordx, int bordy, int bordw, int bordh, short *lastx, short
+*lasty)</a>
+<p><a href="#graf_slidebox">int graf_slidebox(OBJECT *slider, int S_Gauge,
+int S_Slide, int slvh)</a>
+<br>&nbsp;
+<h3>
+Form Routines</h3>
+These handle interaction with whatever resource is on the screen.
+<p><a href="#form_center">int form_center(OBJECT *dialog, short *x, short
+*y, short *w, short *h)</a>
+<p><a href="#form_dial">int form_dial(int fo_diflag, int fo_dilittx, int
+fo_dilitty, int fo_dilittw,</a>
+<br><a href="#form_dial">int fo_dilitth, int dix, int diy, int diw, int
+dih)</a>
+<p><a href="#form_do">int form_do(OBJECT *dialog, int editobj)</a>
+<p><a href="#form_alert">int form_alert(int dfault, const char *alert)</a>
+<p><a href="#form_error">int form_error(int number)</a>
+<p><a href="#form_error_text">int form_error_text(char *text)</a>
+<p><a href="#form_infobox">int form_infobox(OBJECT *dialog)</a>
+<p><a href="#form_input">int form_input(int length, char *ptmplt, int default,
+char *label)</a>
+<p><a href="#form_input_text">void form_input_text(int length, char *ptemplate,
+char *text, char *label)</a>
+<br>&nbsp;
+<h3>
+Menu Routines</h3>
+Menus are special dialogs which sit up at the top of the screen, and also
+a major mess. They need their own routines because GEM, and therefore MAD,
+doesn't recognise them as a special case. Sigh.
+<p><a href="#menu_bar">int menu_bar(OBJECT *menu, int flag)</a>
+<p><a href="#menu_tnormal">int menu_tnormal(OBJECT *menu, int title, int
+norm)</a>
+<p><a href="#menu_icheck">int menu_icheck(OBJECT *menu, int title, int
+check)</a>
+<p><a href="#menu_ienable">int menu_ienable(OBJECT *menu, int title, int
+enable)</a>
+<br>&nbsp;
+<h3>
+Event Routines</h3>
+These are the mouse and keyboard operations and, in general, have fairly
+complicated conditions and results, built round a generic mouse/keyboard
+event which tries to encapsulate the different rules of different systems
+and return predictable results.
+<p><a href="#evnt_timer">int evnt_timer(int locount, int hicount)</a>
+<p><a href="#evnt_mouse">int evnt_mouse(int mflags, int mx, int my, int
+mwidth, int mheight,</a>
+<br><a href="#evnt_mouse">&nbsp;short *x, short *y, short *butn, short
+*kstate)</a>
+<p><a href="#evnt_keybd">int evnt_keybd()</a>
+<p><a href="#evnt_button">int evnt_button(int bmaxclicks, int bmask, int
+bstate, short *x, short *y, short *butn, short *kstate)</a>
+<p><a href="#evnt_mesag">int evnt_mesag(short *msgbuff)</a>
+<p><a href="#evnt_multi">int evnt_multi(int aflags, int bmaxclicks, int
+bmask, int bstate,</a>
+<br><a href="#evnt_multi">int m1flags, int m1x, int m1y, int m1width, int
+m1height,</a>
+<br><a href="#evnt_multi">int m2flags, int m2x, int m2y, int m2width, int
+m2height,</a>
+<br><a href="#evnt_multi">short *msgbuff, int locount, int hicount, short
+*x, short *y,</a>
+<br><a href="#evnt_multi">short *butn, short *kstate, short *kreturn, short
+*breturn)</a>
+<br>&nbsp;
+<h3>
+Mouse Shape Routine</h3>
+<a href="#graf_mouse">int graf_mouse(int mode, void *shape)</a>
+<br>&nbsp;
+<h3>
+File Selector Routines</h3>
+<a href="#fsel_exinput">int fsel_exinput(char *path, char *selfile, short
+*button, const char *label)</a>
+<p><a href="#fsel_input">int fsel_input(char *path, char *selfile, short
+*button)</a>
+<p><a href="#fsel_set_extn">void fsel_set_extn(char *type)</a>
+<br>&nbsp;
+<h3>
+Useful Macros</h3>
+These are definitions and mnemonics understood by MAD I haven't referred
+to. A full list is in the header files.
+<br>&nbsp;
+<h3>
+Key definitions across libraries</h3>
+Once you leave the elegant simplicity of the ST, keyboards become a real
+pain. MAD translates the actual key returns to the following numbers.
+<p>CARRET 13 /*Return key*/
+<br>AKEY 'a'
+<br>BKEY 'b'
+<br>CKEY 'c'
+<br>DKEY 'd'
+<br>EKEY 'e'
+<br>FKEY 'f'
+<br>GKEY 'g'
+<br>IKEY 'i'
+<br>LKEY 'l'
+<br>NKEY 'n'
+<br>PKEY 'p'
+<br>QKEY 'q'
+<br>RKEY 'r'
+<br>SKEY 's'
+<br>UKEY 'u'
+<br>XKEY 'x'
+<br>YKEY 'y'
+<br>COMMAKEY ','
+<br>STOPKEY '.'
+<br>SLASHKEY '/'
+<br>SPACEKEY ' '
+<br>ESCKEY 27
+<br>TABKEY 9
+<br>BCKKEY 127 /*Backspace*/
+<br>DELKEY 128 /*Delete*/
+<br>F1KEY 323 /*F1*/
+<br>F2KEY 324
+<br>F3KEY 325
+<br>F4KEY 326
+<br>/*Spot what's missing*/
+<br>UAKEY 354 /*Up arrow*/
+<br>DAKEY 360
+<br>RAKEY 358
+<br>LAKEY 356
+<br>STLBUT 1 /*Right mouse button*/
+<br>STRBUT 2 /*Left mouse button*/
+<br>&nbsp;
+<h3>
+Color Handling Generalities</h3>
+<a NAME="palette"></a>Color manipulation in MAD had to be changed considerably
+or restricted to constant reuse of the first 16 colors of the palette,
+so there is a lot of difference in the color routines from the 16-color
+originals.
+<br>The first 16 colors of the MAD palette are the 16 default colors of
+the ST palette, with black and white transposed between resolutions 0 and
+1. These can be changed, other colors can be added and pictures mapped
+to already used colors.
+<br>Each color is expressed as 3 bytes of RGB, and color 0 is always treated
+as transparent.
+<br>WHITE 0
+<br>BLACK 1
+<br>RED 2
+<br>GREEN 3
+<br>BLUE 4
+<br>CYAN 5
+<br>YELLOW 6
+<br>MAGENTA 7
+<br>LWHITE 8
+<br>LBLACK 9
+<br>LRED 10
+<br>LGREEN 11
+<br>LBLUE 12
+<br>LCYAN 13
+<br>LYELLOW 14
+<br>LMAGENTA 15
+<br>&nbsp;
+<h3>
+The Components of the MAD Resource</h3>
+<a NAME="resources"></a>The GEM resource or rsc-file is a description of
+a dialog through which instructions can be sent to the program. The resource
+is made up of 'objects', separated into hierarchical 'trees', and associated
+texts. The MAD version is slightly cut down, but handles everything I use,
+including long filenames and paths in the file selector.
+<p>Resources can be built and re-edited with <a href="Madorcs.txt">Madorcs</a>.
+<p>The various structures and macros used are:
+<p>typedef struct rshdr {
+<br>unsigned short rsh_rssize; /* total bytes in resource */
+<br>unsigned short rsh_tedinfo; /* offset to tedinfo[] */
+<br>unsigned short rsh_object; /* offset to object[] */
+<br>unsigned short rsh_trindex; /* offset to object tree index */
+<br>short rsh_nteds; /* number of tedinfos */
+<br>short rsh_nobs; /* number of objects */
+<br>short rsh_ntrees; /* number of trees */
+<br>} RSHDR;
+<br>The header for a resource.
+<p>typedef struct object {
+<br>short ob_next;
+<br>short ob_head;
+<br>short ob_tail;
+<br>unsigned char ob_type;
+<br>unsigned char ob_flags;
+<br>unsigned char ob_colbyte;
+<br>unsigned char ob_font;
+<br>unsigned char ob_border;
+<br>unsigned char ob_fill;
+<br>char *ob_spec;
+<br>short ob_x;
+<br>short ob_y;
+<br>short ob_width;
+<br>short ob_height;
+<br>} OBJECT;
+<p>typedef struct tedinfo {
+<br>char *te_ptext;
+<br>char *te_ptmplt;
+<br>short te_pvalid;
+<br>short te_ptxtlen;
+<br>} TEDINFO;
+<p>Most of the detail here should be irrelevant even to the programmer,
+once the resource is set up. The coordinates are simple pixel measurements
+with respect to the object directly above in the hierarchy. The flags are
+detailed below. The ob_spec contains the single character for R_CHAR, the
+address of a tedinfo for R_FTEXT and R_STEXT, and the text address for
+the other text types.
+<p>MAX_DEPTH 8
+<br>The maximum depth of search or draw
+<p>Resource Types
+<br>R_BLOCK 20 A rectangle of the background color
+<br>R_IBOX 25 A notional rectangle, ie you can see through it
+<br>R_CHAR 27 A single character
+<br>R_TEXT 28 A simple string, neither editable nor formatted
+<br>R_FTEXT 29 A string which will be printed with certain formatting rules
+<br>R_ETEXT 30 A text which can be edited by the user
+<br>R_STEXT 31 An editable text which can scroll, used in the file selector
+<br>R_TITLE 32 A string used in menu headings
+<p>Object Flags
+<br>NONE&nbsp;&nbsp;&nbsp; 0
+<br>DEFAULT&nbsp;&nbsp;&nbsp; 1&nbsp;&nbsp;&nbsp; Pressing return equals
+clicking on this
+<br>EXIT&nbsp;&nbsp;&nbsp; 2&nbsp;&nbsp;&nbsp; Resource handling is terminated
+<br>CHECKED&nbsp;&nbsp;&nbsp;&nbsp; 4&nbsp;&nbsp;&nbsp; Object is checked
+<br>LASTOB&nbsp;&nbsp;&nbsp; 8&nbsp;&nbsp;&nbsp; The last object in a tree
+(set of objects}
+<br>HIDETREE&nbsp;&nbsp;&nbsp; 16&nbsp;&nbsp;&nbsp; This object and any
+contained in it are neither drawn nor available
+<br>SELECTED&nbsp;&nbsp;&nbsp; 32&nbsp;&nbsp;&nbsp; Object has been selected
+and is shown recolored
+<br>DISABLED&nbsp;&nbsp;&nbsp; 64&nbsp;&nbsp;&nbsp; Object can't be selected
+and is shown feint
+<br>OUTLINED&nbsp;&nbsp;&nbsp; 128&nbsp;&nbsp;&nbsp; Object is outlined
+<br>&nbsp;
+<h3>
+The definition of a GEM font, as used for text in MAD</h3>
+<a NAME="GFONT"></a>typedef struct GFONT {
+<br>short font_id; /* Font face identifier, 1 -> system font */
+<br>short size; /* Font size in points */
+<br>char name[32]; /* Font name */
+<br>short first_ade; /* Lowest ADE value in the face */
+<br>short last_ade; /* Highest ADE value in the face */
+<br>short top; /* Distance of top line relative to baseline*/
+<br>short ascent; /* Distance of ascent line relative to baseline*/
+<br>short half; /* Distance of half line relative to baseline*/
+<br>short descent; /* Distance of decent line relative to baseline*/
+<br>short bottom; /* Distance of bottom line relative to baseline*/
+<br>/* All distances are measured in absolute values */
+<br>/* rather than as offsets. They are always +ve */
+<br>short max_char_width; /* Width of the widest character in font */
+<br>short max_cell_width; /* Width of the widest character cell in face
+*/
+<br>short loffset; /* Left Offset see Vdi appendix G */
+<br>short roffset; /* Right offset " " " */
+<br>short thicken; /* Number of pixels by which to thicken characters*/
+<br>short ul_size; /* Width in pixels of the underline */
+<br>short lighten; /* The mask used to lighten characters */
+<br>short skew; /* The mask used to determine when to perform */
+<br>/* additional rotation on the character to perform skewing */
+<br>short flags; /* Flags */
+<br>/* $01 default system font */
+<br>/* 02 horiz offset table should be used */
+<br>/* 04 byte-swap flag (thanks to Intel idiots) */
+<br>/* 08 mono spaced font */
+<br>short * hoff_base; /* Offset to horizontal offset table */
+<br>short * coff_base; /* Offset to character offset table */
+<br>/* font bitmap is byte[width][height], width must be even */
+<br>short * form_base; /* Offset to font data */
+<br>short form_width; /* Form width (#of bytes/scanline in font data) */
+<br>short form_height; /* Form height (#of scanlines in font data) */
+<br>char * next_font; /* Pointer to next font in face */
+<br>} GFONT;
+<p><a NAME="Getrez"></a>short Getrez()
+<br>Returns the resolution for the console or the window size in X.
+<br>The resolutions used are:
+<br>0: 320*200
+<br>1: 640*480
+<br>2: 800*600
+<br>All screens are 8-bit, 256 colors.
+<p><a NAME="Physbase"></a>char *Physbase()
+<br>Actually returns NULL. The copying routines use this to signal the
+need to switch to screen manipulation functions.
+<p><a NAME="Logbase"></a>char *Logbase()
+<br>Returns the address of a pre-allocated virtual screen. This facilitates
+performing all the graphics operations off-screen and page-flipping.
+<p><a NAME="Setscreen"></a>void Setscreen(int, int)
+<br>If the first parameter is -1, the second parameter is the resolution
+that will be set, otherwise the second parameter is ignored.
+<br>0 copies the virtual screen to the physical screen, and sets the handle
+to point to the physical screen.
+<br>1 copies the physical screen to the virtual screen, and sets the handle
+to the virtual screen.
+<p><a NAME="Setpalette"></a>void Setpalette()
+<br>Refreshes the screen palette to the MAD palette.
+<br>Setpallete is defined to this; the original C compiler for the ST misspelled
+the word and people grew accustomed to it.
+<p><a NAME="Getpalette"></a>int Getpalette()
+<br>Returns the number of colors which are currently assigned.
+<p><a NAME="Resetpalette"></a>int Resetpalette(int number)
+<br>If the parameter is 256, the number of colors is reset to the starting
+number, actually 16. Otherwise it is set to the parameter. The return is
+the actual number of colors now recognized.
+<br>Note that this routine does not change the screen colors.
+<p><a NAME="Setcolor"></a>int Setcolor(int colorno, unsigned char *color)
+<br>If the first parameter is less than 256, the color at that point in
+the MAD palette is changed to the second parameter and the first parameter
+is returned.
+<br>Otherwise, the second parameter is checked against the used palette.
+If one of the used colors is no more than 1 point each of RGB away, its
+number is returned.
+<br>Failing this, if there is room, a new color is added and the return
+is its number.
+<br>If all else fails, the number of the nearest color is returned.
+<p><a NAME="Palettize"></a>void Palettize(int lemgth, unsigned char *index,
+unsigned char *palette)
+<br>This routine is passed a length and an index array and color array
+of that length. It puts the colors into the MAD palette using Setcolor
+and stores the assigned palette numbers in the index.
+<br>The index can now be used to map a picture's pixels onto the screen
+or into memory.
+<p><a NAME="Storepalette"></a>void Storepalette(short from, short total,
+char *colors)
+<br>This routine puts the colors in the array into the palette, starting
+at a point, for a length, ignoring any duplicates or already assigned colors.
+<br>It does not change the screen palette.
+<p><a NAME="Forcepalette"></a>void Forcepalette(short from, short total,
+char *colors)
+<br>This routine does change the screen palette.
+<p><a NAME="Defaultpalette"></a>void Defaultpalette()
+<br>Restores all palette conditions to what they were at startup.
+<p><a NAME="Getcolor"></a>void Getcolor(int colno, unsigned char *savecolor)
+<br>Atari Setcolor returns the old color; mine returns the number.
+<br>Palettize means I don't know my actual colors, so this tells me what
+color I have in a slot.
+<p><a NAME="Grabpalette"></a>int Grabpalette(unsigned char *savepalette)
+<br>Copies the whole palette to savepalette, so it can be restored.
+<br>Returns the number of colors actually used.
+<p><a NAME="vsl_color"></a>int vsl_color(int handle, int color)
+<br>Sets the color, ie palette number, with which lines are drawn.
+<p><a NAME="vsf_color"></a>int vsf_color(int handle, int color)
+<br>Sets the color for fills.
+<p><a NAME="vst_color"></a>int vst_color(int handle, int color)
+<br>Sets the color of text.
+<p><a NAME="vst_effects"></a>int vst_effects(int handle, int effects)
+<br>Sets the text effects used by v_gtext.
+<br>NORMAL 0 No effects
+<br>THICKENED 1 The text is 1 pixel thicker, giving a bolder look
+<br>SHADED 2 Only odd pixels are printed, giving a feint look
+<br>SLANTED 4 The top of the text is displaced to the right
+<br>UNDERLINED 8 The text is underlined, apart from spaces
+<br>DOUBLED 16 The text is twice as thick, at the original height
+<p><a NAME="vst_font"></a>int vst_font(int handle, int fontno)
+<br>There are 3 fonts in MAD as standard, and more may be loaded up to
+a total of 8. This routine sets the font used to one of them.
+<p><a NAME="vst_load_font"></a>int vst_load_font(int handle, const char
+*fontname)
+<br>Loads from disk a font by name for the next available slot, and returns
+the font number, or -1 if it fails.
+<p><a NAME="vst_user_font"></a>int vst_user_font(int handle, <a href="#GFONT">GFONT</a>
+*font)
+<br>For convenience, this routine can take the address of a font file that
+has been compiled into an application, assign it as a usable font and return
+the font number. Again, -1 indicates a failure.
+<p><a NAME="vst_unload_font"></a>int vst_unload_font(int handle, int fontno)
+<br>Clears a font slot (not the 3 defaults) and moves fonts up to fill
+the gap. Returns the new number of fonts or -1.
+<p><a NAME="v_gtext"></a>void v_gtext(int handle, int ox, int oy, const
+char *text)
+<br>This routine prints a string in the set font, in the chosen color,
+with the chosen effects. Printing starts at ox, oy, and will be clipped
+if necessary.
+<p><a NAME="v_pline"></a>void v_pline(int handle, int count, short *pxy)
+<br>Draws a set of connected lines. The second parameter is the number
+of points, and the third is an array of xy screen coordinates.
+<p><a NAME="v_bar"></a>void v_bar(int handle, short *pxy)
+<br>Fills a rectangle. The array of 4 shorts gives the top left and bottom
+right points of the rectangle.
+<br>vr_recfl is defined to this.
+<p><a NAME="v_opnvwk"></a>int v_opnvwk(int *handle);
+<br>This should open a virtual workstation, set up certain parameters of
+it, fill an array with useful data about it and return a handle to it.
+In practice it doesn't do any harm.
+<p><a NAME="v_clrwk"></a>void v_clrwk(int handle)
+<br>This clears the current screen.
+<p><a NAME="v_clsvwk"></a>void v_clsvwk(int handle)
+<br>This should close the virtual workstation.
+<p><a NAME="vs_clip"></a>void vs_clip(int handle, int flag, short *pxy);
+<br>if the second parameter is 1, the clipping rectangle is defined by
+the 4 points of the array. If it is 0, clipping is disabled.
+<p><a NAME="v_hide_c"></a>void v_hide_c(int handle);
+<br>This hides the mouse cursor, unless it is already hidden, and keeps
+track of how often it has been called.
+<p><a NAME="v_show_c"></a>void v_show_c(int handle, int count)
+<br>If v_hide_c has not been called, this routines returns immediately,
+as there is nothing for it to do.
+<br>If the second parameter is 1, it cancels out one v_hide_c; if it is
+0, it cancels all of them.
+<br>If all v_hide_c calls have been cancelled, it shows the cursor.
+<p><a NAME="vq_mouse"></a>void vq_mouse(int handle, short *butn, short
+*x, short *y)
+<br>This returns immediately with the current state of the mouse button
+and the x and y positions of the cursor in its pointers.
+<p><a NAME="vq_key_s"></a>void vq_key_s(int handle, short *kbstat)
+<br>This returns immediately with the pointer holding part or all of the
+following bit pattern.
+<br>1 Right Shift was pressed
+<br>2 Left Shift was pressed
+<br>4 A Control key was pressed
+<br>8 Alt was pressed
+<p><a NAME="vq_keybd"></a>int vq_keybd(int handle)
+<br>If a key has been pressed, this returns the key value. Otherwise it
+returns 0. Note: the keypress is no longer available after this routine.
+<p><a NAME="vro_cpyfm"></a>void vro_cpyfm(int handle, int mode, short *pxy,
+FDB *src, FDB *dest)
+<br>A versatile blitting routine.
+<br>The array of 8 shorts gives the coordinates of top left/bottom right
+of a source rectangle and a destination rectangle with respect to the top
+left of the Frame they are contained by.
+<br>The second parameter is the mode, the blitting operation itself. 4
+types are supported:
+<br>ALL_WHITE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0&nbsp;&nbsp;&nbsp; The source
+rectangle is filled with color 0
+<br>S_ONLY&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+3&nbsp;&nbsp;&nbsp; The source is blitted to the destination
+<br>D_ONLY&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+5&nbsp;&nbsp;&nbsp; The source is blitted to the destination, except for
+pixels which are color 0 in the source
+<br>ALL_BLACK&nbsp;&nbsp; 15&nbsp;&nbsp;&nbsp; The source rectangle is
+filled with color 1
+<p>The last 2 parameters are pointers to a source and destination Frame
+Definition Block, a structure with the following definition:
+<br>void *fd_addr;
+<br>short fd_w;
+<br>short fd_h;
+<br>short fd_wdwidth;
+<br>short fd_stand;
+<br>short fd_nplanes;
+<br>short fd_r1;
+<br>short fd_r2;
+<br>short fd_r3;
+<br>Only the first 3 elements are used. The first is the starting address
+of the frame; if this is NULL, it is assumed that the physical screen is
+being referred to. fd_w and fd_h are the width and height of the frame.
+<p><a NAME="appl_init"></a>int appl_init(int res)
+<br>This has to be called at the beginning of a program, with the desired
+resolution as the parameter.
+<br>It sets up the standard fonts and the error-message and file-selector
+resources, initializes the mouse and clears the screen.
+<p><a NAME="appl_exit"></a>int appl_exit()
+<br>This tidies up anything which needs tidying and exits.
+<p><a NAME="rsrc_load"></a>int rsrc_load(const char *filename)
+<br>Loads a resource. If it fails, there is no point in continuing, so
+it reports this and closes down the program.
+<p><a NAME="rsrc_free"></a>int rsrc_free()
+<br>Frees up the resource.
+<p><a NAME="rsrc_include"></a>int rsrc_include(void *array)
+<br>Makes a compiled-in array into the user resource. A convenience when
+you decide you no longer need to re-edit the resource.
+<p><a NAME="rsrc_gaddr"></a>int rsrc_gaddr(int type, int index, void *address)
+<br>This is normally used to get into an OBJECT pointer the address of
+a tree in the resource, in which case the first parameter is 0, the second
+the number of the tree in the resource's list (more usually a macro produced
+by the resource editor).
+<br>Theoretically, it can also get the address of any object or tedinfo.
+<p><a NAME="objc_draw"></a>int objc_draw(OBJECT *dialog, int startobj,
+int depth, int clipx, int clipy, int clipw, int cliph)
+<br>This draws an object (generally a full tree), from a starting object
+within it (generally 0), to a depth (generally MAX_DEPTH as the routine
+will stop when it runs out of objects anyway). I don't use the last 4 parameters.
+<p><a NAME="objc_find"></a>int objc_find(OBJECT *dialog, int seekobj, int
+depth, int mx, int my)
+<br>This finds the deepest object in a dialog under the given co-ordinates
+and returns its number, or -1 if there is no such object. Depth is currently
+ignored.
+<p><a NAME="objc_offset"></a>int objc_offset(OBJECT *dialog, int seekobj,
+int depth, short *screenx, short *screeny)
+<br>This puts the screen co-ordinates of the sought object in screenx,
+screeny. Depth is currently ignored.
+<p><a NAME="graf_rubberbox"></a>int graf_rubberbox(int ox, int oy, int
+minw, int minh, short *lastw, short *lasth)
+<br>Draws a box right and down from ox, oy, with a minimum width, minw,
+and height, minh, to the mouse position while the left button is held down.&nbsp;
+The final width and height are returned in lastw, lasth.
+<p><a NAME="graf_dragbox"></a>int graf_dragbox(int movew, int moveh, int
+ox, int oy, int bordx, int bordy, int bordw, int bordh, short *lastx, short
+*lasty)
+<br>Drags a box of size movew, moveh, starting at ox, oy, around the screen
+between the boundaries given by bordx, bordy, bordw and bordh, as long
+as the left mouse button is held down.&nbsp; The top left corner of the
+final position is returned in lastx, lasty.
+<p><a NAME="graf_slidebox"></a>int graf_slidebox(OBJECT *slider, int S_Gauge,
+int S_Slide, int slvh)
+<br>Moves an object within the limits of another object, either vertically&nbsp;
+(slvh==1) or horizontally (slvh==0).
+<br>Returns the position of the center of the slider relative to the gauge.
+<p><a NAME="form_center"></a>int form_center(OBJECT *dialog, short *x,
+short *y, short *w, short *h)
+<br>This does nothing but work out the x and y coordinates for the top
+left of an object that will center it on the screen, and pass them with
+the object's width and height to the parameters and to the dialog itself.
+<br>If you want to do your own placement, you can ignore this; the width
+and height are already correct in the dialog.
+<p><a NAME="form_dial"></a>int form_dial(int fo_diflag, int fo_dilittx,
+int fo_dilitty, int fo_dilittw,
+<br>int fo_dilitth, int dix, int diy, int diw, int dih)
+<br>This prepares for drawing the form or undraws it.
+<br>If the first parameter is less than 2, a section of the screen with
+coordinates given by the last four parameters (usually those set by form_center)
+is saved.
+<br>Otherwise, the previously saved screen is blitted back in, erasing
+the form.
+<p><a NAME="form_do"></a>int form_do(OBJECT *dialog, int editobj)
+<br>The actual messing with the dialog (but not the drawing - that has
+to be done with objc_draw).
+<br>If the second parameter is non-zero, the text cursor is positioned
+in the text of the object with that number. Otherwise, the text cursor
+goes in the first editable object it can find.
+<br>Tab cycles through the editables. Backspace and delete both delete
+from the end of the text. Escape deletes the entire text.
+<br>Clicking on an object with EXIT in its flags or pressing return terminates
+this routine, and the return is either the number of the clicked object
+or that of the default object.
+<p><a NAME="form_alert"></a>int form_alert(int dfault, const char *alert)
+<br>This on its own calls up a small dialog with limited but useful functionality,
+using up to 3 buttons and up to 5 lines of text.
+<br>The int is the number of the button which pressing return will simulate;
+this will be shown as the default.
+<br>The string is of the form [number][text|text|...][button|button...],
+where number is the number of buttons, text stands for a line of text and
+button stands for a button text.
+<br>The return is the button, 1-3, actually pressed.
+<p><a NAME="form_error"></a>int form_error(int number)
+<br>The ST form_error returned a report of violations of the underlying
+operating system. I can't manage that so this is basically a debugging
+device which shows a message with the parameter included and waits.
+<p><a NAME="form_error_text"></a>int form_error_text(char *text)
+<br>Like form_error, but puts up a message instead of a number.
+<p><a NAME="form_infobox"></a>int form_infobox(OBJECT *dialog)
+<br>&nbsp;Puts up a user-created dialog with only one exit button, mainly
+to&nbsp; present information to the user. The dialog can contain editable
+strings, but reading them must be handled explicitly by the program
+<p><a NAME="form_input"></a>int form_input(int length, char *ptmplt, int
+default, char *label)
+<br>Pops up a little dialog box in which you can type a number of length
+digits on a line starting with the template. The default is the default
+number given. The label is optional.
+<br>The return is the number you typed.
+<p><a NAME="form_input_text"></a>void form_input_text(int length, char
+*ptemplate, char *text, char *label)
+<br>Gets&nbsp; a string in text. The label is, again, optional. The text
+should be at least length+1 characters long, to allow for the terminator.
+<p><a NAME="menu_bar"></a>int menu_bar(OBJECT *menu, int flag)
+<br>If the flag is 1, the menu headings are put at the top of the screen,
+and the pixels they displace are saved.
+<br>Otherwise (assuming one was actually drawn earlier) the menu is erased.
+<p><a NAME="menu_tnormal"></a>int menu_tnormal(OBJECT *menu, int title,
+int norm)
+<br>The first int is an object number within the menu.
+<br>If the second is 0, this object is written as SELECTED, otherwise it
+is un-marked.
+<p><a NAME="menu_icheck"></a>int menu_icheck(OBJECT *menu, int title, int
+check)
+<br>The first int is an object number within the menu.
+<br>If the second is 1, this object&nbsp; is marked as CHECKED, otherwise
+it is un-marked.
+<p><a NAME="menu_ienable"></a>int menu_ienable(OBJECT *menu, int title,
+int enable)
+<br>The first int is an object number within the menu.
+<br>If the second is 1, this object can be selected, otherwise it is written
+FEINT and can't be selected. As MAD doesn't distinguish menus from other
+dialogs, this can be useful in ordinary dialogs as well.
+<p><a NAME="evnt_timer"></a>int evnt_timer(int locount, int hicount)
+<br>The precision of this is implementation dependent. locount/hicount
+is in milleseconds
+<p><a NAME="evnt_mouse"></a>int evnt_mouse(int mflags, int mx, int my,
+int mwidth, int mheight,
+<br>&nbsp;short *x, short *y, short *butn, short *kstate)
+<br>&nbsp;If mflags is set, this returns 1 when the mouse leaves a rectangle;&nbsp;
+otherwise it returns 1 when it enters. The mouse coordinates and button
+state are passed in the pointers.
+<p><a NAME="evnt_keybd"></a>int evnt_keybd()
+<br>Waits for a keypress and returns it.
+<p><a NAME="evnt_button"></a>int evnt_button(int bmaxclicks, int bmask,
+int bstate, short *x, short *y, short *butn, short *kstate)
+<br>Waits for the number of clicks set in the first parameter, and returns
+that number.
+<br>The next parameter is the buttons which will register as clicks; 1
+is left, 2 is right, 3 is either. The third parameter sets whether button
+up (0) or button down (1, 2 or 3) is counted.
+<br>When the routine exits, the 4th and 5th parameters contain the x and
+y of the mouse position, the 6th the button states, in the same form as
+the second parameter aand the last the same information as is returned
+by vq_key_s.
+<p><a NAME="evnt_mesag"></a>int evnt_mesag(short *msgbuff)
+<br>This routine is only partially implemented, and used for menu operations.
+<br>If the mouse moves to the top menu, the dropdown menus appear. A click
+in one of them will result in the message buffer (an array of 8 shorts)
+containing:
+<br>short 0: 10 (a macro, MN_SELECTED, is the mnemonic for this)
+<br>short 3: The object index of the menu title
+<br>short 4: The object index of the menu entry
+<br>Moving outside the active menu area sets the 1st short to 0, and undraws
+the menu box
+<p><a NAME="evnt_multi"></a>int evnt_multi(int aflags, int bmaxclicks,
+int bmask, int bstate,
+<br>int m1flags, int m1x, int m1y, int m1width, int m1height,
+<br>int m2flags, int m2x, int m2y, int m2width, int m2height,
+<br>short *msgbuff, int locount, int hicount, short *x, short *y,
+<br>short *butn, short *kstate, short *kreturn, short *breturn)
+<br>This routine is only partially implemented, but is basically a conflation
+of all the other event routines.
+<br>The first parameter is the types of event expected, and the return
+is the types which actually occurred, using the following flags:
+<br>MU_KEYBD 1 keyboard event
+<br>MU_BUTTON 2 button event
+<br>MU_M1 4 mouse rectangle event 1
+<br>MU_M2 8 mouse rectangle event 2
+<br>MU_MESAG 16 message event
+<br>MU_TIMER 32 timer event
+<p>The next 3 have the same meaning as in evnt_button.
+<br>The next 10 (to the short pointer) are 2 images of the evnt_mouse function.
+<br>The msgbuff is as in evnt_mesag.
+<br>The locount and hicount are the low word and high word of the number
+of milliseconds that the routine will wait for an event. Take this with
+a large grain of salt; I've tried for an approximation to equivalence to
+ST timings.
+<br>The next 4 pointers are as in evnt_button.
+<br>The penultimate is the key pressed or 0.
+<br>The last is the number of clicks as for evnt_button.
+<br>In use, all of the last set of pointers which are unnecessary can be
+the same variable.
+<p><a NAME="graf_mouse"></a>int graf_mouse(int mode, void *shape)
+<br>This routine carries out 2 quite distinct functions, depending on the
+mode, which can be one of:
+<br>ARROW 0
+<br>TEXT_CRSR 1
+<br>HOURGLASS 2
+<br>POINT_HAND 3
+<br>FLAT_HAND 4
+<br>THIN_CROSS 5
+<br>THICK_CROSS 6
+<br>OUTLN_CROSS 7
+<br>USER_DEF 255
+<br>M_OFF 256
+<br>M_ON 257
+<p>M_OFF and M_ON function like v_hide_c and v_show_c. Note that the GEM
+strictures against mixing VDI and AES do not apply in MAD.
+<br>The other modes change the cursor. There are 8 predefined shapes and
+USER_DEF can access new shapes attached to the program. The structure of
+a shape is:
+<br>short hot_x, hot_y The active point of the cursor
+<br>short foreground, background Mouse colors; 255 is invalid
+<br>short shape[16] The central shape; foreground color
+<br>short mask[16] The surrounding mask; background color
+<br>For every set bit in the shape and mask a pixel is set to the foreground
+or background color in the cursor.
+<br>The shape parameter is normally set to NULL, except for USER_DEF.
+<p><a NAME="fsel_exinput"></a>int fsel_exinput(char *path, char *selfile,
+short *button, const char *label)
+<br>MAD comes with a default file selector which can handle long filenames.
+<br>The path is the name of the directory, and should have space for 256
+(FMSIZE) characters. The selfile is the name of the file, and should have
+space for 128 (FNSIZE) characters. You might get away with less, but don't
+blame me if you don't.
+<br>The label is a message which appears at the top of the file selector.
+<br>On return, the button contains 0 for selection cancelled, or 1 for
+selection. In the latter case, the path contains the full pathname of the
+selected directory, the selfile the filename within the directory.
+<br>There is a set of 6 default clickable extensions which will stay throughout
+a session and include the extensions of files already selected.
+<br>The Dos/Windows version comes with a few drive buttons.
+<p><a NAME="fsel_input"></a>int fsel_input(char *path, char *selfile, short
+*button)
+<br>The same as fsel_exinput, but with a default message.
+<p><a NAME="fsel_set_extn"></a>void fsel_set_extn(char *type)
+<br>A convenience to let you add an extension to the list of default extensions.
+<br>&nbsp;
+<br>&nbsp;
+<br>
+<br>
+<center>
+<p><a href="../madalleg/base/mad.html">Back to the Introduction</a></center>
+
+<p><br>
+</body>
+</html>

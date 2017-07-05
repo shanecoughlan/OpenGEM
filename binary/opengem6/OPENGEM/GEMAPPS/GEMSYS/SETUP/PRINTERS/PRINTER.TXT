@@ -1,0 +1,118 @@
+PRINTER Drivers
+
+|DESCRIPTION|Epson GQ-3500 Laser Printer (300 x 300 Dots/Inch)
+|SHORT DESCR|EPSON GQ 3500
+|FILENAME|PDEGH8.B30
+|FNT WILDCRD|*.B30
+|AUX FILE|EGH.ATM
+|SRC DISK|GEM PRINTER DISK 3
+|LONG DESCRP|
+Choose this entry if you are using the Epson GQ-3500 Laser 
+printer.  This printer offers a print resolution of 300 x 300 
+dots per inch. 
+
+
+|DESCRIPTION|Epson LQ Series Printers (180 x 180 Dots/Inch)
+|SHORT DESCR|Epson LQ
+|FILENAME|PDELQ8.ELQ
+|SRC DISK|GEM PRINTER DISK 1
+|AUX FILE|ELQ.ATM
+|FONT DISK|GEM PRINTER DISK 2
+|FNT WILDCRD|*.ELQ
+|LONG DESCRP|
+Choose this entry if you are using an Epson LQ-Series printer.  
+LQ-Series printers offer a print resolution of 180 x 180 
+dots per inch.
+
+
+|DESCRIPTION|Hewlett Packard Laserjet II Printer (300 x 300 Dots/Inch)
+|SHORT DESCR|HP Laser II
+|FILENAME|PDHPU8.B30
+|SRC DISK|GEM PRINTER DISK 3
+|FNT WILDCRD|*.B30
+|LONG DESCRP|
+Choose this entry if you are using a Hewlett Packard Laserjet 
+II printer.  This printer offers a print resolution of 300 x 300 
+dots per inch.
+
+
+|DESCRIPTION|Hewlett Packard LaserJet+ (150 x 150 Dots/Inch)
+|SHORT DESCR|HP Laserjet+
+|FILENAME|PDHPH8.HPH
+|FNT WILDCRD|*.HPH
+|SRC DISK|GEM PRINTER DISK 3
+|FONT DISK|GEM PRINTER DISK 1
+|LONG DESCRP|
+Choose this entry if you are using a Hewlett Packard LaserJet+ 
+printer.  This printer offers a resolution of 150 x 150 dots per 
+inch. 
+
+
+|DESCRIPTION|IBM/Epson High Resolution Printers (120 x 144 Dots/Inch)
+|SHORT DESCR|IBM/Epson Hi
+|FILENAME|PDEHI8.EPS or PDEHI9.EPS
+|SRC DISK|GEM PRINTER DISK 1
+|AUX FILE|EHI.ATM
+|FNT WILDCRD|*.EPS
+|LONG DESCRP|
+Choose this entry if you are using an IBM Graphics printer, the 
+Epson FX 80/100, or the Epson MX 80/100.  These printers offer a
+resolution of 120 x 144 dots per inch. 
+
+
+|DESCRIPTION|IBM Proprinter (120 x 144 Dots/Inch)
+|SHORT DESCR|Proprinter
+|FILENAME|PDPRO8.EPS
+|SRC DISK|GEM PRINTER DISK 1
+|AUX FILE|PRO.ATM
+|FNT WILDCRD|*.EPS
+|LONG DESCRP|
+Choose this entry if you are using the IBM Proprinter.  This printer 
+offers 120 x 144 dots per inch print resolution. 
+
+
+|DESCRIPTION|LaserWriter / Postscript Printers
+|SHORT DESCR|Postscrpt 12
+|FILENAME|PDPST8.SYS
+|SRC DISK|GEM PRINTER DISK 2
+|AUX FILE|PSTV23.PRE;PSTV23.CNF
+|LONG DESCRP|
+Choose this entry if you are using a printer that uses Postscript-type 
+files and the standard Adobe resident font set: Courier, Helvetica, 
+Times, and Symbol.
+
+
+|DESCRIPTION|LaserWriter Plus / Postscript Printers
+|SHORT DESCR|Postscrpt 35
+|FILENAME|PDPST8.SYS
+|SRC DISK|GEM PRINTER DISK 2
+|AUX FILE|PST.PRE;PST.CNF
+|LONG DESCRP|
+Choose this entry if you are using a printer that uses 
+Postscript-type files and has the extended Adobe resident font 
+set: Bookman, Zapf-Chancery, etc. in addition to the standard
+resident font set: Courier, Helvetica, Times, and Symbol.
+
+
+|DESCRIPTION|Toshiba P321, P341, or P351 Printer (180 x 180 Dots/Inch)
+|SHORT DESCR|Toshiba
+|FILENAME|PDTSH8.ELQ
+|FNT WILDCRD|*.ELQ
+|AUX FILE|TSH.ATM
+|SRC DISK|GEM PRINTER DISK 2
+|LONG DESCRP|
+Choose this entry if you are using a Toshiba 321,341, or 351 
+printer.  Each of these printers offers a print resolution of 180 
+x 180 dots per inch.
+
+
+|DESCRIPTION|Xerox 4020 Colour Ink Jet (120 x 240 Dots/Inch) 
+|SHORT DESCR|XEROX 4020
+|FILENAME|PDX208.X20
+|SRC DISK|GEM PRINTER DISK 2
+|AUX FILE|X20.ATM
+|FNT WILDCRD|*.X20
+|LONG DESCRP|
+Choose this entry if you are using the Xerox eight-colour printer.  
+This printer offers a print resolution of 120 x 240 dots per 
+inch.

@@ -1,0 +1,20 @@
+sdp649.vga= entry, p64_zyxg,
+jmptbl,
+monobjy,
+monout,
+popttext,
+isin,
+dummy,
+p64_drv,
+p640,
+popttxt1,
+popttxt2,
+poptdraw,
+p64mblit,
+p64blit,
+p64pat,
+enddseg,
+vgacp,
+vgafont[nop]
+
+                                                                                                                                                                                                                

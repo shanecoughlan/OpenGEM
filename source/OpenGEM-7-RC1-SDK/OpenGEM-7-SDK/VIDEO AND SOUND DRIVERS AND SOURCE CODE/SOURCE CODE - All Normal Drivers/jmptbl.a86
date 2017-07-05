@@ -1,0 +1,263 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+		include externs.a86
+
+		cseg
+
+		extrn	dr_recfl:near
+		extrn	v_nop:near
+		extrn	dqt_extent:near
+		if	not GSX
+		 extrn	dst_style:near
+		 extrn	dqt_width:near
+		 extrn	vqi_mode:near
+		 extrn	xfm_crfm:near
+		 extrn	xfm_udfl:near
+		 extrn	ex_timv:near
+		 extrn	tran_fm:near
+		 extrn	vsl_udsty:near
+		 extrn	s_clip:near
+		 extrn	hide_cur:near
+		 extrn	vq_mouse_status:near
+		 extrn	vex_butv:near
+		 extrn	vex_motv:near
+		 extrn	vex_curv:near
+		 extrn	v_show_c:near
+		 extrn	vq_key_s:near
+		 extrn	drt_cpyfm:near
+		 extrn	dro_cpyfm:near
+		 extrn	dqt_name:near
+		 extrn	dst_point:near
+		 extrn	dqt_fontinfo:near
+		 extrn	dt_loadfont:near
+		 extrn	dt_unloadfont:near
+		 extrn	d_opnvwk:near
+		 extrn	vq_extnd:near
+		 extrn	v_b_pline:near
+		 extrn	v_b_plygn:near
+		 extrn	vsf_perimeter:near
+		 extrn	vsl_ends:near
+		 extrn	dqt_just:near
+		endif
+		extrn	dst_alignment:near
+		extrn	dqt_attributes:near,vqf_attr:near,vqm_attr:near
+		extrn	vswr_mode:near,vsin_mode:near,v_string:near
+		extrn	v_choice:near,v_locator:near,vsf_style:near
+		extrn	vsf_color:near,vq_color:near,vql_attr:near
+		extrn	dst_font:near,dst_color:near,vsf_interior:near
+		extrn	s_colmap:near,vsl_type:near,vsl_width:near
+		extrn	vsl_color:near,vsm_type:near,vsm_height:near
+		extrn	vsm_color:near,dst_rotation:near,dst_height:near
+		extrn	v_gdp:near,plygn:near,d_gtext:near,v_pmarker:near
+		extrn	v_pline:near,chk_esc:near,clearmem:near
+		extrn	dinit_g:near,v_opnwk:near
+
+		dseg
+
+		extrn	intin:word,contrl:word,intout:word,ptsout:word
+		extrn	dseg_seg:word,ptsin:word,bez_flag:word
+;;;		extrn 	true_planes:word
+		cseg
+
+		public	SCREEN
+
+SCREEN:
+		push	bp
+		xor	ax, ax
+		mov	bx, CONTRL
+
+;; diag ;;	 mov	func, bx
+
+		cmp	bx, 27h
+		mov	CONTRL+4, ax
+		mov	CONTRL+8, ax
+		jg	SCREEN1
+		shl	bx, 1
+		mov	ax, jmptb1[bx]
+		call	ax
+		jmps	SCREEN2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+SCREEN1:				; CODE XREF: SCREEN+15j
+
+		if not GSX
+		 mov	ax, bx
+		 cmp	ax, 1000
+		 jz	func1000
+		 cmp	ax, 100
+		 jl	SCREEN2
+		 cmp	ax, 137
+		 jg	SCREEN2
+		 shl	ax, 1
+		 mov	si, ax
+		 mov	ax, jmptb2-200[si]
+		 call	ax
+		endif
+SCREEN2:				; CODE XREF: SCREEN+23j SCREEN+2Bj
+		pop	bp
+		retn
+;
+;;		public	diag
+;;
+;;diag:		mov	ah, 2
+;;		mov	dl, 0Dh
+;;		int	21h
+;;		mov	ax, func
+;;		call	hexax
+;;		mov	ax, true_planes
+;;		call	hexax
+;;		mov	ah, 7
+;;		int	21h
+;;		ret
+;
+;;func		dw	0
+;;fail2:		mov	ax, 2
+;;		jmps	fail
+;
+;;fail1:		mov	ax, 1
+;;fail:		call	hexax
+;;		mov	ax, func
+;;		call	hexax
+;;stop:		jmp	stop
+;
+;;hexax:		push	ax
+;;		mov	al, ah
+;;		call	hex2
+;;		pop	ax	
+;;hex2:		push	ax
+;;		shr	al, 1
+;;		shr	al, 1
+;;		shr	al, 1
+;;		shr	al, 1
+;;		call	hex1
+;;		pop	ax
+;;hex1:		push	ax
+;;		push	bx
+;;		and	al, 0Fh
+;;		cmp	al, 10
+;;		jc	hex1a
+;;		add	al, 7
+;;hex1a:		add	al, '0'
+;;		mov	dl, al
+;;		mov	ah, 2
+;;		int	21h
+;;		pop	bx
+;;		pop	ax
+;;		ret
+
+		if not GSX
+;
+; v_delay(LONG usecs)
+;
+func1000:       mov     ah,86h
+                mov     dx,INTIN
+                mov     cx,word ptr INTIN+2
+                int     15h
+                pop     bp
+                retn
+
+		endif
+	
+		dseg
+jmptb1		dw offset v_nop		; DATA XREF: SCREEN+19o
+		dw offset v_opnwk
+		dw offset dinit_g
+		dw offset CLEARMEM
+		dw offset v_nop
+		dw offset chk_esc
+		dw offset v_pline
+		dw offset v_pmarker
+		dw offset d_gtext
+		dw offset plygn
+		dw offset v_nop
+		dw offset v_gdp
+		dw offset dst_height
+		dw offset dst_rotation
+		dw offset S_COLMAP
+		dw offset vsl_type
+		dw offset vsl_width
+		dw offset vsl_color
+		dw offset vsm_type
+		dw offset vsm_height
+		dw offset vsm_color
+		dw offset dst_font
+		dw offset dst_color
+		dw offset vsf_interior
+		dw offset vsf_style
+		dw offset vsf_color
+		dw offset vq_color
+		dw offset v_nop
+		dw offset v_locator
+		dw offset v_nop
+		dw offset v_choice
+		dw offset v_string
+		dw offset vswr_mode
+		dw offset vsin_mode
+		dw offset v_nop
+		dw offset vql_attr
+		dw offset vqm_attr
+		dw offset vqf_attr
+		dw offset dqt_attributes
+		dw offset dst_alignment
+		if not GSX
+jmptb2		dw offset d_opnvwk		;
+		dw offset v_nop			;
+		dw offset vq_extnd		;
+		dw offset v_nop			;
+		dw offset vsf_perimeter		;
+		dw offset v_nop
+		dw offset dst_style		;
+		dw offset dst_point		;
+		dw offset vsl_ends		;
+		dw offset dro_cpyfm		;
+		dw offset TRAN_FM		;
+		dw offset XFM_CRFM		;
+		dw offset XFM_UDFL		;
+		dw offset vsl_udsty		;
+		dw offset dr_recfl		; necessary
+		dw offset vqi_mode		;
+		dw offset dqt_extent		; necessary
+		dw offset dqt_width		;
+		dw offset ex_timv		;
+		dw offset dt_loadfont		;
+		dw offset dt_unloadfont		;
+off_902_192	dw offset drt_cpyfm		;
+		dw offset v_show_c		;
+		dw offset HIDE_CUR		;
+		dw offset vq_mouse_status	;
+		dw offset vex_butv		;
+		dw offset vex_motv		;
+		dw offset vex_curv		;
+		dw offset vq_key_s		;
+		dw offset s_clip		;
+		dw offset dqt_name		;
+		dw offset dqt_fontinfo		;
+		dw offset dqt_just		;
+		dw offset v_nop
+		dw offset v_nop
+		dw offset v_nop
+		dw offset v_b_pline		;
+		dw offset v_b_plygn		;
+		endif
+
+		end
+

@@ -1,0 +1,633 @@
+;**************************************************************************
+;*			    DEVICE SPECIFIC ROUTINES			  *
+;*									  *   
+;*		These routines and equates are device dependant.	  *
+;*									  *
+;*									  *
+;*									  *
+;**************************************************************************
+;Hist
+;Name	Date	Modification
+;
+include externs.a86
+include v10regs.a86
+dseg
+	extrn	ptsin_ptr:dword,intin_ptr:dword
+cseg
+;
+	extrn	VID_SEG:word, VESA_SLICE:word
+	public	INIT_G,DINIT_G
+	public	CONCAT
+	if not GSX
+	public	TRAN_FM
+	public	EX_TIMV
+	endif
+	public	S_COLMAP
+	public	I_COLMAP
+	public	plygn_bez
+	public	plygn_rrot
+	public	escfn2
+	public	first_motn
+	public	kbd_mouse_sts
+	public	contrl_status
+	public	map_col
+	public	CONTRL, INTIN, PTSIN, INTOUT, PTSOUT
+;
+	extrn	entry:near		;the place to jump to if this module
+	extrn	txtblt_rrot_table_1:word
+	extrn	mouse_port:byte, mouse_type:byte
+
+;integer array indexing equates
+	W_1	equ	word ptr 0
+	W_2	equ	word ptr 2
+	W_3	equ	word ptr 4
+	W_4	equ	word ptr 6
+	W_5	equ	word ptr 8
+	W_6	equ	word ptr 10
+	W_7	equ	word ptr 12
+	W_8	equ	word ptr 14
+	W_9	equ	word ptr 16
+	W_10	equ	word ptr 18
+;
+ibmvdi	equ 0			;leave out the old code if for retail
+pc1512	equ 	false		;PC1512 various special cases
+;
+;
+;****************************************************************
+;		IBM STANDARD ROM BIOS CALLS			*
+;****************************************************************
+direct		equ	false		; direct = true --> don't use ROS calls
+					;   (for example, for two-screen stuff)
+					; set to false for PCjr
+
+SCREEN	equ	10H			;interrupts to use for rom routine I/O
+KEYBD	equ	16H
+rev_vid_on	equ	70h		;turn on reverse video bits
+rev_vid_off	equ	07h		;turn off reverse video bits 
+;
+read_cur_pos	equ	3			;bios rom calls for char I/O
+set_cur_pos	equ	2
+read_char	equ	8
+write_char	equ	9
+set_palette	equ	0bh
+get_character	equ	0			;keyboard read
+;
+EJECT
+;
+	jmp	entry		;if we come in from here, go to real entry
+;
+;****************************************	
+;escape func 2
+; Enter Graphics Mode 
+;****************************************	
+INIT_G:
+	pushf
+	mov	ax,cs
+	mov	usermot+2,ax		;init the user call vectors segs
+	mov	userbut+2,ax
+	mov	usercur+2,ax
+	mov	ax,offset umotvec
+	mov	usermot,ax
+	mov	ax,offset ubutvec
+	mov	userbut,ax
+	mov	ax,offset mov_cur
+	mov	usercur,ax
+	popf
+escfn2: 
+	cmp	dispmode,0
+	jnz	escfn2_ok
+	ret
+escfn2_ok:
+	mov	dispmode,0		; 
+
+  	push	ds
+ 	mov	ax,0
+  	mov	ds,ax
+ 	mov	bx,410h
+ 	mov	dl,[bx] 		;get current screen adapter
+  	mov	al,dl
+ 	and	al,0cfh
+  	or	al,10h
+  	mov	[bx],al 		;select color card
+  	pop	ds
+	mov	mode_save,dl
+;
+; Check if we have a VESA BIOS that supports this mode.
+;
+	mov	ax, ds
+	mov	es, ax
+	mov	ax, 4F00h
+	mov	di, offset PTSIN
+	int	10h
+	cmp	ax, 004Fh
+	jz	have_vbe
+novbex:	mov	dx, offset novbe
+	mov	ah, 9
+	int	21h
+	mov	ax, 0
+	ret
+;
+have_vbe:
+	mov	ax, 4F01h		;Inquire whether the VESA BIOS 
+	mov	cx, VID_MODE		;supports this mode
+	mov	di, offset PTSIN
+	int	10h
+	cmp	ax, 004Fh
+	jnz	novbex
+	mov	ax, word ptr PTSIN+8	;Video segment
+	and	ax, ax
+	jz	novbex
+	mov	cs:VID_SEG, ax
+;
+; Work out how to position the window at 64k intervals. 
+;
+	mov	ax, word ptr PTSIN+4	;Window granularity
+	mov	bx, 1			;Assume 64k window
+wcalc:	cmp	ax, 64
+	jnc	wcalce
+	add	ax, ax
+	add	bx, bx
+	jmps	wcalc	
+wcalce:	mov	cs:VID_MULTI, bx
+
+	mov	ax, 4F02h		;Select the mode	
+	mov	bx, VID_MODE
+	mov	di, offset PTSIN
+	int	10h
+
+	call	init_lut
+if num_planes eq 2			;is this a four color driver
+	mov	dx, 3ceh		;init the misc reg
+	mov	al, 6
+	out	dx, al
+	inc	dx
+	mov	al, 00000111b		;allow odd/even ,graphics, 64k ram
+	out	dx, al
+	mov	dx, 3ceh		;init the mode reg
+	mov	al, 5
+	out	dx, al
+	inc	dx
+	mov	al, 00010000b 		;allow odd/even
+	out	dx, al
+	mov	dx, 3c4h		;allow odd/even, no extended memory
+	mov	al, 4
+	out	dx, al
+	inc	dx
+	mov	al, 0
+	out	dx, al
+endif	
+	mov	dx, 3c4h
+	mov	al, 02
+	out	dx, al			; init the plane mask add reg
+	mov	dx, 3ceh
+	mov	al, 04
+	out	dx, al
+	call	clearmem		; clear graphics display
+if mouse
+	mov	bl,1
+	call	mouse_function		;initialize the mouse
+	mov	bl,2
+	call	mouse_function
+	mov	bl,1
+	call	mouse_function
+endif
+	ret
+init_lut:
+	mov	dx,offset initial_color_table
+	mov	ah,10h
+	mov	al, 2
+	push	ds
+	push	ds
+	pop	es
+	int	10h
+	pop	ds
+;
+; Load the VGA palette registers
+;
+	mov	cx,10h
+	mov	si,offset initial_color_table
+	mov	di,offset vga_col_table
+vga_lut:
+	push	cx
+	dec	cx
+	push	cx
+	mov	bx,cx
+	shl	bx,1
+	add	bx,cx
+	mov	dh,[bx+di]
+	mov	ch,1[bx+di]
+	mov	cl,2[bx+di]
+	pop	bx
+	mov	bl,[bx+si]
+	mov	ah,10h
+	mov	al,10h
+	int	10h
+	pop	cx
+	loop	vga_lut
+	ret
+;
+;****************************************	
+;escape func 3
+; Exit Graphics Mode
+;****************************************	
+DINIT_G:
+escfn3: 
+	cmp	dispmode,0
+	jz	escfn3_ok
+	ret
+escfn3_ok:				; 
+if mouse
+	mov	bl,2
+	call	mouse_function
+endif
+	mov	dispmode,1
+	mov	dl,mode_save		;get screen adapter
+	push	ds
+	mov	ax,0
+	mov	ds,ax
+	mov	bx,410h
+	mov	[bx],dl 		;select default card
+	mov	ah,0
+	mov	al,3			;alpha mode
+	int	screen
+	pop	ds
+	mov	attribute,rev_vid_off
+if ibmvdi
+	call	escfn8			;home
+	call	escfn9			;clear to end of screen
+else
+	mov	ah,2				;set cursor position 0,0
+	xor	dx, dx
+	mov	bh, dh
+	int	10h
+	mov	ah, 9
+	xor	bh, bh
+	mov	cx, 2000
+	mov	al, 20h
+	mov	bl, 7
+	int	10h
+endif
+	ret
+EJECT
+;****************************************************************
+;I_COLMAP							*	
+;	ENTRY	                                        	*
+;		INTIN[0] = color index				*
+;		INTIN[1] = req or actual flag			*
+;								*
+;	EXIT	                             			*
+;		INTOUT[0] = color index				*
+;		INTOUT[1] = RED					*
+;		INTOUT[2] = GRN					*
+;		INTOUT[3] = BLU					*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+I_COLMAP:
+	mov	bx, INTIN		;check if the index is in range of dev
+	cmp	bx, 0
+	jge	i_colmap_chkix
+	jmps	i_colmap_badix
+i_colmap_chkix:
+	cmp	bx, num_colors-1	;test if index is too high
+	jle	i_colmap_ixok
+	jmps	i_colmap_badix
+i_colmap_ixok:
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	mov	di, bx			; di = ptr to act/req col tbls
+	shl	di, 1
+	shl	di, 1
+	add	di, bx
+	add	di, bx			; mpy ix by 6 to point into table
+	mov	si, offset INTOUT+2
+	mov	cx, 3
+	mov	INTOUT, bx		; return the color index
+	mov	bx, offset req_col_tbl
+	test	INTIN+2, 0ffffh		; if != 0 then return actual values
+	jz	i_colmap_load
+	mov	bx, offset act_col_tbl
+i_colmap_load:
+	mov	ax, [bx+di]
+	mov	[si], ax
+	add	di, 2
+	add	si, 2
+	loop	i_colmap_load
+	ret
+i_colmap_badix:
+	mov	INTOUT, -1
+	ret	
+EJECT
+;****************************************************************
+;S_COLMAP							*	
+;	ENTRY	                                        	*
+;		INTIN[0] = color index				*
+;		INTIN[1] = RED 0 - 1000				*
+;		INTIN[1] = GRN 0 - 1000				*
+;		INTIN[1] = BLU 0 - 1000				*
+;								*
+;	EXIT	                             			*
+;		                           			*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+S_COLMAP:
+	mov	bx, INTIN		;check if the index is in range of dev
+	cmp	bx, 0
+	jge	s_colmap_chkix
+	jmp	s_colmap_exit
+s_colmap_chkix:
+	cmp	bx, num_colors-1	;test if index is too high
+	jle	s_colmap_ixok
+	jmp	s_colmap_exit
+s_colmap_ixok:
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	push	bx
+	mov	di, bx			; di = ptr to act/req col tbls
+	shl	di, 1
+	shl	di, 1
+	add	di, bx
+	add	di, bx			; mpy ix by 6 to point into table
+	xor	cx, cx			; init the temp accum
+	mov	dx, INTIN+2		; get the red value
+	call	s_colmap_val
+	mov	vga_r,al
+	mov	dx, INTIN+4		; get the grn value
+	add	di,2
+	call	s_colmap_val
+	mov	vga_g,al
+	mov	dx, INTIN+6		; get the blu values 
+	add	di,2
+	call	s_colmap_val
+	mov	vga_b,al
+	mov	ah,10h
+	mov	al,ah
+	pop	bx
+	mov	bl, initial_color_table[bx]
+	mov	ch,cs:vga_g
+	mov	cl,cs:vga_b
+	mov	dh,cs:vga_r		; Load VGA palette register
+	int	10h
+	ret
+s_colmap_exit:
+	ret
+;
+vga_r	db	0
+vga_g	db	0
+vga_b	db	0
+
+;
+; entry 
+;	di = offset within act/real tbl of rgb values
+;	ch = high order rgb lut bits
+;	cl = low order rgb lut bits
+;	dx = intensity value in 0 - 1000
+; 
+s_colmap_val:
+	mov	req_col_tbl[di], dx
+	push	di
+	mov	ax,1000			; scale from 0 - 1000 (GEM)
+	push	ax			; to 0 - 63 (VGA)
+	push	dx
+	mov	ax,64
+	push	ax
+	call	SMUL_DIV
+	add	sp,6
+	push	ax
+	mov	bx,64
+	push	bx
+	push	ax
+	mov	bx,64
+	push	bx
+	call	SMUL_DIV
+	add	sp,6
+	pop	bx
+	pop	di
+	mov	act_col_tbl[di], ax
+	mov	ax,bx
+	cmp	al,63
+	jc	range_ok
+	mov	al,63
+range_ok:
+	ret
+
+
+
+EJECT
+	if not GSX
+;****************************************************************
+;TRAN_FM							*	
+;	ENTRY	                                        	*
+;		                                     		*
+;								*
+;	EXIT	                             			*
+;		                           			*
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+TRAN_FM:
+	push	bp	
+	push	es
+	push	ds
+	les	di,contrl_ptr
+	mov	ax, es: word ptr 14[di]
+	mov	bx, es: word ptr 16[di]		; get smfdb pointer
+	mov	dx, es: word ptr 18[di]
+	mov	bp, es: word ptr 20[di]		; get dmfdb pointer
+	mov	es, bx
+	mov	di, ax				; set es:di to it
+	mov	ax, es: word ptr 12[di]		; get num of planes in source
+; xform n to n planes
+	push	ax				; save the plane count
+	call	calc_src_form
+	call	calc_des_form
+	call	calc_seg_off
+	pop	bx				; get the plane count back
+col_to_col_lp:
+	push	si
+	push	di
+	push	bx
+	push	cx
+col_to_col_loop:
+	lodsw
+if not byte_swap
+	xchg	ah,al
+endif
+if rev_vid
+	not	ax
+endif
+	stosw
+	loop	col_to_col_loop
+	pop	cx
+	pop	bx
+	pop	di
+	pop	si
+	call	tran_next_seg
+	dec	bx
+	jnz	col_to_col_lp
+	pop	ds
+	pop	es
+	pop	bp
+	ret
+tran_next_seg:
+	push	cx
+	mov	ax, cx
+	mov	cl, 3
+	shr	ax, cl			;get the segment increment
+	mov	bp, es
+	add	bp, ax
+	mov	es, bp
+	mov	bp, ds
+	add	bp, ax
+	mov	ds, bp
+	pop	cx
+	mov	ax, cx			;get the byte increment
+	and	ax, 0007h
+	shl	ax, 1
+	add	si, ax
+	add	di, ax
+	ret
+;
+calc_seg_off:
+	mov	bp, cx				; find the next seg
+	shr	bp,1
+	shr	bp,1
+	shr	bp,1
+	mov	dx, cx
+	shl	dx, 1
+	and	dx, 000fh			; find the incremental offset
+;	mov	bx,num_planes
+	ret
+;
+calc_des_form:
+	mov	ds, bp
+	mov	si, dx				; load dmfdb pointer
+	not	bx
+	and	bx,1				; invert format
+	mov	10[si],bx			; toggle dest form
+	mov	ax, es: word ptr 2[di]		; get source ptr seg
+	mov	di, es: word ptr [di]		; offset
+	mov	es, ax
+	mov	ax, 2[si]
+	mov	si, [si]			; get dest ptr seg,offset
+	mov	ds, ax
+	xchg	si,di				; swap pointers
+	mov	ax, es
+	mov	dx, ds
+	mov	es, dx
+	mov	ds, ax
+	ret
+;
+calc_src_form:
+	mov	bx, es: word ptr 10[di]		; get the format flag
+	mov	ax, es: word ptr 8[di]		; get the width in words
+	mov	cx, es: word ptr 6[di]		; get the height in pixels
+	push	dx
+	mul	cx
+	pop	dx
+	mov	cx, ax				; cx = word count
+	and	bx,bx				; if bx = 0 then dev spec form
+	ret
+
+EJECT
+;****************************************************************
+;EX_TIMV							*	
+;	ENTRY	                                        	*
+;		CONTRL 7,8 = NEW VEC                            *
+;	EXIT	                             			*
+;		                           			*
+;		CONTRL 9,10 = OLD VEC				*
+;               INTOUT [0] = TIMER TICK COUNT IN MILLISECS	*
+;								*
+;****************************************************************
+EX_TIMV:
+	pushf
+	cli
+	push	es
+	push	ds
+	les	di,contrl_ptr
+	xor	ax,ax
+	mov	ds,ax
+	mov	si,4 * 1ch		;setup the offset to timer int vector
+	mov	ax,[si]
+	mov	es:word ptr 18[di],ax	;save old timer vector
+	mov	ax,2[si]
+	mov	es:word ptr 20[di],ax
+	mov	ax, es:word ptr 14[di]
+	mov	[si],ax
+	mov	ax, es:word ptr 16[di]
+	mov	2[si],ax
+	pop	ds
+	pop	es
+	popf
+	mov	ax,1
+	mov	CONTRL+8,ax		; flag that data is to be returned 
+	mov	ax, 55	
+	mov	INTOUT, ax		; return the millisec/tick count 
+	ret
+EJECT
+	endif
+
+;****************************************************************
+;CONCAT 							*	
+;	ENTRY	Reg. BX - X-coordinate (dev. coord.)		*
+;		Reg. AX - Y-coordinate (dev. coord.)		*
+;								*
+;	EXIT	Reg. DI - Physical address			*
+;		Reg. BL - Byte index				*	
+;								*
+;	Reg. Used. AX, BX, CX, DX, DI				*
+;								*
+;****************************************************************
+concat:
+	push	ax
+	mov	dx, 0	;Slice 0
+	cmp	ax, 512
+	jc	ccat0
+	inc	dx	;Or slice 1?
+ccat0:	mov	ax, dx
+	cmp	ax, cs:VESA_SLICE
+	jz	ccat1
+	mov	cs:VESA_SLICE, ax
+	call	setslice
+ccat1:	pop	ax
+	and	ax, 01FFh		;Coordinate within slice
+	
+	and	bx, 03ffh		;mask off 10 lsb for x-coord.
+	mov	cx, bytes_line
+	mul	cx
+	mov	dl, bl			;save low order byte of x-coord
+	and	dl, 07h 		;mask off data bit index.
+	mov	cl, 3			;set count to 3
+	shr	bx, cl			;shift out 3 lsb of x-coord.
+	add	ax, bx			;concatenate y and x coordinates in AX
+	mov	di, ax			;di = memory address
+	xor	dh, dh
+	mov	bx, dx			;bx = bit index into data byte
+	ret
+EJECT
+include	ibmmdvsp.a86
+if mouse
+cseg
+include imouse.a86
+endif
+cseg
+include egammre1.a86
+include egammre2.a86
+dseg
+include v10dev.a86
+;
+novbe           db      'VESA 1024x768 mode not available.',13,10,'$'
+include vgacols.a86			
+
+		include	date.a86
+		db ' VESA 1024x768x16 colour driver '
+		include copyrt.a86
+		rs offset PTSIN + 2 * PTSIN_SIZE + 4 - offset $
+INTOUT		rw INTOUT_SIZE
+					; ...
+

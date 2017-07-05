@@ -1,0 +1,19 @@
+sdrcg9.cga= entry, rcg_zyxg,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+rcg_drv,
+rcpttxt1,
+rcpttxt2,
+rcptdraw,
+rcgmblit,
+rcgblit,
+rcgpat,
+enddseg,
+cgacp,
+cgafont[nop]
+
+                                                                                                                                                                                                                

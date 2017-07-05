@@ -1,0 +1,926 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+; SD256: This is a stab at a 256-colour driver for GEM, initially based
+; on the disassembled source of SDPSC9.VGA. 
+;
+read_ptsin:
+					; pline+8Bp ...
+		push	bp
+		mov	bp, sp
+		mov	ax, 4[bp]
+		mov	bx, ds
+		mov	es, bx
+
+		mov	si, offset PTSIN
+		cmp	ax, 100h
+		jb	loc_0_48DF
+		les	si, ptsin_ptr
+
+
+loc_0_48DF:				; CODE XREF: read_ptsin+10j
+		shl	ax, 1
+		add	si, ax
+		mov	ax, es:[si]
+		pop	bp
+		retn	
+
+
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+write_ptsin:
+					; plygn_main+D3p ...
+		push	bp
+		mov	bp, sp
+		mov	ax, 4[bp]
+		mov	cx, 6[bp]
+		mov	bx, ds
+		mov	es, bx
+
+		mov	si, offset PTSIN
+		cmp	ax, 100h
+		jb	loc_0_4901
+		les	si, ptsin_ptr
+
+
+loc_0_4901:				; CODE XREF: write_ptsin+13j
+		shl	ax, 1
+		add	si, ax
+		mov	es:[si], cx
+		pop	bp
+		retn	
+
+
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+read_intin:
+					; pline+6Bp ...
+		push	bp
+		mov	bp, sp
+		mov	ax, 4[bp]
+		les	si, intin_ptr
+		shl	ax, 1
+		add	si, ax
+		mov	ax, es:[si]
+		pop	bp
+		retn	
+
+
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+		mov	ax, ds
+		retn	
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+RECTFILL:
+					; ...
+		mov	ax, CLIP
+		and	ax, ax
+		jnz	loc_0_492A
+		jmp	BOX_FILL
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_492A:				; CODE XREF: RECTFILL+5j
+		mov	ax, XMN_CLIP
+		mov	bx, X1
+		mov	cx, X2
+		cmp	bx, ax
+		jge	loc_0_4940
+		cmp	cx, ax
+		jl	locret_0_4950
+		mov	X1, ax
+
+loc_0_4940:				; CODE XREF: RECTFILL+17j
+		mov	ax, XMX_CLIP
+		cmp	cx, ax
+		jle	loc_0_4951
+		cmp	bx, ax
+		jg	locret_0_4950
+		mov	X2, ax
+		jmps	loc_0_4951
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+locret_0_4950:				; CODE XREF: RECTFILL+1Bj RECTFILL+29j
+					; ...
+		retn	
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4951:				; CODE XREF: RECTFILL+25j RECTFILL+2Ej
+		mov	ax, YMN_CLIP
+		mov	bx, Y1
+		mov	cx, Y2
+		cmp	bx, ax
+		jge	loc_0_4967
+		cmp	cx, ax
+		jl	locret_0_4950
+		mov	Y1, ax
+
+loc_0_4967:				; CODE XREF: RECTFILL+3Ej
+		mov	ax, YMX_CLIP
+		cmp	cx, ax
+		jle	loc_0_4975
+		cmp	bx, ax
+		jg	locret_0_4950
+		mov	Y2, ax
+
+loc_0_4975:				; CODE XREF: RECTFILL+4Cj
+		jmps	BOX_FILL
+
+
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+BOX_FILL:
+;
+; We ignore all the fancy word-alignment stuff. We will draw by bytes; this 
+; may slow down drawing but the code becomes ridiculously simple.
+;
+		mov	bx, X1
+		mov	ax, Y1
+		call	concat
+		if	VESA_MULTISEG
+		 mov	ax, cs:VID_SEG
+		else
+		 mov	ax, graph_plane
+		endif
+		mov	es, ax
+BOX_FILL_LINE:	mov	ax, NEXT_PAT
+		or	ax, ax
+		jz	BOX_FILL_MONO
+		mov	ax, WRT_MODE	;XOR and INVTRAN behave like 1-bit ops
+		cmp	ax, 2
+		jnc	BOX_FILL_MONO	
+		jmp	BOX_FILL_8BIT
+;	
+BOX_FILL_MONO:	mov	ax, 0Fh
+		mov	dx,X1
+		mov	bp,X2
+		inc	bp
+		sub	bp,dx
+		mov	bx,dx
+		and	bx,ax
+		shl	bx,1
+		mov	bx,bit_mask_table[bx]			
+		push	bx		;BX = bit mask
+
+		mov	si, Y1
+		mov	cx, Y2
+		sub	cx, si
+		inc	cx		;CX = count of lines to paint
+		and	si, patmsk
+		mov	bx, patptr
+		add	bx, si
+		add	bx, si
+		mov	patcnt, si
+		mov	si, bx		;SI -> pattern
+		mov	bx, WRT_MODE
+		shl	bx, 1
+		mov	ax, box_optbl[bx]
+		pop	bx		;BX = bit mask
+		call	ax
+		retn	
+;
+BOX_FILL_8BIT:	mov	ax, 0Fh
+		mov	dx, X1
+		mov	bp, X2
+		inc	bp
+		sub	bp, dx		;BP = width
+		mov	bx, dx		;BX = left edge
+
+		mov	si, Y1		;SI = Y-coord
+		mov	cx, Y2
+		sub	cx, si
+		inc	cx		;CX = count of lines to paint
+
+		and	si, patmsk
+		mov	bx, offset udpt_8bit
+		push	si
+		add	si, si	;*2
+		add	si, si	;*4
+		add	si, si	;*8
+		add	si, si	;*16
+		add	bx, si
+		pop	si
+		mov	patcnt, si
+		mov	si, bx		;SI -> pattern
+;
+; DX = left edge
+; SI-> pattern for row
+; BP = width
+; ES:DI -> destination pixel
+;
+box_tran_8bit:	push	di
+		push	dx
+		push	bp
+		if	VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		endif
+
+btr8loop:	mov	ax, dx
+		and	ax, 0Fh
+		push	si
+		add	si, ax
+		if VESA_SPLITLINE
+		 lodsb	
+		 call	stosb1024
+		else
+		 movsb		;Move byte from pattern to screen.
+		endif
+		pop	si
+		inc	dx
+		dec	bp
+		jnz	btr8loop
+		if	VESA_SPLITLINE
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		pop	bp
+		pop	bx
+		pop	di
+;
+; Next row, and SI needs recalcing.
+;
+		call	box_next8bit
+		loop	box_tran_8bit
+		ret
+
+box_next8bit:	call	incdi1024
+;
+; Increment pattern pointer
+;
+		mov	ax,patcnt
+		inc	ax
+		and	ax,patmsk
+		mov	patcnt,ax
+		shl	ax,1	;*2	
+		shl	ax,1	;*4	
+		shl	ax,1	;*8
+		shl	ax,1	;*16
+		add	ax,offset udpt_8bit
+		mov	si,ax
+		ret
+
+
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+box_tran_mode:	
+		if VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		endif
+		push	di
+		push	bx
+		push	bp
+box_tran_l:	mov	ax,[si]
+		and	ax,bx
+		jnz	box_tran_m
+		if	VESA_SPLITLINE
+		 call	bumpdi1024
+		else
+		 inc	di
+		endif
+		jmps	box_tran_n
+
+box_tran_m:	mov	al, byte ptr FG_BP_1
+		if	VESA_SPLITLINE
+		 call	stosb1024
+		else
+		 stosb
+		endif
+box_tran_n:	ror	bx,1
+		dec	bp
+		jnz	box_tran_l	
+		pop	bp
+		pop	bx
+		pop	di
+		if VESA_SPLITLINE
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		call	box_nextrow
+		loop	box_tran_mode
+		ret
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+box_invtran_mode:
+		if VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		endif
+		push	di
+		push	bx
+		push	bp
+box_invtran_l:	mov	ax,[si]
+		and	ax,bx
+		jnz	box_invtran_m
+		mov	al,byte ptr FG_BP_1
+		if	VESA_SPLITLINE
+		 call	stosb1024
+		else
+		 stosb
+		endif
+		jmps	box_invtran_n
+
+box_invtran_m:	
+		if	VESA_SPLITLINE
+		 call	bumpdi1024
+		else
+		 inc	di
+		endif
+box_invtran_n:	ror	bx,1
+		dec	bp
+		jnz	box_invtran_l	
+		pop	bp
+		pop	bx
+		pop	di
+		if VESA_SPLITLINE
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		call	box_nextrow
+		loop	box_invtran_mode
+		ret
+
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+;
+; Enter with: ES:DI  -> first pixel
+;             patcnt =  pattern index
+;             si     =  pattern pointer
+;             patmsk =  pattern mask
+;             bp     =  width
+;             cx     =  height 
+;	      bx     =  pixel mask for pattern
+;
+box_replace_mode:
+		if VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		endif
+		push	di
+		push	bx
+		push	bp
+box_replace_l:	mov	ax,[si]
+		and	ax,bx
+		mov	al,0
+		jz	box_replace_m
+		mov	al, byte ptr FG_BP_1
+box_replace_m:	
+		if	VESA_SPLITLINE
+		 call	stosb1024
+		else
+		 stosb
+		endif
+		ror	bx,1
+box_replace_n:	dec	bp
+		jnz	box_replace_l	
+		pop	bp
+		pop	bx
+		pop	di
+		if VESA_SPLITLINE
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		call	box_nextrow
+		loop	box_replace_mode
+		ret
+;
+box_xor_mode:	
+		if VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		endif
+		push	di
+		push	bx
+		push	bp
+box_xor_l:	mov	ax,[si]
+		and	ax,bx
+		mov	al,0
+		jz	box_xor_m
+;;;		mov	al, byte ptr FG_BP_1
+		mov	al,0FFh
+box_xor_m:	xor	es:[di],al
+		if	VESA_SPLITLINE
+		 call	bumpdi1024
+		else
+		 inc	di
+		endif
+		ror	bx,1
+box_xor_n:	dec	bp
+		jnz	box_xor_l	
+		pop	bp
+		pop	bx
+		pop	di
+		if VESA_SPLITLINE
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		call	box_nextrow
+		loop	box_xor_mode
+		ret
+;
+incdi1024:	add	di, bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	di, WINDOW_SIZE
+		  jc	box_nxr1
+		  sub	di, WINDOW_SIZE
+		 else
+		  jnc	box_nxr1	;Wrap at end of window
+		 endif
+		 inc	cs:VESA_SLICE
+		 call	setslice
+		endif
+box_nxr1:	ret
+;
+		if	VESA_SPLITLINE
+stosb1024:	mov	es:[di], al
+bumpdi1024:	inc	di
+		 if	WINDOW_SIZE ne 0
+		  cmp	di, WINDOW_SIZE
+		 endif
+		jnz	box_nxr1
+		inc	cs:VESA_SLICE
+		call	setslice
+		ret
+		endif
+
+
+
+box_nextrow:
+		call	incdi1024
+;
+; Increment pattern pointer
+;
+		mov	ax,patcnt
+		inc	ax
+		and	ax,patmsk
+		mov	patcnt,ax
+		shl	ax,1	
+		add	ax,patptr
+		mov	si,ax
+		ret
+
+
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+		if not GSX
+
+vex_butv:				; DATA XREF: dseg:019Ao
+		mov	si, offset userbut
+		call	sub_0_4CA9
+		retn	
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+sub_0_4CA9:
+					; ...
+		pushf	
+		cli	
+		push	es
+		push	ds
+		mov	ax, seg dseg_seg
+		mov	ds, ax
+		les	di, contrl_ptr
+
+		mov	ax, [si]
+		mov	es:18[di], ax
+		mov	ax, 2[si]
+		mov	es:20[di], ax
+		mov	ax, CONTRL+0Eh
+		mov	[si], ax
+		mov	ax, CONTRL+10h
+		mov	2[si],	ax
+		pop	ds
+		pop	es
+		popf	
+		retn	
+
+
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+vex_motv:				; DATA XREF: dseg:019Co
+		mov	si, offset usermot
+		call	sub_0_4CA9
+		retn	
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+vex_curv:				; DATA XREF: dseg:019Eo
+		mov	si, offset usercur
+		call	sub_0_4CA9
+		retn	
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+XFM_CRFM:				; DATA XREF: dseg:017Eo
+		push	ds
+		pop	es
+
+		mov	di, offset mxhot
+		mov	si, offset INTIN
+		mov	cx, 25h
+		rep movsw
+		mov	bx, mous_ci_mask
+		shl	bx, 1
+		mov	ax, MAP_COL[bx]
+		mov	mous_col_bg,al
+
+		mov	bx, mous_ci_data
+		shl	bx, 1
+		mov	ax, MAP_COL[bx]
+		mov	mous_col_fg,al
+		retn	
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+XFM_UDFL:
+		mov	dx, CONTRL+6
+		mov	cx, dx
+		xor	al, al
+
+xfm_udfl_size_ck:				; CODE XREF: XFM_UDFL+11j
+		inc	al
+		sub	dx, 10h
+		jb	xfm_udfl_bad
+		jz	xfm_udfl_size
+		jmps	xfm_udfl_size_ck
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+xfm_udfl_size:				; CODE XREF: XFM_UDFL+Fj
+		cmp	al, 1
+		jz	xfm_udfl_ok
+		cmp	al, num_planes
+		jz	xfm_udfl_ok1
+
+xfm_udfl_bad:				; CODE XREF: XFM_UDFL+Dj
+		mov	ax, 0FFFFh
+		retn	
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+xfm_udfl_ok:				; CODE XREF: XFM_UDFL+15j
+		mov	udpt_np, 0
+		jmps	xfm_udfl_ok2
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+xfm_udfl_ok1:				; CODE XREF: XFM_UDFL+19j
+		mov	udpt_np, 20h
+
+xfm_udfl_ok2:				; CODE XREF: XFM_UDFL+25j
+		mov	dx, cx
+		push	ds
+		pop	es
+		mov	di, offset ud_patrn
+		mov	si, offset INTIN
+		mov	cx, dx
+		rep movsw
+		mov	si, offset ud_patrn
+		mov	ax, udpt_np
+		or	ax, ax
+		jnz	xfm_udfl_8bit
+		retn	
+;
+		dseg
+		extrn	udpt_8bit:word
+		cseg
+;
+xfm_udfl_8bit:	push	si
+		mov	di, offset udpt_8bit
+;
+; Transform a 16x16 pattern stored as 8 planes each with 16 words, to
+; 16 rows of 16 bytes each. 
+;
+; SI -> source planar pattern
+; DI -> target pattern
+;		
+		mov	ch, 16	;Rows
+xfm_udfl_8row:	mov	cl, 16	;Columns
+		mov	bx, 8000h	;BH = source mask
+xfm_udfl_8col:	push	si
+		mov	dl, num_planes
+		mov	ah, 1	;Dest mask
+		mov	dh, 0	;Dest value
+xfm_udfl_plane:	test 	[si], bx 
+		jz	xfm_udfl_8z
+		or	dh, ah
+xfm_udfl_8z:	add	si, 32	;Next plane
+		rol	ah, 1	;Dest mask, next bit
+		dec	dl
+		jnz	xfm_udfl_plane	
+		pop	si
+		mov	[di], dh ;Converted byte
+		inc	di
+		ror	bx, 1
+		dec	cl
+		jnz	xfm_udfl_8col
+		inc	si
+		inc	si
+		dec	ch
+		jnz	xfm_udfl_8row	
+		pop	si
+		ret
+
+
+		endif
+
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+sub_0_4D52:
+					; CLC_FLIT+27p
+		cmp	ss:word ptr plygn_bez, 0
+		jle	loc_0_4D81
+		dec	ss:word ptr plygn_bez
+		mov	ax, ss:plygn_bez
+		shl	ax, 1
+		push	es
+		les	bx, ss:intin_ptr
+
+		add	bx, ax
+		mov	bx, es:[bx]
+		pop	es
+		add	bx, 2
+		shl	bx, 1
+		add	bx, ss:flit_bez_off
+		mov	ss:flit_bez, bx
+		retn	
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4D81:				; CODE XREF: sub_0_4D52+6j
+		mov	ss:word ptr flit_bez, 0FFFFh
+		retn	
+
+
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+sub_0_4D89:
+		mov	ss:plygn_rrot,1
+		mov	ax, cs
+		mov	ds, ax
+
+		mov	ax, offset txtblt_rrot_table_1
+		mov	di, ax
+		push	si
+		push	cx
+		mov	si, offset INTIN
+		mov	cx, 80h
+
+loc_0_4DA0:				; CODE XREF: sub_0_4D89+20j
+		mov	ax, ss:[si]
+		mov	[di], ax
+		inc	si
+		inc	si
+		inc	di
+		inc	di
+		loop	loc_0_4DA0
+		pop	cx
+		pop	si
+		retn	
+
+
+
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+CLC_FLIT:
+		mov	cx, CONTRL+2
+		mov	ax, ds
+		mov	es, ax
+
+		mov	si, offset PTSIN
+		mov	di, offset INTIN
+		cmp	cx, 80h
+		jb	loc_0_4DC6
+		les	si, ptsin_ptr
+
+
+loc_0_4DC6:				; CODE XREF: CLC_FLIT+12j
+		mov	ss:flit_bez_off, si
+		call	sub_0_4D52
+
+loc_0_4DCE:				; CODE XREF: CLC_FLIT+84j
+		cmp	si, ss:flit_bez
+		jnz	loc_0_4DE1
+		call	sub_0_4D52
+		add	si, 4
+		dec	cx
+		jnz	loc_0_4DE1
+		jmp	loc_0_4E55
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4DE1:				; CODE XREF: CLC_FLIT+25j
+					; CLC_FLIT+2Ej
+		push	cx
+		mov	cx, es:6[si]
+		mov	dx, es:2[si]
+		sub	cx, dx
+		jz	loc_0_4E4A
+		mov	bx, ss:Y1
+		mov	ax, bx
+		sub	ax, dx
+		sub	bx, es:6[si]
+		mov	dx, ax
+		xor	dx, bx
+		jns	loc_0_4E2D
+		mov	dx, es:4[si]
+		sub	dx, es:[si]
+		add	dx, dx
+		imul	dx
+		idiv	cx
+		and	ax, ax
+		js	loc_0_4E4C
+		inc	ax
+		shr	ax, 1
+
+loc_0_4E15:				; CODE XREF: CLC_FLIT+A5j
+		add	ax, es:[si]
+		mov	[di], ax
+		inc	di
+		inc	di
+		inc	ss:fill_int
+		cmp	ss:fill_int, 80h ; 'Ђ'
+		jnz	loc_0_4E2D
+		call	sub_0_4D89
+
+loc_0_4E2D:				; CODE XREF: CLC_FLIT+51j
+					; CLC_FLIT+7Aj ...
+		inc	si
+		inc	si
+		inc	si
+		inc	si
+		pop	cx
+		loop	loc_0_4DCE
+		mov	ax, ds
+		mov	es, ax
+
+		mov	si, offset INTIN
+		mov	bx, cs
+		cmp	ax, bx
+		jnz	loc_0_4E44
+		mov	si, offset txtblt_rrot_table_1
+
+loc_0_4E44:				; CODE XREF: CLC_FLIT+91j
+		mov	ax, ss
+		mov	ds, ax
+		jmps	loc_0_4E55
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4E4A:				; CODE XREF: CLC_FLIT+3Ej
+		jmps	loc_0_4E2D
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4E4C:				; CODE XREF: CLC_FLIT+62j
+		neg	ax
+		inc	ax
+		shr	ax, 1
+		neg	ax
+		jmps	loc_0_4E15
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4E55:				; CODE XREF: CLC_FLIT+30j
+					; CLC_FLIT+9Aj
+		mov	cx, fill_int
+		cmp	cx, 2
+		jz	loc_0_4E65
+		jl	locret_0_4E64
+		dec	cx
+		jmp	loc_0_4E7C
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+locret_0_4E64:				; CODE XREF: CLC_FLIT+B0j
+		retn	
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4E65:				; CODE XREF: CLC_FLIT+AEj
+		mov	ax, es:[si]
+		mov	bx, es:2[si]
+		cmp	ax, bx
+		jle	loc_0_4E71
+		xchg	ax, bx
+
+loc_0_4E71:				; CODE XREF: CLC_FLIT+C0j
+		mov	X1, ax
+		mov	X2, bx
+		call	HLINE_CLIP
+		retn	
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4E7C:				; CODE XREF: CLC_FLIT+B3j
+		mov	dx, cx
+		mov	di, si
+
+loc_0_4E80:				; CODE XREF: CLC_FLIT+F1j
+		push	cx
+		mov	si, di
+		mov	ax, es:[si]
+
+loc_0_4E86:				; CODE XREF: CLC_FLIT+EDj
+		mov	bx, es:2[si]
+		cmp	ax, bx
+		jle	loc_0_4E97
+		mov	es:[si], bx
+		mov	es:2[si], ax
+		mov	bx, ax
+
+loc_0_4E97:				; CODE XREF: CLC_FLIT+DEj
+		mov	ax, bx
+		inc	si
+		inc	si
+		loop	loc_0_4E86
+		pop	cx
+		dec	dx
+		jnz	loc_0_4E80
+		mov	cx, fill_int
+		shr	cx, 1
+
+loc_0_4EA7:				; CODE XREF: CLC_FLIT+113j
+		mov	ax, es:[di]
+		mov	bx, es:2[di]
+		mov	X1, ax
+		mov	X2, bx
+		push	es
+		push	di
+		push	cx
+		call	HLINE_CLIP
+		pop	cx
+		pop	di
+		pop	es
+
+		add	di, 4
+		loop	loc_0_4EA7
+		retn	
+
+
+
+;ЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫЫ
+
+;		S u b r	o u t i	n e
+
+HLINE_CLIP:
+					; CLC_FLIT+10Ap
+		mov	ax, CLIP
+		and	ax, ax
+		jnz	loc_0_4ECE
+		jmp	loc_0_5278
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+loc_0_4ECE:				; CODE XREF: HLINE_CLIP+5j
+		mov	ax, XMN_CLIP
+		mov	bx, X1
+		mov	cx, X2
+		cmp	bx, ax
+		jge	loc_0_4EE4
+		cmp	cx, ax
+		jl	locret_0_4EF5
+		mov	X1, ax
+
+loc_0_4EE4:				; CODE XREF: HLINE_CLIP+17j
+		mov	ax, XMX_CLIP
+		cmp	cx, ax
+		jle	loc_0_4EF2
+		cmp	bx, ax
+		jg	locret_0_4EF5
+		mov	X2, ax
+
+loc_0_4EF2:				; CODE XREF: HLINE_CLIP+25j
+		jmp	loc_0_5278
+;ДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДДД
+
+locret_0_4EF5:				; CODE XREF: HLINE_CLIP+1Bj
+					; HLINE_CLIP+29j
+		retn	
+
+
+

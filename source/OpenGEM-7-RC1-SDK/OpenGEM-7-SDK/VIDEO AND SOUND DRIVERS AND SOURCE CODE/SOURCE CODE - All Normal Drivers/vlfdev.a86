@@ -1,0 +1,71 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+; SD256: This is a stab at a 256-colour driver for GEM, initially based
+; on the disassembled source of SDPSC9.VGA. 
+;
+DEV_TAB		dw 	xresmx, yresmx	; Screen dimensions
+		dw	0		; Scaling
+		dw	xsize, ysize	; Pixel size
+		dw	0		; Can scale characters
+		dw	8		; Line styles
+		dw	40		; Line widths
+		dw	8		; Marker styles
+		dw	8		; Marker sizes
+		dw	0		; Font count
+		dw	24		; Pattern count
+		dw	12		; Hatch count
+		dw	256		; Colours onscreen
+		dw	10		; GDP count
+		dw	1,2,3,4,5,6,7,8,9,10	;GDP list
+		dw	3,0,3,3,3,0,3,0,3,2	;GDP characteristics
+		dw	1,1,1,0		; Can do all sorts
+		dw	0FFFFh		; Palette size
+		dw	2,1,1,1		; Counts of input devices
+		dw	2		; Input & output	
+
+SIZ_TAB		dw 0,0,0,0, 1,	0, 28h,	0, 0Fh,	0Bh, 78h, 58h; DATA XREF: vq_extnd+22o
+					; init_wk+1B5o	...
+INQ_TAB		dw 4, 1,  1, 0 
+		dw 8			; Number of planes
+		dw 1, 50, 0 
+		dw 1, 4,  2, 1
+		dw 0, 0, 5DAh, 80h
+		dw 3, 0, 0
+					; DATA XREF: vq_extnd+2Do
+CLIP		dw 0			; DATA XREF: s_clip+Bw	cseg:0AE2r
+					; ...
+XMN_CLIP	dw 0			; DATA XREF: s_clip+2Ew s_clip+3Fw
+YMN_CLIP	dw 0			; DATA XREF: s_clip+39w s_clip+53r
+XMX_CLIP	dw 0			; DATA XREF: s_clip+31w s_clip+48r
+YMX_CLIP	dw 0			; DATA XREF: s_clip+35w s_clip+63r
+					; ...
+		rs 16
+m_dot		dw 1, 2, 0,0,0,0	; DATA XREF: dseg:0272o
+m_plus		dw 2, 2, 0,	0FFFCh,	0, 4, 2, 0FFFBh, 0, 5, 0; DATA XREF: dseg:0274o
+m_star		dw 3, 2, 0, 0FFFCh, 0, 4, 2, 4,	2, 0FFFCh, 0FFFEh, 2, 4, 0FFFEh, 0FFFCh
+					; DATA XREF: dseg:0276o
+		dw 2
+m_square	dw 1, 5, 0FFFBh, 0FFFCh, 5, 0FFFCh, 5, 4, 0FFFBh, 4, 0FFFBh, 0FFFCh
+					; DATA XREF: dseg:0278o
+m_cross		dw 2, 2, 0FFFBh, 0FFFCh, 5,	4, 2, 0FFFBh, 4, 5, 0FFFCh; DATA XREF: dseg:027Ao
+m_dmnd		dw 1, 5, 0FFFBh, 0,0, 0FFFCh, 5, 0,0,	4, 0FFFBh, 0; DATA XREF: dseg:027Co
+

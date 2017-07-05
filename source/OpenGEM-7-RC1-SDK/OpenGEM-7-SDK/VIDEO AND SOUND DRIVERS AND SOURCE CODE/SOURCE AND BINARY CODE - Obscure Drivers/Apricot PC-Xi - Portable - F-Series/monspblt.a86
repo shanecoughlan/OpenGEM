@@ -1,0 +1,1490 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+public	MONO8XHT
+
+if mono_port
+extrn	next_seg_pgdown:near
+endif
+
+dseg
+	extrn	WRT_MODE:word
+	extrn	TEXT_BP:word
+	extrn	plane_loop_count:byte
+if ( num_planes gt 1 ) and ( not segment_access )
+	extrn	plane_port_tbl:byte
+	extrn	plane_read_tbl:byte
+endif
+	extrn	DESTX:word,DESTY:word		;destination pixel address
+	extrn	DELY:word			;size of area to use
+	extrn	FOFF:word			;offset of source form
+	extrn	FWIDTH:word			;form width of source form
+	extrn	R_OFF:word,L_OFF:word		;skew factors
+	extrn	CLIP:word			;clipping flag
+	extrn	XMN_CLIP:WORD,XMX_CLIP:WORD	;clipping region
+	extrn	YMN_CLIP:WORD,YMX_CLIP:WORD	;
+;
+	extrn	WORD_MASK_TABLE:word		;masks for fringes
+	extrn	INTIN:word
+	extrn	CONTRL:word
+cseg
+if wy700
+	extrn	current_port:byte		;wy700 control port value
+endif
+	extrn	CONCAT:near
+	extrn	chk_fnt:near
+if mono_multisegs
+	extrn	graph_seg_high:word		;get the data from cs:	
+endif
+
+
+MONO8XHT:
+	cmp	CONTRL, 11			;GEM 3.0 fix: No MONO8XHT
+	jz	MONO8XHT_JUST			;if text is justified
+	mov	ax, XMX_CLIP
+	sub	ax, XMN_CLIP
+	cmp	ax, 8
+	jge	MONO8XHT_1
+MONO8XHT_JUST:
+	xor	ax, ax
+	ret
+;
+MONO8XHT_1:
+	push	bp
+	mov	m8_stack, sp
+	xor	ax, ax
+	mov	m8_rshift, ax
+	mov	m8_18cc, ax
+	mov	m8_18d0, 0
+	mov	m8_18d2, 0	
+	mov	ax, YMN_CLIP
+	mov	m8_ymnclip, ax
+	mov	bx, YMX_CLIP
+	sub	bx, ax
+	mov	m8_cliph, bx
+	mov	ax, XMN_CLIP
+	mov	m8_xmnclip, ax
+	mov	bx, XMX_CLIP
+	sub	bx, ax
+	mov	m8_clipw, bx
+	mov	m8_height, 0
+	mov	ax, DELY
+	mov	m8_dely, ax
+	mov	m8_18bc, 0
+	mov	ax, DESTX
+	mov	m8_destx, ax
+	mov	ax, DESTY
+	mov	m8_desty, ax
+	mov	ax, CONTRL+6			; get the char count
+	mov	m8_count2, ax
+	mov	m8_count1, ax
+	cmp	CLIP, 0
+	jnz	MONO8XHT_CLIP
+	jmp	MONO8XHT_OK			; if cliping is on then see if ok
+
+MONO8XHT_CLIP:
+	mov	ax, m8_ymnclip
+	mov	m8_desty, ax
+	sub	ax, DESTY
+	mov	bx, ax
+	jg	m8_clip1
+	xor	bx, bx
+	mov	cx, DESTY
+	mov	m8_desty, cx
+m8_clip1:
+	mov	dx, DELY
+	cmp	bx, dx
+	jge	m8_clip3		;Clipped completely out
+	add	ax, m8_cliph
+	inc	ax
+	cmp	ax, dx
+	jl	m8_clip2
+	mov	ax, dx
+m8_clip2:
+	or	ax, ax
+	jle	m8_clip3
+	cmp	ax, bx
+	jg	m8_clip4
+m8_clip3:
+	jmp	MONO8XHT_QUIT
+;
+m8_clip4:
+	mov	m8_height, bx
+	mov	m8_dely, ax
+	mov	ax, DESTX
+	mov	m8_destx, ax
+	mov	dx, ax
+	mov	ax, m8_xmnclip
+	mov	bx, ax
+	sub	ax, DESTX
+	jbe	m8_clip7
+	mov	cx, 8
+	div	cl
+	mov	cl, ah
+	xor	ah, ah
+	mov	m8_destx, bx
+	cmp	ax, m8_count1
+	jl	m8_clip5
+	jmp	m8_body12
+;
+m8_clip5:
+	cmp	cx, 0
+	jz	m8_clip6
+	neg	cx
+	add	cx, 8
+	mov	m8_18cc, cx
+	mov	m8_18d0, 1
+	dec	m8_count1
+m8_clip6:
+	mov	dx, bx
+	sub	m8_count1, ax
+	shl	ax, 1
+	add	m8_18bc, ax
+	cmp	m8_count1, 0
+	jz	MONO8XHT_OK
+m8_clip7:
+	mov	bx, m8_xmnclip
+	add	bx, m8_clipw
+	mov	ax, m8_count2
+	mov	cx, 8
+	mul	cx
+	add	ax, DESTX
+	dec	ax
+	sub	ax, bx
+	jbe	MONO8XHT_OK
+	mov	cx, 8
+	div	cl
+	mov	cl, ah
+	xor	ah, ah
+	sub	m8_count1, ax
+	jg	m8_clip8
+	jmp	m8_body12
+;
+m8_clip8:
+	or	cl, cl
+	jz	MONO8XHT_OK
+	neg	cx
+	add	cx, 8
+	mov	m8_rshift, cx
+	mov	m8_18d2, 1
+	dec	m8_count1
+MONO8XHT_OK:
+	mov	si, offset INTIN
+	mov	bx, word ptr FOFF
+	mov	cx, bx
+	add	cx, 20h
+	mov	m8_fontptr, cx
+	mov	cx, m8_count1
+	add	cx, 2
+	shl	cx, 1
+	add	si, m8_18bc
+	add	si, cx
+	sub	si, 2
+	shr	cx, 1
+	xor	dx, dx
+	mov	ax, m8_height
+	mul	FWIDTH
+	add	ax, bx
+	mov	dx, ax
+	std
+m8ok_1:
+	lodsw
+	xor	ah, ah
+	add	ax, dx
+	push	ax
+	loop	m8ok_1
+	cld
+	mov	ax, TEXT_BP
+
+if num_planes gt 2
+	and	al, 0Fh
+	mov	ah, al
+	shl	ah, 1
+	shl	ah, 1
+	shl	ah, 1
+	shl	ah, 1
+	or	al, ah
+endif
+if num_planes eq 2
+	and	al, 3
+	mov	ah, al
+	shl	ah, 1
+	shl	ah, 1
+	or	al, ah
+	shl	ah, 1
+	shl	ah, 1
+	or	al, ah
+	shl	ah, 1
+	shl	ah, 1
+	or	al, ah
+endif
+if num_planes eq 1
+	test	ax, 1
+	jz	m8ok_2
+	mov	ax, -1
+endif
+m8ok_2:
+	mov	m8_fg_bp, al
+	call	chk_fnt		; GEM/3 extra
+	mov	ax, graph_plane
+	mov	es, ax		; init the segment register
+	mov	bx, m8_destx
+	mov	ax, m8_desty
+	call	concat				; returns di = start add
+	mov	bp, word ptr FOFF+2
+	mov	dx, FWIDTH			; get the font form width
+	mov	ax, m8_dely
+	sub	ax, m8_height
+	mov	m8_dely, ax
+	cmp	m8_18d0, 0
+	jz	m8_body1
+	mov	ax, m8_destx
+	and	ax, 7
+	mov	m8_lalign, ax
+	mov	m8_shift1, al
+	mov	ax, m8_18cc
+	neg	ax
+	add	ax, 8
+	mov	m8_shift2, al
+	mov	ax, m8_lalign
+	mov	bx, m8_18cc
+	add	ax, bx
+	pop	si
+	call	m8_left
+	mov	ax, m8_lalign
+	add	ax, m8_18cc
+	and	ax, 7
+	mov	m8_lalign, ax
+	mov	bx, ax
+	or	ax, ax
+	jnz	m8_body1
+	add	di, 2
+m8_body1:
+	cmp	m8_count1, 0
+	jnz	m8_body2
+	jmp	m8_body14
+;
+m8_body2:
+	xor	ax, ax
+	or	bx, bx
+	jz	m8_body3
+	not	ax
+m8_body3:
+	mov	m8_lalign, bx
+	or	al, al
+	jz	m8_body4
+	jmp	m8_body8
+;
+m8_body4:
+	mov	bp, word ptr FOFF+2
+	mov	dx, FWIDTH
+	test	WRT_MODE, 3
+	jz	m8_body7
+m8_body5:
+	pop	si
+	cmp	si, m8_fontptr
+	jz	m8_body6
+	push	di
+	mov	ah, m8_fg_bp
+	mov	cx, m8_dely
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawnorot[bx]
+	pop	di	
+m8_body6:
+	inc	di
+	inc	di
+	dec	m8_count1
+	jnz	m8_body5
+	jmp	m8_body14
+;
+m8_body7:
+	pop	si
+	push	di
+	mov	ah, m8_fg_bp
+	mov	cx, m8_dely
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawnorot[bx]
+	pop	di
+	inc	di
+	inc	di
+	dec	m8_count1
+	jnz	m8_body7
+	jmp	m8_body14
+;
+m8_body8:
+	mov	bp, FWIDTH
+	mov	ax, m8_lalign
+	and	ax, 7
+	mov	m8_shift1, al
+	neg	ax
+	add	ax, 8
+	mov	m8_shift2, al
+	test	WRT_MODE, 3
+	jz	m8_body13
+m8_body9:
+	xor	cx, cx
+	mov	ch, m8_shift1
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	pop	si
+	cmp	si, m8_fontptr
+	jnz	m8_body10
+	add	di, 2
+	jmp	m8_body11
+;
+m8_body10:
+	push	si
+	push	di
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawleft[bx]
+	pop	di
+	pop	si
+	add	di, 2
+	push	di
+	xor	cx, cx
+	mov	cl, m8_shift2
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawleft[bx]
+	pop	di
+m8_body11:
+	dec	m8_count1
+	jz	m8_body12
+	jmp	m8_body9
+m8_body12:
+	jmp	m8_body14
+m8_body13:
+	xor	cx, cx
+	mov	ch, m8_shift1
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	pop	si
+	push	si
+	push	di
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawleft[bx]
+	pop	di
+	pop	si
+	add	di, 2
+	push	di
+	xor	cx, cx
+	mov	cl, m8_shift2
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawleft[bx]
+	pop	di
+	dec	m8_count1
+	jz	m8_body14
+	jmp	m8_body13
+;
+m8_body14:
+	cmp	m8_18d2, 0
+	jz	MONO8XHT_QUIT
+	mov	ax, m8_lalign
+	mov	m8_shift2, al
+	mov	ax, m8_rshift
+	neg	ax
+	add	ax, 8
+	mov	m8_shift1, al
+	mov	ax, m8_lalign
+	mov	bx, m8_rshift
+	add	ax, bx
+	pop	si
+	call	m8_right
+MONO8XHT_QUIT:
+	mov	sp, m8_stack
+	pop	bp
+	mov	ax, -1
+	ret
+;
+if num_planes gt 2
+m8_rep_norot:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bh, ah
+	mov	bp, graph_plane	
+m8_rep_norot_1:
+	xor	ax, ax
+	mov	es:[di], ax
+	mov	bp, graph_plane_high
+	mov	es, bp
+	mov	es:[di], ax
+	mov	bp, graph_plane
+	mov	es, bp
+	mov	al, [si]
+	ror	bh, 1
+	jnc	m8_rep_norot_2
+	mov	es:[di], al
+m8_rep_norot_2:
+	ror	bh, 1
+	jnc	m8_rep_norot_3
+	mov	es:1[di], al
+m8_rep_norot_3:
+	mov	bp, graph_plane_high
+	mov	es, bp
+	ror	bh, 1
+	jnc	m8_rep_norot_4
+
+if num_planes eq 4
+	mov	es:[di], al
+m8_rep_norot_4:
+	ror	bh, 1
+	jnc	m8_rep_norot_4a
+	mov	es:1[di], al
+m8_rep_norot_4a:
+else
+	mov	es:1[di], al
+m8_rep_norot_4:
+endif
+	mov	bp, graph_plane	
+	mov	es, bp
+	add	di, next_plane
+	jnc	m8_rep_norot_5
+	add	di, bytes_line
+m8_rep_norot_5:
+	add	si, dx
+if num_planes eq 3
+	ror	bh, 1
+endif
+	loop	m8_rep_norot_1
+	mov	ah, bh
+	pop	ds
+	ret
+;
+m8_tran_norot:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bh, ah
+	mov	bp, graph_plane
+m8_tran_norot_1:
+	mov	al, [si]
+	mov	ah, al
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	bh, 1
+	jnc	m8_tran_norot_2
+	or	es:[di], al
+m8_tran_norot_2:
+	ror	bh, 1
+	jnc	m8_tran_norot_3
+	or	es:1[di], al
+m8_tran_norot_3:
+	mov	bp, graph_plane_high
+	mov	es, bp
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	bh, 1
+	jnc	m8_tran_norot_4
+if num_planes eq 4
+	or	es:[di], al
+m8_tran_norot_4:
+	ror	bh, 1
+	jnc	m8_tran_norot_4a
+	or	es:1[di], al
+m8_tran_norot_4a:
+else
+	or	es:1[di], al
+m8_tran_norot_4:
+endif
+	mov	bp, graph_plane
+	mov	es, bp
+	add	di, next_plane
+	jnc	m8_tran_norot_5
+	add	di, bytes_line
+m8_tran_norot_5:
+	add	si, dx
+if num_planes eq 3
+	ror	bh, 1
+endif
+	loop	m8_tran_norot_1
+	mov	ah, bh
+	pop	ds
+	ret
+;
+m8_itran_norot:	
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bh, ah
+	mov	bp, graph_plane
+m8_itran_norot_1:
+	mov	al, [si]
+	mov	ah, al
+	and	es:[di], ax
+	not	ax
+	ror	bh, 1
+	jnc	m8_itran_norot_2
+	or	es:[di], al
+m8_itran_norot_2:
+	ror	bh, 1
+	jnc	m8_itran_norot_3
+	or	es:1[di], al
+m8_itran_norot_3:
+	mov	bp, graph_plane_high
+	mov	es, bp
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	bh, 1
+	jnc	m8_itran_norot_4
+if num_planes eq 4
+	or	es:[di], al
+m8_itran_norot_4:
+	ror	bh, 1
+	jnc	m8_itran_norot_4a
+	or	es:1[di], al
+m8_itran_norot_4a:
+else
+	or	es:1[di], al
+m8_itran_norot_4:
+endif
+	mov	bp, graph_plane
+	mov	es, bp
+	add	di, next_plane
+	jnc	m8_itran_norot_5
+	add	di, bytes_line
+m8_itran_norot_5:
+	add	si, dx
+if num_planes eq 3
+	ror	bh, 1
+endif
+	loop	m8_itran_norot_1
+	mov	ah, bh
+	pop	ds
+	ret
+
+m8_xor_norot:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bp, graph_plane
+	mov	bx, graph_plane_high
+m8_xor_norot_1:
+	mov	al, [si]
+	mov	ah, al
+	xor	es:[di], ax
+	mov	es, bx
+	xor	es:[di], ax
+	mov	es, bp
+	add	di, next_plane
+	jnc	m8_xor_norot_2
+	add	di, bytes_line
+m8_xor_norot_2:
+	add	si, dx
+	loop	m8_xor_norot_1
+	pop	ds
+	ret
+;
+m8_rep_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	es, m8_gs_lower
+	mov	bl, 0FFh
+	shl	bl, cl
+	xchg	ch, cl
+	shr	bl, cl
+	xchg	ch, cl
+	not	bl
+	mov	bh, bl
+m8_rep_left_1:
+	and	es:[di], bx
+	mov	al, [si]
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	ror	dh, 1
+	jnc	m8_rep_left_2
+	or	es:[di], al
+m8_rep_left_2:
+	ror	dh, 1
+	jnc	m8_rep_left_3
+	or	es:1[di], al
+m8_rep_left_3:
+	mov	es, m8_gs_upper
+	and	es:[di], bx
+	ror	dh, 1
+	jnc	m8_rep_left_4
+if num_planes gt 3
+	or	es:[di], al
+m8_rep_left_4:
+	ror	dh, 1
+	jnc	m8_rep_left_5
+	or	es:1[di], al
+else
+	or	es:1[di], al
+m8_rep_left_4:
+endif
+m8_rep_left_5:
+	mov	es, m8_gs_lower
+	add	di, next_plane
+	jnc	m8_rep_left_6
+	add	di, bytes_line
+m8_rep_left_6:
+	add	si, bp
+if num_planes eq 3
+	ror	dh, 1
+endif
+	dec	dl
+	jnz	m8_rep_left_1
+	pop	ds
+	ret
+;
+m8_tran_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bx, graph_plane
+m8_tran_left1:
+	mov	al, [si]
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	not	al
+	mov	ah, al
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_tran_left2
+	or	es:[di], al
+m8_tran_left2:	
+	ror	dh, 1
+	jnc	m8_tran_left3
+	or	es:1[di], al
+m8_tran_left3:
+	xor	bx, 3000h
+	mov	es, bx
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_tran_left4
+if num_planes gt 3
+	or	es:[di], al
+m8_tran_left4:
+	ror	dh, 1
+	jnc	m8_tran_left5
+	or	es:1[di], al
+else
+	or	es:1[di], al
+m8_tran_left4:
+endif
+m8_tran_left5:
+	xor	bx, 3000h
+	mov	es, bx
+	add	di, next_plane
+	jnc	m8_tran_left6
+	add	di, bytes_line
+m8_tran_left6:
+	add	si, bp
+if num_planes eq 3
+	ror	dh, 1
+endif
+	dec	dl
+	jnz	m8_tran_left1
+	pop	ds
+	ret
+;
+m8_itran_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bx, graph_plane
+m8_itran_left1:
+	mov	al, [si]
+	not	al
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	not	al
+	mov	ah, al
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_itran_left2
+	or	es:[di], al
+m8_itran_left2:	
+	ror	dh, 1
+	jnc	m8_itran_left3
+	or	es:1[di], al
+m8_itran_left3:
+	xor	bx, 3000h
+	mov	es, bx
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_itran_left4
+if num_planes gt 3
+	or	es:[di], al
+m8_itran_left4:
+	ror	dh, 1
+	jnc	m8_itran_left5
+	or	es:1[di], al
+else
+	or	es:1[di], al
+m8_itran_left4:
+endif
+m8_itran_left5:
+	xor	bx, 3000h
+	mov	es, bx
+	add	di, next_plane
+	jnc	m8_itran_left6
+	add	di, bytes_line
+m8_itran_left6:
+	add	si, bp
+if num_planes eq 3
+	ror	dh, 1
+endif
+	dec	dl
+	jnz	m8_itran_left1
+	pop	ds
+	ret
+
+m8_xor_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bx, graph_plane
+m8_xor_left1:
+	mov	al, [si]
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	mov	ah, al
+	xor	es:[di], ax
+	xor	bx, 3000h
+	mov	es, bx
+	xor	es:[di], ax
+	xor	bx, 3000h
+	mov	es, bx
+	add	di, next_plane
+	jnc	m8_xor_left2
+	add	di, bytes_line
+m8_xor_left2:
+	add	si, bp
+	dec	dl
+	jnz	m8_xor_left1
+	pop	ds
+	ret
+
+
+
+m8_rep_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	es, m8_gs_lower
+	mov	bl, 0FFh
+	shr	bl, cl
+	xchg	ch, cl
+	shl	bl, cl
+	xchg	ch, cl
+	not	bl
+	mov	bh, bl
+m8_rep_right_1:
+	and	es:[di], bx
+	mov	al, [si]
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl
+	xchg	ch, cl
+	ror	dh, 1
+	jnc	m8_rep_right_2
+	or	es:[di], al
+m8_rep_right_2:
+	ror	dh, 1
+	jnc	m8_rep_right_3
+	or	es:1[di], al
+m8_rep_right_3:
+	mov	es, m8_gs_upper
+	and	es:[di], bx
+	ror	dh, 1
+	jnc	m8_rep_right_4
+if num_planes gt 3
+	or	es:[di], al
+m8_rep_right_4:
+	ror	dh, 1
+	jnc	m8_rep_right_5
+	or	es:1[di], al
+else
+	or	es:1[di], al
+m8_rep_right_4:
+endif
+m8_rep_right_5:
+	mov	es, m8_gs_lower
+	add	di, next_plane
+	jnc	m8_rep_right_6
+	add	di, bytes_line
+m8_rep_right_6:
+	add	si, bp
+if num_planes eq 3
+	ror	dh, 1
+endif
+	dec	dl
+	jnz	m8_rep_right_1
+	pop	ds
+	ret
+;
+m8_tran_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bx, graph_plane
+m8_tran_right1:
+	mov	al, [si]
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl
+	xchg	ch, cl
+	not	al
+	mov	ah, al
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_tran_right2
+	or	es:[di], al
+m8_tran_right2:	
+	ror	dh, 1
+	jnc	m8_tran_right3
+	or	es:1[di], al
+m8_tran_right3:
+	xor	bx, 3000h
+	mov	es, bx
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_tran_right4
+if num_planes gt 3
+	or	es:[di], al
+m8_tran_right4:
+	ror	dh, 1
+	jnc	m8_tran_right5
+	or	es:1[di], al
+else
+	or	es:1[di], al
+m8_tran_right4:
+endif
+m8_tran_right5:
+	xor	bx, 3000h
+	mov	es, bx
+	add	di, next_plane
+	jnc	m8_tran_right6
+	add	di, bytes_line
+m8_tran_right6:
+	add	si, bp
+if num_planes eq 3
+	ror	dh, 1
+endif
+	dec	dl
+	jnz	m8_tran_right1
+	pop	ds
+	ret
+;
+m8_itran_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bx, graph_plane
+m8_itran_right1:
+	mov	al, [si]
+	not	al
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl		;In the original this was two SHRs in 
+	xchg	ch, cl		;succession, but bearing in mind usage
+	not	al		;everywhere else, I thought the second one
+	mov	ah, al		;was probably a typo for SHL.
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_itran_right2
+	or	es:[di], al
+m8_itran_right2:	
+	ror	dh, 1
+	jnc	m8_itran_right3
+	or	es:1[di], al
+m8_itran_right3:
+	xor	bx, 3000h
+	mov	es, bx
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	dh, 1
+	jnc	m8_itran_right4
+if num_planes gt 3
+	or	es:[di], al
+m8_itran_right4:
+	ror	dh, 1
+	jnc	m8_itran_right5
+	or	es:1[di], al
+else
+	or	es:1[di], al
+m8_itran_right4:
+endif
+m8_itran_right5:
+	xor	bx, 3000h
+	mov	es, bx
+	add	di, next_plane
+	jnc	m8_itran_right6
+	add	di, bytes_line
+m8_itran_right6:
+	add	si, bp
+if num_planes eq 3
+	ror	dh, 1
+endif
+	dec	dl
+	jnz	m8_itran_right1
+	pop	ds
+	ret
+
+m8_xor_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bx, graph_plane
+m8_xor_right1:
+	mov	al, [si]
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl
+	xchg	ch, cl
+	mov	ah, al
+	xor	es:[di], ax
+	xor	bx, 3000h
+	mov	es, bx
+	xor	es:[di], ax
+	xor	bx, 3000h
+	mov	es, bx
+	add	di, next_plane
+	jnc	m8_xor_right2
+	add	di, bytes_line
+m8_xor_right2:
+	add	si, bp
+	dec	dl
+	jnz	m8_xor_right1
+	pop	ds
+	ret
+
+;<---
+
+else	; --------- num_planes gt 2 ----------------
+
+m8_xor_norot:
+	push	ds
+	mov	ds, bp
+m8_xor_norot_1:
+	mov	al, [si]
+	xor	es:[di], al
+	xor	es:1[di], al
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_xor_norot_2
+endif
+	add	di, bytes_line
+m8_xor_norot_2:
+	add	si, dx
+	loop	m8_xor_norot_1
+	pop	ds
+	ret
+
+;
+m8_tran_norot:
+	push	ds
+	mov	ds, bp
+	xchg	ah, bh
+m8_tran_norot_1:
+	mov	al, [si]
+	mov	ah, al
+	not	ax
+	and	es:[di], ax
+	not	ax
+	ror	bh, 1
+	jnc	m8_tran_norot_2
+	or	es:[di], al
+m8_tran_norot_2:
+	ror	bh, 1
+	jnc	m8_tran_norot_3
+	or	es:1[di], al
+m8_tran_norot_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_tran_norot_4
+endif
+	add	di, bytes_line
+m8_tran_norot_4:
+	add	si, dx
+	loop	m8_tran_norot_1	;[JCE] Fix likely copy-and-paste error
+	xchg	ah, bh	
+	pop	ds
+	ret
+		
+m8_rep_norot:
+	push	ds
+	mov	ds, bp
+	xchg	ah, bh
+m8_rep_norot_1:
+	xor	ax, ax
+	mov	es:[di], ax
+	mov	al, [si]
+	ror	bh, 1
+	jnc	m8_rep_norot_2
+	mov	es:[di], al
+m8_rep_norot_2:
+	ror	bh, 1
+	jnc	m8_rep_norot_3
+	mov	es:1[di], al
+m8_rep_norot_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_rep_norot_4
+endif
+	add	di, bytes_line
+m8_rep_norot_4:
+	add	si, dx
+	loop	m8_rep_norot_1
+	xchg	ah, bh
+	pop	ds
+	ret
+;
+m8_itran_norot:
+	push	ds
+	mov	ds, bp
+	xchg	ah, bh
+m8_itran_norot_1:
+	mov	al, [si]
+	mov	ah, al
+	and	es:[di], ax
+	not	ax
+	ror	bh, 1
+	jnc	m8_itran_norot_2
+	or	es:[di], al
+m8_itran_norot_2:
+	ror	bh, 1
+	jnc	m8_itran_norot_3
+	or	es:1[di], al
+m8_itran_norot_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_itran_norot_4
+endif
+	add	di, bytes_line
+m8_itran_norot_4:
+	add	si, dx
+	loop	m8_itran_norot_1
+	xchg	ah, bh
+	pop	ds
+	ret
+;
+;
+;
+m8_xor_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+m8_xor_left_1:
+	mov	al, [si]
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	xor	es:[di], al
+	xor	es:1[di], al
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_xor_left_2
+endif
+	add	di, bytes_line
+m8_xor_left_2:
+	add	si, bp
+	dec	dl
+	jnz	m8_xor_left_1
+	pop	ds
+	retn		
+;
+m8_tran_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+m8_tran_left_1:
+	mov	al, [si]
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	not	al
+	mov	ah, al
+	and	es:[di], ax
+	not	al
+	ror	dh, 1
+	jnc	m8_tran_left_2
+	or	es:[di], al
+m8_tran_left_2:
+	ror	dh, 1
+	jnc	m8_tran_left_3
+	or	es:1[di], al
+m8_tran_left_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_tran_left_4
+endif
+	add	di, bytes_line
+m8_tran_left_4:
+	add	si, bp
+	dec	dl
+	jnz	m8_tran_left_1
+	pop	ds
+	ret
+;
+m8_itran_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+m8_itran_left_1:
+	mov	al, [si]
+	not	al
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	not	al
+	mov	ah, al
+	and	es:[di], ax
+	not	al
+	ror	dh, 1
+	jnc	m8_itran_left_2
+	or	es:[di], al
+m8_itran_left_2:
+	ror	dh, 1
+	jnc	m8_itran_left_3
+	or	es:1[di], al
+m8_itran_left_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_itran_left_4
+endif
+	add	di, bytes_line
+m8_itran_left_4:
+	add	si, bp
+	dec	dl
+	jnz	m8_itran_left_1
+	pop	ds
+	ret
+;
+m8_rep_left:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bl, 0FFh
+	shl	bl, cl
+	xchg	ch, cl
+	shr	bl, cl
+	xchg	ch, cl
+	not	bl
+	mov	bh, bl		;BX = mask
+m8_rep_left_1:
+	and	es:[di], bx
+	mov	al, [si]
+	shl	al, cl
+	xchg	ch, cl
+	shr	al, cl
+	xchg	ch, cl
+	ror	dh, 1
+	jnc	m8_rep_left_2
+	or	es:[di], al
+m8_rep_left_2:
+	ror	dh, 1
+	jnc	m8_rep_left_3
+	or	es:1[di], al
+m8_rep_left_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_rep_left_4
+endif
+	add	di, bytes_line
+m8_rep_left_4:
+	add	si, bp
+	dec	dl
+	jnz	m8_rep_left_1
+	pop	ds
+	ret
+;
+m8_xor_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+m8_xor_right_1:
+	mov	al, [si]
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl
+	xchg	ch, cl
+	xor	es:[di], al
+	xor	es:1[di], al
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_xor_right_2
+endif
+	add	di, bytes_line
+m8_xor_right_2:
+	add	si, bp
+	dec	dl
+	jnz	m8_xor_right_1
+	pop	ds
+	retn		
+;
+m8_tran_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+m8_tran_right_1:
+	mov	al, [si]
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl
+	xchg	ch, cl
+	not	al
+	mov	ah, al
+	and	es:[di], ax
+	not	al
+	ror	dh, 1
+	jnc	m8_tran_right_2
+	or	es:[di], al
+m8_tran_right_2:
+	ror	dh, 1
+	jnc	m8_tran_right_3
+	or	es:1[di], al
+m8_tran_right_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_tran_right_4
+endif
+	add	di, bytes_line
+m8_tran_right_4:
+	add	si, bp
+	dec	dl
+	jnz	m8_tran_right_1
+	pop	ds
+	ret
+;
+m8_itran_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+m8_itran_right_1:
+	mov	al, [si]
+	not	al
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl
+	xchg	ch, cl
+	not	al
+	mov	ah, al
+	and	es:[di], ax
+	not	al
+	ror	dh, 1
+	jnc	m8_itran_right_2
+	or	es:[di], al
+m8_itran_right_2:
+	ror	dh, 1
+	jnc	m8_itran_right_3
+	or	es:1[di], al
+m8_itran_right_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_itran_right_4
+endif
+	add	di, bytes_line
+m8_itran_right_4:
+	add	si, bp
+	dec	dl
+	jnz	m8_itran_right_1
+	pop	ds
+	ret
+;
+m8_rep_right:
+	push	ds
+	mov	ds, word ptr FOFF+2
+	mov	bl, 0FFh
+	shr	bl, cl
+	xchg	ch, cl
+	shl	bl, cl
+	xchg	ch, cl
+	not	bl
+	mov	bh, bl		;BX = mask
+m8_rep_right_1:
+	and	es:[di], bx
+	mov	al, [si]
+	shr	al, cl
+	xchg	ch, cl
+	shl	al, cl
+	xchg	ch, cl
+	ror	dh, 1
+	jnc	m8_rep_right_2
+	or	es:[di], al
+m8_rep_right_2:
+	ror	dh, 1
+	jnc	m8_rep_right_3
+	or	es:1[di], al
+m8_rep_right_3:
+if next_plane gt 0
+	add	di, next_plane
+	jnc	m8_rep_right_4
+endif
+	add	di, bytes_line
+m8_rep_right_4:
+	add	si, bp
+	dec	dl
+	jnz	m8_rep_right_1
+	pop	ds
+	ret
+;
+endif	; --------- num_planes gt 2 ----------------
+;
+m8_left:
+	mov	bp, FWIDTH
+	sub	ax, 8
+	jg	m8_left1
+	cmp	si, m8_fontptr
+	jz	m8_left0
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	cl, m8_shift2
+	mov	ch, m8_shift1
+	push	di
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawleft[bx]
+	pop	di
+m8_left0:
+	ret
+
+m8_left1:
+	push	ax
+	push	di
+	push	si
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	ch, m8_shift1
+	mov	cl, m8_shift2
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawleft[bx]
+	pop	si
+	pop	di
+	pop	ax
+	add	di, 2
+	push	di
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	cl, 8
+	sub	cl, al
+	xor	ch, ch
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawleft[bx]
+	pop	di
+	ret
+	
+
+m8_right:
+	mov	bp, FWIDTH
+	sub	ax, 8
+	jg	m8_right1
+	cmp	si, m8_fontptr
+	jz	m8_right0
+	mov	ax, 8
+	sub	ax, m8_rshift
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	cl, al
+	mov	ch, al
+	sub	ch, byte ptr m8_lalign
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawright[bx]
+m8_right0:
+	ret
+
+m8_right1:
+	push	ax
+	push	di
+	push	si
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	ch, 0
+	mov	cl, byte ptr m8_lalign
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawright[bx]
+	pop	si
+	pop	di
+	pop	ax
+	add	di, 2
+	mov	dx, m8_dely
+	mov	dh, m8_fg_bp
+	mov	cl, 8
+	sub	cl, byte ptr m8_rshift
+	mov	ch, 8
+	sub	ch, al
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	call	m8_drawright[bx]
+	ret
+	
+	dseg
+m8_stack	dw	0
+m8_18bc		dw	0
+m8_lalign	dw	0
+m8_count1	dw	0
+m8_count2	dw	0
+m8_destx	dw	0
+m8_desty	dw	0
+m8_height	dw	0
+m8_dely		dw	0
+m8_18cc		dw	0
+m8_rshift	dw	0
+m8_18d0		dw	0
+m8_18d2		dw	0
+m8_ymnclip	dw	0
+m8_xmnclip	dw	0
+m8_clipw	dw	0
+m8_cliph	dw	0
+m8_fg_bp	db	0
+m8_shift1	db	0
+m8_shift2	db	0
+		db	0
+m8_fontptr	dw	0
+m8_drawnorot	dw	offset m8_rep_norot
+		dw	offset m8_tran_norot
+		dw	offset m8_xor_norot
+		dw	offset m8_itran_norot
+m8_drawleft	dw	offset m8_rep_left
+		dw	offset m8_tran_left
+		dw	offset m8_xor_left
+		dw	offset m8_itran_left
+m8_drawright	dw	offset m8_rep_right
+		dw	offset m8_tran_right
+		dw	offset m8_xor_right
+		dw	offset m8_itran_right
+if num_planes gt 2
+m8_gs_lower	dw	graph_plane
+m8_gs_upper	dw	graph_plane_high
+endif
+

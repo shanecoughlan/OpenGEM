@@ -1,0 +1,19 @@
+sdfpm9.cga= fpmentry, fpm_zyxg,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+fpm_drv,
+fmpttxt1,
+fmpttxt2,
+fmptdraw,
+fpmmblit,
+fpmblit,
+fpmpat,
+enddseg,
+cgacp,
+cgafont[nop]
+
+                                                                                                                                                                                                                
