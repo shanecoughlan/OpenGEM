@@ -1,0 +1,840 @@
+;************************************************************************
+;*			Xerox 4020 Color Ink Jet			*
+;************************************************************************
+
+include externs.a86
+
+DGROUP	GROUP	DATA
+		dseg
+
+		public	CONTRL, INTIN, PTSIN, INTOUT, PTSOUT
+
+CONTRL		rw	CONTRL_SIZE
+INTOUT		rw	INTOUT_SIZE
+PTSOUT		rw	PTSOUT_SIZE
+INTIN		rw	INTIN_SIZE
+PTSIN		rw	0
+		db	'GEMVDI 3.0 Xerox 4020 Printer Driver 10/1/87'
+		db	'Serial No. XXXX-0000-654321  All Rights Reserved'
+		db	'Copyright (C) 1985-1987 Digital Research Inc.'
+ptsin_end	rw	PTSIN_SIZE + 2 - (ptsin_end - PTSIN)/2
+
+
+CGROUP	GROUP	CODE
+		cseg
+
+		public	adv_form
+		public	alphaout
+		public	clearmem
+		public	concat
+		public	dev_rect
+		public	dini_dev
+		public	enter_gr
+		public	exit_gr
+		public	init_dev
+		public	scan_out
+		public	s_orient
+		public	set_page
+		public	ini_page
+
+		extrn	dinit_p:near
+		extrn	init_p:near
+		extrn	pout:near
+		extrn	printer_out:near
+		extrn	alpha_map:near
+
+		public	ln_bytes
+		public	ln_next
+		public	sc_bytes
+		public	sc_off
+
+; Equates for Xerox 4020 printer command characters.
+BLACK_TOP	equ	'0'		; black, top line
+CYAN_TOP	equ	'<'		; cyan, top line
+MAGENTA_TOP	equ	'4'		; magenta, top line
+YELLOW_TOP	equ	'8'		; yellow, top line
+
+; Equates for ASCII characters used in this module:
+CR		equ	0Dh		; ASCII carriage return
+ESC		equ	1Bh		; ASCII escape
+FORM_FEED	equ	0Ch		; ASCII form feed
+LF		equ	0Ah		; ASCII line feed
+
+; The alpha attribute escape character is a DC2.
+ALPHA_ESCAPE	equ	12h
+
+; Device dependent scan size variables:
+; These all get set in set_page() (below) as per requested page size
+ln_bytes	dw	0		; bytes per scan line
+ln_next		dw	0		; bytes to next scan line
+sc_bytes	dw	0		; bytes per slice
+sc_off		dw	0
+
+
+;************************************************************************
+;*	ini_page()							*
+;*		Initialize page information.				*
+;************************************************************************
+ini_page:
+		ret
+
+;************************************************************************
+;*	set_page()							*
+;*		Set variables to accomodate requested page size.	*
+;************************************************************************
+set_page:
+		mov	ax, dev_tab
+		inc	ax			; width in pixels
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; width in bytes
+		inc	ax
+		and	ax, 0fffeh		; make word boundary
+		mov	ln_bytes, ax		; number of bytes per line
+		mov	dln_byte, ax		; bytes per line
+		mov	ln_next, ax		; number of bytes to next line
+		mov	sc_off, ax		; offset to next scan line
+
+		mov	cx, G_SL_HGT
+		mul	cx			; graphics slice worth of
+		mov	sc_bytes, ax		; 	bytes/line
+
+; Number of slices that will fit on the page = chosen page size in y direction
+; divided by height of a slice.
+		mov	ax, dev_tab + 2	
+		inc	ax		
+		xor	dx, dx		
+		mov	bx, G_SL_HGT	
+		div	bx		
+		mov	g_page, ax		; graphics slices per page
+
+; Now do the same for alpha text slice height
+		mov	ax, dev_tab + 2	
+		inc	ax		
+		xor	dx, dx		
+		mov	bx, A_SL_HGT	
+		div	bx		
+		mov	a_page, ax		; alpha text slices per page
+
+		ret
+
+;************************************************************************
+;*	status = dev_rect()						*
+;*		Return FALSE.						*
+;************************************************************************
+dev_rect:
+		xor	ax, ax
+		ret
+
+;************************************************************************
+;*  concat()								*
+;*	Convert the (x, y) pair passed in (BX, AX) into a		*
+;*	physical address (DI) and bit offset into a byte (BX).		*
+;************************************************************************
+concat:
+		push	ax
+		push	dx
+
+; Calculate the physical address and the bit offset.
+		sub	ax, ys_min		; normalize to start of slice
+		mov	dx, ln_bytes		; dx = bytes/line
+		mul	dx			; ax = bytes for y position
+		mov	di, bx
+		shr	di, 1
+		shr	di, 1
+		shr	di, 1			; adjust x to byte offset
+		add	di, ax			; di = byte offset to (x, y)
+		and	bx, 07h			; bl = bit offset into byte
+
+; Restore and leave.
+		pop	dx
+		pop	ax
+
+		ret
+
+;************************************************************************
+;*  init_dev()								*
+;*	Issue the command to initialize the printer and set the right	*
+;*	margin.								*
+;************************************************************************
+init_dev:
+		mov	si, offset init_x4020	; reset printer
+		call	printer_out
+		mov	si, offset set_margin	; set right margin
+		call	printer_out
+
+		ret
+
+;************************************************************************
+;*  enter_gr()								*
+;*  exit_gr()								*
+;*  dini_dev()								*
+;*  s_orient()								*
+;*       No-ops for the Xerox 4020 printer.				*
+;************************************************************************
+enter_gr:
+exit_gr:
+dini_dev:
+s_orient:
+		ret
+
+;****************************************************************
+;*  clearmem()							*
+;*      Clear the display list and rasterizing buffer.		*
+;****************************************************************
+clearmem:
+		push	es
+
+		mov	ax, display_list_seg
+		mov	es, ax
+		xor	di, di			; es:di = start of buffers
+		mov	cx, buffer_size
+		shr	cx, 1			; cx = buffer size in words
+		xor	ax, ax
+		rep	stosw
+
+		pop	es
+		ret
+
+;************************************************************************
+;*  ADV_FORM:                                                         	*
+;*	Called from:	 v_clrwk() and v_clswk() in monout.c		*
+;*			 c_escape() in monoprin.c			*
+;*	parameter: 0 = don't do form feed if vmu = 0			*
+;*		   1 = do form feed unconditionally			*
+;************************************************************************
+adv_form:
+		push	bp
+		mov	bp, sp
+		mov	bx, 4[bp]		; param is "do FF" flag
+		cmp	bx, 1
+		je	do_ff			; do form feed unconditionally
+		cmp	vmu, 0
+		je	dont_ff
+do_ff:
+		mov	dl, FORM_FEED
+		call	pout
+		mov	vmu, 0
+dont_ff:
+		pop 	bp
+		ret
+
+;************************************************************************
+;*  alphaenv()								*
+;*	Verify that the alphanumeric text environment is correct.  If	*
+;*	not, output the commands to the printer to set the correct	*
+;*	environment.							*
+;************************************************************************
+alphaenv:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+		push	si
+		push	bp
+
+; Is the attribute environment correct?
+		mov	dl, reqalpha
+		mov	dh, curalpha
+		cmp	dl, dh			; requested same as current?
+		je	end_alphaenv
+
+; The attribute environment is not correct.  Find out which attributes are
+; incorrect and output the appropriate command to set that environment.
+		mov	cx, 8			; cx = number of attributes
+		xor	bx, bx			; bx = command index
+
+alphaenv_loop:
+		mov	bp, dx			; bp = saved attribute info
+		and	dl, 1			; mask next requested attrib
+		and	dh, 1			; mask next current attribute
+		cmp	dl, dh			; are they the same?
+		je	next_alphaenv_loop
+
+		push	bx			; save the command index
+		add	bl, dl			; update index with begin/end
+		shl	bl, 1			; bx = offset into word table
+		mov	si, com_addr[bx]	; si -> command string
+
+; Make check for no italics in elite & compressed
+		cmp	si, offset begin_italic	; Italics start request?
+		je	problem			; if not then
+		cmp	si, offset end_italic	; Italics stop request?
+		jne	no_problem		; if so then
+problem:	cmp	save_style, offset set_elite	; In elite mode?
+		je	no_print		; no italics if so
+		cmp	save_style, offset set_cmpres	; In compressed mode?
+		je	no_print		; no italics if so
+no_problem:
+		cmp	byte ptr [si], 00h
+		je	no_print		; attribute isn't supported 
+		call	printer_out		; output command string
+no_print:	pop	bx			; restore command index
+
+next_alphaenv_loop:
+		mov	dx, bp			; restore shifted attrib info
+		shr	dl, 1			; next requested attribute
+		shr	dh, 1			; next current attribute
+		inc	bx
+		inc	bx			; update command index
+		loop	alphaenv_loop
+
+; Save the new attribute set.
+		mov	al, reqalpha
+		mov	curalpha, al
+
+end_alphaenv:
+		pop	bp
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+;************************************************************************
+;*  alphaout()								*
+;*	Output the alpha text string in the INTIN array.  If any alpha	*
+;*	attribute escape sequences are encountered, process them.	*
+;************************************************************************
+alphaout:
+		push	bp
+
+; Make sure that output occurs on a printer character line.
+		call	vmu_sync
+
+; Make sure the correct alpha text environment exists on the printer.
+		call	alphaenv
+
+; Get the length of the string and start the output loop.
+		mov	cx, CONTRL + 6		; cx = number of characters
+		mov	si, offset INTIN
+		mov	bp, A_SL_HGT
+alphaout_loop:
+		lodsw				; get the next character
+		cmp	al, ALPHA_ESCAPE
+		jne	not_escape
+		cmp	cx, 1			; any more characters?
+		je	not_escape
+		mov	bl, byte ptr [si]	; check the next character
+
+		cmp	bl, '9'			; have I got a number?
+		jle	number			; convert to decimal
+		cmp	bl, 'A'			; have I got a letter?
+		jl	bad_escape		; not a number, not a letter
+		sub	bl, 7			; sub 55 to convert letter
+number:		sub	bl, 48			; sub 48 to convert number
+
+		cmp	bl, 0			; should now have a decimal
+		jl	bad_escape		; number between 0 and 35
+		cmp	bl, 35			
+		jg	bad_escape
+		
+		cmp	bl, 16			; ascii G - ascii V are
+		jl	got_escape		; reserved
+		cmp	bl, 32
+		jge	got_escape
+
+bad_escape:
+		dec	cx
+		inc	si
+		inc	si
+		jmp	next_alphaout_loop
+
+; An alpha attribute escape sequence has been found.  Process it.
+got_escape:
+		dec	cx
+		inc	si
+		inc	si
+		xor	bh, bh
+		cmp	bl, 32			; check for style setting
+		jl	attrib			; (style = W - Z, or 32 - 35)
+		sub	bl, 32			; calculate style table index
+		shl	bl, 1
+
+		push	si
+		mov	si, styl_addr[bx]	; bx = offset into word table
+
+; Save last style set request (for italics processing)
+		mov	save_style, si		; save last style set
+		cmp	byte ptr [si], 00h	; check for unsupported style
+		je	no_style
+		call	printer_out
+no_style:	pop 	si
+		jmps	next_alphaout_loop
+
+attrib:		mov	al, alpha_clear[bx]	; al = bit clearing mask
+		and	reqalpha, al		; clear the attribute bit
+		mov	al, alpha_set[bx]	; al = bit setting mask
+		or	reqalpha, al		; set the bit appropriately
+		call	alphaenv
+		jmps	next_alphaout_loop
+
+; Not a special character.  Just output it.  Note that a formfeed does not
+; have to be replaced with anything special for the Xerox 4020.
+not_escape:
+		cmp	al, 127			; International char?
+		jna	not_intl		; If so
+		push	si
+		push	ds			; save some regs
+		push	cx
+		push	ax
+		call	alpha_map		; get string in local ds
+		mov	si, ax			; offset in si
+		pop	ax
+		pop	cx
+		pop	ds
+		cmp	byte ptr [si], 0	; any to send?
+		je	no_send			; if so then
+		call	printer_out		; print them
+no_send:
+		pop	si
+		jmps	next_alphaout_loop	; and on to next
+not_intl:
+		mov	dl, al
+		call	pout			; output the character
+
+; Check for a line feed or formfeed.  Either of these characters will cause
+; an advance, in which case the vmu must be updated.
+		cmp	al, LF
+		jne	vmu_check_ff
+		add	vmu, bp			; bump by one alpha line
+		call	vmu_reset
+		jmps	next_alphaout_loop
+vmu_check_ff:
+		cmp	al, FORM_FEED
+		jne	next_alphaout_loop
+		mov	vmu, 0
+
+next_alphaout_loop:
+		dec	cx			
+		je	end_alphaout		
+		jmp	alphaout_loop		
+
+end_alphaout:
+		pop	bp
+		ret
+
+;************************************************************************
+;*  VMU_RESET:								*
+;*	Internal subroutine to reset vmu to top of new page if it's 	*
+;*	beyond end of last page.  I.E. subtract (yres + 1) from it if 	*
+;*	it's greater than or equal to (yres + 1).  Called each time the	*
+;*	vmu is increased.						*
+;************************************************************************
+vmu_reset:
+		push	dx
+		mov	dx, vmu
+		cmp	dx, dev_tab + 2		; >= yres+1, i.e. > yres
+		jle	no_reset
+		sub	dx, dev_tab + 2	; vmu >= (yres+1), subtract (yres+1)
+		sub	dx, 1
+		mov	vmu, dx
+no_reset:  
+		pop	dx
+		ret
+
+;************************************************************************
+;*  vmu_sync()								*
+;*	Adjust the position of the print head so that alpha text output	*
+;*	will occur on a text line.  ("vmu" = vertical motion units)	*
+;************************************************************************
+vmu_sync:
+; Is the current scan line the beginning of a character line?  If not,
+; send out sufficient spacing to make it so.
+		mov	ax, vmu
+		xor	dx, dx
+		mov	cx, A_SL_HGT		; cx = text slice height
+		div	cx
+		cmp	dx, 0			; check for remainder
+		je	end_vmu_sync
+		sub	cx, dx
+		add	vmu, cx			; adjust vmu to next line
+
+; The cx register now contains the number of pixels to be advanced.  Divide
+; by four to find the number of micro-lines to advance.
+		shr	cl, 1
+		shr	cl, 1			; cl = number of micro-lines
+micro_line_loop:
+		mov	si, offset graph_lf
+		call	printer_out
+		loop	micro_line_loop
+
+end_vmu_sync:
+		ret
+
+;************************************************************************
+;*  scan_out()								*
+;*	Scan the rasterizing buffer and output the pixels to the	*
+;*	printer (discard trailing white-space).				*
+;************************************************************************
+scan_out:
+		push	es
+
+; If the slice extends beyond the end of the window, truncate it.
+		mov	ax, yw_max
+		cmp	ys_max, ax		; extend beyond the window?
+		jg	get_slice_count		; yes:  how many slices?
+		mov	cx, slice_cnt		; no:  slice count is known
+		jmps	slice_out
+
+get_slice_count:
+		sub	ax, ys_min
+		mov	cx, G_SL_HGT
+		add	ax, cx			; for rounding (jg - v1.1b)
+		xor	dx, dx
+		div	cx
+		mov	cx, ax			; cx = number of slices left
+
+; The Xerox 4020 printer has four ink jets:  black, cyan, yellow, and magenta.
+; The rasterizing buffer is split into three planes:  cyan, yellow, and
+; magenta.  For each scan line, the black info (cyan + yellow + magenta)
+; is output first, followed by each of the remaining planes.  When the
+; black "plane" is processed, the bits which are set in the three planes to
+; indicate black are cleared so that cyan, yellow, and magenta information
+; will not be re-transmitted for the black pixel.
+slice_out:
+		xor	bx, bx			; bx = raster buffer offset
+		mov	es, graph_plane		; es = graphics plane segment
+do_slice:
+		push	bx			; save raster buffer offset
+		push	cx			; save number of slices
+		mov	cx, G_SL_HGT		; cx = scan lines per slice
+		mov	line_and_color, BLACK_TOP	; initialize command
+
+do_scan_line:
+		push	cx			; save scan line count
+		mov	cl, line_and_color
+		push	cx			; line_and_color
+		call	black_out		; output black pixels
+		call	planes_out		; output other planes
+		pop	cx
+		inc	cl
+		mov	line_and_color, cl	; command:  next scan line
+		add	bx, ln_next		; point to the next scan line
+		pop	cx			; cx = scan lines left
+		loop	do_scan_line
+
+; Output a graphic line feed to execute the commands just sent.  Prepare for
+; the next slice.
+		mov	si, offset graph_lf
+		call	printer_out
+		pop	cx			; cx = number of slices
+		pop	bx			; bx = raster buffer offset
+		add	bx, sc_bytes		; next slice
+		loop	do_slice
+
+end_scan_out:
+		pop	es
+		ret
+
+
+;**********************************************************************
+;*  BLACK_OUT                                                         *
+;*      Output the black pixels in the scan line.                     *
+;*      INPUT:  bx = rasterizing buffer offset                        *
+;**********************************************************************
+black_out:
+		push	bx			; save raster buffer offset
+
+; Prepare for a back scan to discard trailing white-space.
+		mov	di, bx			; di = offset into buffer
+		mov	si, di			; si = start of scan line
+		add	di, ln_next
+		dec	di			; di = end of scan line
+		xor	al, al
+		mov	cx, ln_bytes		; maximum bytes to scan
+
+; Perform the back-scan.  Look for a non-zero byte in the first plane.  If
+; one is not found, there cannot be a black pixel in this scan line.
+black_plane_1_loop:
+		std				; back-scan
+		repe	scasb			; look for non-zero
+		cld				; restore to auto-increment
+		je	black_done		; zero:  no output this scan
+
+; "And" the non-zero byte which was just found with the corresponding bytes in
+; the other planes.  If the result is non-zero, something black has been found
+		lea	bx, 1[di]		; scasb goes one too far
+		mov	dx, bx			; save a copy
+		mov	ah, es:[bx]		; get the value
+		add	bx, plane_sz
+		and	ah, es:[bx]		; "and" with second plane
+		jz	black_not_found		; byte is zero:  can't be black
+		add	bx, plane_sz
+		and	ah, es:[bx]		; "and" with third plane
+		jnz	black_found		; byte non-zero:  black
+
+black_not_found:
+		jcxz	black_done
+		jmps	black_plane_1_loop	; keep looking
+
+; Found something black.  Set up the graphics command and output it.
+black_found:
+		mov	bx, dx
+		sub	bx, si
+		inc	bx			; bx = bytes to output
+		mov	cx, bx			; cx = bytes to output
+		call	output_command
+
+; Output the pixel bytes for black.  "And" the three planes together before
+; outputting to get just black information.
+black_out_loop:
+		mov	dl, es:[si]		; get from first plane
+		add	si, plane_sz
+		and	dl, es:[si]		; "and" with second plane
+		add	si, plane_sz
+		and	dl, es:[si]		; "and" with third plane
+		push	dx
+		call	pout			; output byte in dl
+		pop	dx
+
+; Clear the planes where a black pixel is set.
+		xor	es:[si], dl		; clear in the third plane
+		sub	si, plane_sz
+		xor	es:[si], dl		; clear in the second plane
+		sub	si, plane_sz
+		xor	es:[si], dl		; clear in the first plane
+		inc	si			; point to next byte
+		loop	black_out_loop
+black_done:
+		pop	bx			; restore buffer offset
+		ret
+
+
+;**********************************************************************
+;*  PLANES_OUT                                                        *
+;*      Output the non-black pixels in the scan line.                 *
+;*      INPUT:  bx = rasterizing buffer offset                        *
+;**********************************************************************
+planes_out:
+		push	bx		; save rasterizing buffer offset
+
+; Prepare to examine all color planes.
+		mov	di, bx			; di = offset into buffer
+		mov	cx, NUM_PLANES		; cx = number of planes
+
+; Loop over the number of planes for the device.  Prepare for a back scan to
+; discard trailing white-space.
+planes_loop:
+		add	line_and_color, G_SL_HGT	; update command
+		push	cx			; save number of planes left
+		push	di			; save offset into buffer
+		mov	si, di			; si = start of scan line
+		add	di, ln_next
+		dec	di			; di = end of scan line
+		xor	al, al
+		mov	cx, ln_bytes		; maximum bytes to scan
+
+; Perform the back-scan.  Look for a non-zero byte in the plane.  If one is
+; not found, no output is necessary for this scan line in this plane.
+planes_back_scan_loop:
+		std				; back-scan
+		repe	scasb			; look for non-zero
+		cld				; restore to auto-increment
+		je	planes_prep_next	; zero:  no output this scan
+
+; Found something.  Set up the graphics command and output it.
+		lea	bx, 1[di]		; scasb goes one too far
+		sub	bx, si
+		inc	bx			; bx = bytes to output
+		mov	cx, bx			; cx = bytes to output
+		call	output_command
+
+; Output the pixel bytes.
+planes_out_loop:
+		mov	dl, es:[si]		; get byte from plane
+		call	pout			; output byte in dl
+		inc	si			; point to next byte
+		loop	planes_out_loop
+
+; Done with this plane.  Prepare for the next one.
+planes_prep_next:
+		pop	di
+		add	di, plane_sz		; bump to next plane
+		pop	cx			; restore planes left
+		loop	planes_loop
+
+		pop	bx			; restore buffer offset
+		ret
+
+;**********************************************************************
+;*  OUTPUT_COMMAND                                                    *
+;*      Prepare and output the graphics mode command.                 *
+;*      INPUT:  bx = number of bytes which will be output             *
+;**********************************************************************
+output_command:
+		push	ax
+		push	bx
+		push	dx
+		push	si
+		push	di
+		push	es
+
+; Convert the number of bytes to output into an ASCII digit string and plug it
+; into the command.
+		mov	di, seg byte_count
+		mov	es, di
+		mov	di, offset byte_count	; es:di = byte count string
+		mov	ax, bx			; ax = number of bytes
+
+		cmp	ax, 100			; digit in 100's place?
+		jl	check_10s
+		push	ax
+		mov	al, '1'			; cannot be anything but '1'
+		stosb
+		pop	ax
+		sub	ax, 100
+
+check_10s:
+		xor	dx, dx
+		mov	bx, 10
+		div	bx
+		add	al, '0'			; convert to ASCII
+		stosb
+
+check_1s:
+		mov	al, dl
+		add	al, '0'			; convert to ASCII
+		stosb
+		mov	es:byte ptr [di], ' '	; append a blank
+
+; Figure out the length of the command string and send it.
+		sub	di, offset graph_mode
+		mov	ax, di
+		mov	graph_mode, al		; string length
+		mov	si, offset graph_mode
+		call	printer_out		; output the command
+
+		pop	es
+		pop	di
+		pop	si
+		pop	dx
+		pop	bx
+		pop	ax
+		ret
+
+
+;----------------------------------------------------------------------------
+include devind.a86
+include devdata.a86
+
+		dseg
+
+		public	map_col, term_ch, dln_byte
+
+		extrn	yw_max:word
+		extrn	buffer_size:word, display_list_seg:word
+		extrn	plane_sz:word
+
+;********************************************************
+;* Copy of code segment variable for use in image.c	*
+;********************************************************
+dln_byte	dw	0
+
+;**********************************************************************
+;*  Graphic line feed:  advance paper one micro-line                  *
+;**********************************************************************
+graph_lf	db	4, ESC, 'k', '1', CR
+
+;****************************************
+;*  Enter 120 x 120 dpi graphics mode	*
+;****************************************
+graph_mode	db	'?', ESC, 'g'
+line_and_color	db	'?'
+byte_count	db	'?', '?', '?', '?'
+
+;************************
+;*  Initialize printer	*
+;************************
+init_x4020	db	3, ESC, CR, 'P'
+set_margin	db	5, ESC, 'r', '8', '5', CR
+
+
+Term_Ch		Dw	0
+Map_Col		Dw	0		; White
+		Dw	111b		; Black
+		Dw	011b		; Red
+		Dw	110b		; Green
+		Dw	101b		; Blue
+		Dw	100b		; Cyan
+		Dw	010b		; Yellow	
+		Dw	001b		; Magenta
+
+;************************
+;*  Alpha text locals.	*
+;************************
+; alpha text attribute bit clearing/setting mask table.
+alpha_clear	db	0ffh, 0feh
+		db	0ffh, 0fdh
+		db	0ffh, 0fbh
+		db	0ffh, 0f7h
+		db	0ffh, 0efh
+		db	0ffh, 0dfh
+		db	0ffh, 0bfh
+		db	0ffh, 07fh
+alpha_set	db	01h, 0
+		db	02h, 0
+		db	04h, 0
+		db	08h, 0
+		db	10h, 0
+		db	20h, 0
+		db	40h, 0
+		db	80h, 0
+
+; Pointer table for printer commands.
+com_addr	dw	end_bold
+		dw	begin_bold
+		dw	end_italic
+		dw	begin_italic
+		dw	end_under
+		dw	begin_under
+		dw	end_super
+		dw	begin_super
+		dw	end_sub
+		dw	begin_sub
+		dw	end_lq
+		dw	begin_lq
+		dw	end_expand
+		dw	begin_expand
+		dw	end_light
+		dw	begin_light
+
+styl_addr	dw	set_pica
+		dw	set_elite
+		dw	set_cmpres
+		dw	set_propor
+
+save_style	dw	set_pica	; starts up in pica
+
+
+; Printer attribute commands (length, command string).
+; NOTE: super/subscript stop on FF, LF or CR (so says manual - test)
+; NOTE: Can get elite, pica italic, and a better compress with ESCs but a ROM
+;	chip must be in place so I don't have the ESCs enabled.
+; NOTE: printer supports draft/NLQ but draft looks bad and NLQ is default so
+;	I don't support turning it off.
+end_bold	db	0
+begin_bold	db	0
+end_italic	db	3, ESC, 'F0'		; sets to pica too
+begin_italic	db	3, ESC, 'F1'		;   (only pica italics)
+end_under	db	2, ESC, 'R'
+begin_under	db	2, ESC, 'E'
+end_super	db	2, ESC, 's'
+begin_super	db	2, ESC, 't'
+end_sub		db	2, ESC, 's'
+begin_sub	db	2, ESC, 'u'
+end_lq		db	0
+begin_lq	db	0
+end_expand	db	2, ESC, '&'
+begin_expand	db	4, ESC, 'W21'
+end_light	db	0
+begin_light	db	0
+
+set_pica	db	5, ESC, '&', ESC, 'F0' 
+set_elite	db	5, ESC, '&', ESC, 'F2'
+set_cmpres	db	5, ESC, '&', ESC, 'F4'
+set_propor	db	5, ESC, '&', ESC, 'F0'
+
+
+		end

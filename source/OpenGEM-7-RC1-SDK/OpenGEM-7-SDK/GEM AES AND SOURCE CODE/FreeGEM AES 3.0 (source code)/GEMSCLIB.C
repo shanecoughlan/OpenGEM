@@ -1,0 +1,124 @@
+/*	GEMSCLIB.C	07/10/84 - 02/02/85	Lee Lorenzen		*/
+/*	for 2.0		10/8/85	 - 10/15/85	MDF			*/
+/*	merge High C vers. w. 2.2 		8/24/87		mdf	*/ 
+
+/*
+*       Copyright 1999, Caldera Thin Clients, Inc.                      
+*       This software is licenced under the GNU Public License.         
+*       Please see LICENSE.TXT for further information.                 
+*                                                                       
+*                  Historical Copyright                                 
+*	-------------------------------------------------------------
+*	GEM Application Environment Services		  Version 2.3
+*	Serial No.  XXXX-0000-654321		  All Rights Reserved
+*	Copyright (C) 1987			Digital Research Inc.
+*	-------------------------------------------------------------
+*/
+
+#include "aes.h"
+
+#define NUM_SCRAPS	6
+
+/* --------------- added for metaware compiler --------------- */
+EXTERN WORD		rs_gaddr();			/* in RSLIB.C	*/
+EXTERN VOID		dos_sdta();			/* in DOS.C	*/
+EXTERN WORD		dos_sfirst();
+/* ----------------------------------------------------------- */
+
+
+GLOBAL BYTE	*sc_types[NUM_SCRAPS] =
+			 {"CSV", "TXT", "GEM",
+			  "IMG", "DCA", "USR"};
+GLOBAL UWORD	sc_bits[NUM_SCRAPS] =
+			 {SC_FTCSV,SC_FTTXT,SC_FTGEM,
+			  SC_FTIMG,SC_FTDCA,SC_FTUSR};
+
+	WORD
+sc_clrd(isread)
+	WORD		isread;
+{
+	LPBYTE		ptmp, ptype;
+	WORD		bitvect, ii;
+	
+	ptmp = (LPBYTE)ad_scrap;
+	while(*ptmp)			/* find null		*/
+	  ptmp++;
+	rs_gaddr(ad_sysglo, R_STRING, STSCRAP, (LPVOID *)&ptype);
+	LSTCPY(ptmp, ptype); 
+	ptype = ptmp+LSTRLEN(ptype);				/* point just past '.'	*/
+	bitvect = 0;
+	dos_sdta(ad_dta);			/* make sure dta ok	*/
+	for (ii = 0; ii < NUM_SCRAPS; ii++)
+	{
+	  LSTCPY(ptype, ADDR(sc_types[ii]));	/* cat on file type	*/
+	  if (dos_sfirst(ad_scrap, F_SUBDIR))
+	  {
+	    if (isread)
+	      bitvect |= sc_bits[ii];		/* set corresponding bit */
+	    else
+	      dos_delete(ad_scrap);		/* delete scrap.*	*/
+	  }
+	}
+	if ( !isread)
+	  bitvect = TRUE;
+	ptmp[0] = 0;				/* keep just path name	*/
+	return(bitvect);
+}
+
+/************************************************************************/
+/*									*/
+/* sc_read() -- get info about current scrap directory			*/
+/*									*/
+/*	copies the current scrap directory path to the passed-in 	*/
+/*	address and returns a bit vector with bits set for specific	*/
+/*	file types present in the directory.  Looks for scrap.* files.	*/
+/*									*/
+/************************************************************************/
+
+	WORD
+sc_read(pscrap)
+	LPBYTE		pscrap;
+{
+	WORD		len;
+
+	len = LSTCPY(pscrap, ad_scrap);		/* current scrap directory */
+	LSTCPY(pscrap+len, ADDR("\\"));		/* cat on backslash	*/
+	return( sc_clrd(TRUE) );
+}
+
+/************************************************************************/
+/*									*/
+/* sc_write() -- sets the current scrap directory			*/
+/*									*/
+/*	pscrap must be the long address of a valid path.  Returns	*/
+/*	TRUE if no error occurs in validating the path name.		*/
+/*									*/
+/************************************************************************/
+
+	WORD
+sc_write(pscrap)
+	LPBYTE		pscrap;
+{
+	WORD		len;
+
+	len = LSTCPY(ad_scrap, pscrap);		/* new scrap directory	*/
+	if (ad_scrap[--len] == '\\')	/* remove backslash	*/
+	  ad_scrap[len] = '\0';
+	dos_sdta(ad_dta);			/* use our dta 		*/
+	return(dos_sfirst(ad_scrap, F_SUBDIR));	/* make sure path ok	*/
+}
+
+/************************************************************************/
+/*									*/
+/* sc_clear() -- delete scrap files from current scrap directory	*/
+/*									*/
+/*	Assumes *ad_scrap holds a valid directory path.  Returns TRUE	*/
+/*									*/
+/************************************************************************/
+
+	WORD
+sc_clear()
+{
+	return( sc_clrd(FALSE) );
+}
+

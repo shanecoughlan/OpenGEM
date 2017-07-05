@@ -1,0 +1,22 @@
+menulabel=HP Thinkjet
+manufacturer=HP
+model=Thinkjet LoRes
+printer=1
+hdpi=96
+vdpi=96
+driverload=0
+driver=HPThinkjet
+fmt=gem
+makefon=0
+usepfm=0
+devkey=s
+devmode=p
+rle=1
+kerning=1
+maxbmap=512
+maxoffset=655
+minoffset=-655
+maxcell=655
+maxsw=655
+gemext=tjl
+

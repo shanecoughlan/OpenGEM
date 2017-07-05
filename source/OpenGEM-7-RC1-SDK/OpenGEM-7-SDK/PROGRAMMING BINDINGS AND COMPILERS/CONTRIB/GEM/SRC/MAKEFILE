@@ -1,0 +1,52 @@
+
+all:	
+	cd libsrc
+	make
+	cd ..\djdemo
+	make
+	cd ..\demo
+	make
+	cd ..\xform
+	make
+	cd ..\stub
+	make
+	cd ..\prop
+	make
+	cd ..\hello
+	make
+
+
+
+clean:	
+	cd libsrc
+	make clean
+	cd ..\djdemo
+	make clean
+	cd ..\demo
+	make clean
+	cd ..\hello
+	make clean
+	cd ..\xform
+	make clean
+	cd ..\stub
+	make clean
+	cd ..\prop
+	make clean
+
+
+tidy:	
+	cd libsrc
+	make tidy
+	cd ..\djdemo
+	make tidy
+	cd ..\demo
+	make tidy
+	cd ..\hello
+	make tidy
+	cd ..\xform
+	make tidy
+	cd ..\stub
+	make tidy
+	cd ..\prop
+	make tidy
+

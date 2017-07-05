@@ -1,0 +1,212 @@
+;/*		ENTRY.A86	11/17/86 - 1/30/87	J. Grant	*/
+
+CGROUP		GROUP	CODE
+DGROUP		GROUP	DATA
+		cseg
+
+		public	df_pport
+		extrn	dispatch:near
+
+CONTRL_SIZE	equ	12			; maximum control array size
+INTIN_COUNT	equ	word ptr 6		; offset to length of intin
+INTIN_SIZE	equ	128			; maximum intin array size
+INTOUT_COUNT	equ	word ptr 8		; offset to length of intout
+PTSIN_COUNT	equ	word ptr 2		; offset to length of ptsin
+PTSIN_SIZE	equ	256			; maximum ptsin array size
+PTSOUT_COUNT	equ	word ptr 4		; offset to length of ptsout
+WORD_6		equ	word ptr 12		; offset
+
+
+;************************************************************************
+;*	ENTRY								*
+;*		Entry point for the Apple Laser Writer device driver.	*
+;*		Set up the device driver environment.			*
+;************************************************************************
+entry:
+
+; Skip over the device data.
+		jmps	entry_top
+
+; Perform a context switch.  Set up the stack in what will eventually be the
+; driver data segment.
+entry_top:
+		pushf
+		cli				; stack switch: interrupts off
+		cmp	ax, 0			; open wk if ax is zero
+		jnz	set_environment
+		mov	word ptr g_gdosad, bx
+		mov	word ptr g_gdosad + 2, cx
+set_environment:
+		mov	ax, seg data_seg
+		mov	cx, sp
+		mov	bx, ss
+		mov	ss, ax			; ss = ds
+		mov	sp, offset stack_top	; local stack in data segment
+		push	cx			; save old sp
+		push	bx			; save old ss
+		sti				; interrupts, please
+
+; Move the parameter block from the invoker's data segment to the driver's.
+		mov	es, ax
+		mov	di, offset contrl_ptr
+		mov	si, dx			; ds:dx -> old parameter block
+		mov	cx, 2*CONTRL_SIZE	; move double-words
+	rep	movsw
+
+; Copy the invoker's control array to the driver's data segment and initialize
+; the output parameters.
+		mov	ds, ax
+		mov	di, offset contrl	; es:di -> new control array
+		lds	si, contrl_ptr		; ds:si -> old control array
+		mov	cx, CONTRL_SIZE
+	rep	movsw
+		mov	ds, ax			; restore data segment
+		mov	si, offset contrl	; ds:si -> control array
+		mov	INTOUT_COUNT[si], 0
+		mov	PTSOUT_COUNT[si], 0
+
+; Range check the length of the ptsin array.  If too high, set to maximum.  If
+; too low, set to zero.  Transfer to the local ptsin array.
+		mov	cx, PTSIN_COUNT[si]	; cx = length in (x, y) pairs
+		shl	cx, 1			; cx = length in words
+		cmp	cx, 0
+		ja	ptsin_size_high_check
+		xor	cx, cx
+		mov	PTSIN_COUNT[si], cx	; default to zero length
+		jmps	intin_size_check
+ptsin_size_high_check:
+		cmp	cx, PTSIN_SIZE
+		jb	ptsin_size_ok
+		mov	cx, PTSIN_SIZE		; cx = maximum length (words)
+		mov	PTSIN_COUNT[si], cx
+		shr	PTSIN_COUNT[si], 1	; make length in (x, y) pairs
+ptsin_size_ok:
+		mov	di, offset ptsin	; es:di -> new ptsin array
+		lds	si, ptsin_ptr		; ds:di -> old ptsin array
+	rep	movsw
+		mov	ds, ax			; restore data segment
+
+; Range check the length of the intin array.  If too high, set to maximum.  If
+; too low, set to zero.  Transfer to the local intin array.
+intin_size_check:
+		mov	si, offset contrl
+		mov	cx, INTIN_COUNT[si]	; cx = length in words
+		cmp	cx, 0
+		ja	intin_size_high_check
+		xor	cx, cx
+		mov	INTIN_COUNT[si], cx	; default to zero length
+		jmps	entry_invoke_driver
+intin_size_high_check:
+		cmp	cx, INTIN_SIZE
+		jb	intin_size_ok
+		mov	cx, INTIN_SIZE		; cx = maximum length (words)
+		mov	INTIN_COUNT[si], cx
+intin_size_ok:
+		mov	di, offset intin	; es:di -> new intin array
+		lds	si, intin_ptr		; ds:di -> old intin array
+	rep	movsw
+		mov	ds, ax			; restore data segment
+
+; Invoke the driver jump table routine.
+entry_invoke_driver:
+		mov	flip_y, 0		; initialize flag
+		call	dispatch
+
+; Update the invoker's control array.  If the requested function was to open
+; the workstation, return the handle (in case it was modified).
+		mov	si, offset contrl	; ds:si -> driver contrl
+		les	di, contrl_ptr		; es:di -> invoker contrl
+		cmp	contrl, 1		; open workstation?
+		jne	return_counts
+		mov	ax, WORD_6[si]
+		mov	es:WORD_6[di], ax
+return_counts:
+		mov	bx, INTOUT_COUNT[si]
+		mov	es:INTOUT_COUNT[di], bx
+		mov	cx, PTSOUT_COUNT[si]
+		mov	es:PTSOUT_COUNT[di], cx
+
+; If any ptsout values need to be returned, do so.
+		and	cx, cx
+		jz	check_return_intout
+		shl	cx, 1			; cx = count of words
+		les	di, ptsout_ptr		; es:di -> invoker ptsout
+		mov	si, offset ptsout	; ds:si -> driver ptsout
+	rep	movsw
+
+; If any intout values need to be returned, do so.
+check_return_intout:
+		and	bx, bx
+		jz	end_entry
+		mov	cx, bx			; cx = count of words
+		les	di, intout_ptr		; es:di -> invoker intout
+		mov	si, offset intout	; ds:si -> driver intout
+	rep	movsw
+
+; Set the flip flag as determined by the driver to tell the GDOS whether y
+; coordinate values should be flipped or not.  Restore the invoker's context
+; and boogie.
+end_entry:
+		mov	ax, flip_y
+		cli				; stack switch:  no interrupts
+		pop	cx
+		pop	bx
+		mov	ss, cx
+		mov	sp, bx
+		popf
+		retf
+
+
+;************************************************************************
+;*		WORD							*
+;*	df_pport()							*
+;************************************************************************
+df_pport:
+		xor	ah, ah
+		mov	al, vp_port
+		ret
+
+
+;************************************************************************
+;*	Code segment data.						*
+;************************************************************************
+
+		extrn	g_gdosad:dword
+
+
+;************************************************************************
+;*	Data segment data.						*
+;************************************************************************
+		dseg
+
+		extrn	contrl:word
+		extrn	flip_y:word
+		extrn	intin:word
+		extrn	intout:word
+		extrn	ptsin:word
+		extrn	ptsout:word
+
+		db	'zyxg'
+vp_port		db	3
+		db	'POSTSCRIPT'
+		db	0, 0, 0				; 12 chars + NUL
+		db	'Generic Postcript driver'
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0
+		db	0				; 80 chars + NUL
+
+		db	0 ; for word alignment
+data_seg	rw	0
+
+contrl_ptr	rd	1
+intin_ptr	rd	1
+ptsin_ptr	rd	1
+intout_ptr	rd	1
+ptsout_ptr	rd	1
+
+stack		rw	1024
+stack_top	rw	0
+
+		end	entry

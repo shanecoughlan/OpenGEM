@@ -1,0 +1,1045 @@
+;************************************************************************
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+CGROUP	GROUP	CODE
+		cseg
+
+include fhinc.a86
+
+		public	str_scan, str_cmp
+		public	fontpath
+		public	uppercase
+		public	f_first, f_next
+		public	bld_wid
+		public	dvt_size
+		public	dir_gdos, dir_fonts, dir_cur
+		public	font_id, del_font
+		public	get_head, get_off
+		public	hd_allo
+
+		extrn	output_digits:near
+		extrn	pout: near, printer_out:near
+
+DOS		equ	21h		; DOS interrupt
+READ_FILE	equ	3fh		; DOS "read file"
+ALLOCATE	equ	48h		; DOS "allocate memory"
+GET_DIR		equ	47h		; DOS "get current directory"
+GET_DRIVE	equ	19h		; DOS "get current drive"
+SET_DIR		equ	3bh		; DOS "set directory"
+SET_DRIVE	equ	0eh		; DOS "set drive"
+SETBLOCK	equ	4ah		; DOS "setblock"
+GET_DTA		equ	2fh		; DOS "get disk transfer address"
+SET_DTA		equ	1ah		; DOS "set disk transfer address"
+FIND_FIRST	equ	4eh		; DOS "find first matching file"
+FIND_NEXT	equ	4fh		; DOS "find next matching file"
+
+ESC		equ	1bh		; ASCII escape character
+LF		equ	0ah		; ASCII line feed character
+WIDTH_SIZE	equ	450		; size of width table in bytes
+HEADER_SIZE	equ	160		; paragraph-aligned header size
+
+
+;************************************************************************
+;*  Scan for a substring ("sub") within a string ("buf") and return the *
+;*  address of the byte that follows it.  Return (BYTE *) 0 if no find.	*
+;*	LONG str_scan(ADDR:buf, WORD:buflen, ADDR:sub, WORD:sublen)	*
+;************************************************************************
+str_scan:
+		push	bp
+		mov	bp, sp
+		push	ds
+		cld
+
+; Get the scan parameters.
+		les	di, 4[bp]		; es:di -> buffer
+		mov	bx, 8[bp]		; bx = buffer length
+		lds	si, 10[bp]		; ds:si -> substring
+		mov	dx, 14[bp]
+		dec	dx			; dx = substring length
+		lodsb				; al = initial matching byte
+		jz	uscan_single
+		mov	bp, si			; save substring "start"
+
+; Top of the search loop.
+uscan_search_loop:
+		cmp	bx, dx
+		jb	uscan_nomatch		; skip if remaining too short
+		mov	cx, bx			; scan entire buffer
+	repne	scasb				; scan for initial match
+		jne	uscan_nomatch
+		jcxz	uscan_nomatch
+		mov	bx, cx			; save buffer remaining
+		mov	si, bp			; ds:si -> substring
+		mov	cx, dx			; substring length
+		push	di			; save buffer start
+	repe	cmpsb
+		je	uscan_match		; match found
+		pop	di			; restore scan location
+		jmps	uscan_search_loop
+
+; Scan for a single byte.
+uscan_single:
+		mov	cx, bx
+	repne	scasb				; scan for a match
+		jne	uscan_nomatch
+		mov	ax, es
+		mov	bx, di
+		jmps	end_str_scan
+
+; Match:  return ending pointer.
+uscan_match:
+		pop	ax			; dummy pop
+		mov	dx, es
+		mov	ax, di
+		jmps	end_str_scan
+
+uscan_nomatch:
+		xor	dx, dx			; no match: return (BYTE *) 0
+		xor	ax, ax
+
+end_str_scan:
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Prepend the FONT drive and path to the given filename.		*
+;*	VOID fontpath(BYTE *:return_string, BYTE *:filename)		*
+;************************************************************************
+fontpath:
+		push	bp
+		mov	bp, sp
+		cld
+
+; Copy the GDOS drive number and path string.
+		push	es
+		push	ds
+		les	di, 4[bp]		; es:di -> return string
+		lds	si, ds_gdos_path
+		lodsb				; al = drive number
+		add	al, 'a'			; convert to lower case letter
+		stosb
+		mov	es:byte ptr [di], ':'
+		inc	di
+fp_loop:
+		lodsb
+		cmp	al, 0			; quit when null found
+		je	end_fp_loop
+		stosb
+		jmps	fp_loop
+end_fp_loop:
+; add the way to the fonts directory
+		mov	al, '\'
+		stosb
+		mov	bx, seg font_path
+		mov	ds, bx
+		mov	si, offset font_path
+fp_loop2:
+		lodsb
+		cmp	al, 0
+		je	end_fp_loop2
+		stosb
+		jmps	fp_loop2
+
+end_fp_loop2:
+; Append the file name to the path.
+		mov	al, '\'
+		stosb
+		lds	si, 8[bp]
+fp_filename_loop:
+		lodsb
+		stosb
+		cmp	al, 0			; quit when null found
+		jne	fp_filename_loop
+
+		pop	ds
+		pop	es
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Return the ASCII uppercase of the given ASCII letter.		*
+;*	BYTE uppercase(BYTE:asciichar)					*
+;************************************************************************
+uppercase:
+		push	bp
+		mov	bp, sp
+		xor	ah, ah
+		mov	al, 4[bp]		; ax = character
+		cmp	al, 'a'
+		jl	end_uppercase
+		cmp	al, 'z'
+		jg	end_uppercase
+		sub	ax, 32			; upper case it
+
+end_uppercase:
+		pop	bp
+		ret
+
+;************************************************************************
+;*  String compare.							*
+;*	WORD str_cmp(ADDR:buf1, ADDR:buf2)				*
+;************************************************************************
+str_cmp:
+		push	bp
+		mov	bp, sp
+		push	ds
+		cld
+
+; Get the parameters and loop until a null is found.
+		les	di, 8[bp]		; es:di -> buf2
+		lds	si, 4[bp]		; ds:si -> buf1
+		xor	ah, ah
+scmp_loop:
+		mov	al, [si]
+		cmpsb
+		jne	scmp_different
+		cmp	al, 0
+		jne	scmp_loop
+		jmps	end_str_cmp
+
+; Different:  return which way.
+scmp_different:
+		jg	scmp_second_bigger
+		mov	ax, -1
+		jmps	end_str_cmp
+scmp_second_bigger:
+		mov	ax, 1
+
+end_str_cmp:
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Find the first matching file name.  Name of file found returned in	*
+;*   cur_dta[30].							*
+;*	BOOLEAN:found = f_first(BYTE *:filename)			*
+;************************************************************************
+f_first:
+		push	bp
+		mov	bp, sp
+		push	ds
+		push	es
+		push	bx
+
+; Save current DTA (disk transfer area).
+		mov	ah, GET_DTA
+		int	DOS				; es:bx = DTA addr
+		mov	word ptr save_dta, bx
+		mov	word ptr save_dta + 2, es
+
+; Set up the DTA.
+		mov	ax, seg cur_dta			; ds:dx = DTA addr
+		mov	ds, ax
+		mov	dx, offset cur_dta
+		mov	ah, SET_DTA
+		int	DOS
+
+; Perform the "find first".
+		lds	dx, 4[bp]		; ds:dx = file name addr
+		mov	cx, 3			; file attributes
+		mov	ah, FIND_FIRST
+		int	DOS
+		mov	ax, 0
+		jc	end_f_first
+		inc	ax
+
+end_f_first:
+		pop	bx
+		pop	es
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Find the next matching file name.					*
+;*	BOOLEAN:found = f_next()					*
+;************************************************************************
+f_next:
+		mov	ah, FIND_NEXT
+		int	DOS
+		jc	no_more
+		mov	ax, 1			; return success
+		jmp	end_f_next
+
+; Restore previous DTA.
+no_more:
+		push	ds
+		lds	dx, save_dta
+		mov	ah, SET_DTA
+		int 	DOS
+		mov	ax, 0			; return failure
+		pop	ds
+end_f_next:
+		ret
+
+;************************************************************************
+;*  Allocate memory.  Allocate available memory if request is too big.	*
+;*  Set GLOBAL variable dv_size to reflect size of allocation in bytes.	*
+;*	LONG:addr = hd_allo(UWORD:paragraphs)				*
+;************************************************************************
+hd_allo:
+		push	bp
+		mov	bp, sp
+		mov	bx, 4[bp]		; bx = paragraphs to allocate
+
+		mov	dx, bx			; save for later
+		mov	ah, ALLOCATE
+		int	DOS			; ax = segment allocated
+		jnc	ha_success
+		mov	dx, bx			; amount actually available
+		mov	ah, ALLOCATE
+		int	DOS			; ax = segment allocated
+		jc	ha_error
+ha_success:
+		mov	cl, 4
+		shl	dx, cl			
+		mov	dv_size, dx		; allocation in bytes
+		mov	dx, ax			; return segment in dx
+		jmps	end_hd_allo
+ha_error:
+		xor	dx, dx			
+		mov	dv_size, dx		
+end_hd_allo:
+		xor	ax, ax			; return offset = 0
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Reduce size of previously allocated memory block.			*
+;*	WORD status = dvt_size(ADDR:block_seg, WORD:paragraphs)		*
+;************************************************************************
+dvt_size:
+		push	bp
+		mov	bp, sp
+		mov	es, 6[bp]		; segment of block to modify
+		mov	bx, 8[bp]		; new size in paragraphs
+		mov	ah, SETBLOCK		; "modify memory allocation"
+		int	DOS			; ax = segment allocated
+		jc	mod_failed		; ax = error code on failure
+		xor	ax, ax			; return status = success
+
+mod_failed:
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Set drive:path to that containing gdos.  Save current drive:path.	*
+;*	WORD:status = dir_gdos()					*
+;************************************************************************
+dir_gdos:
+		push	ds
+		push	es
+
+; Get the current drive and save it.
+		mov	ah, GET_DRIVE
+		int	DOS			; (0 = A, 1 = B, 2 = C, etc.)
+		mov	saved_drive, al		; save the current drive
+
+; Get the current path and save it.
+		mov	dl, al			; which drive to find path on
+		inc	dl			; (0 = default, 1 = A, etc.)
+		mov	ax, seg saved_path
+		mov	ds, ax				; ds:si -> saved_path
+		mov	si, offset saved_path + 1	; skip leading '\'
+		mov	ah, GET_DIR
+		int	DOS			; path written to saved_path
+		jc	dg_failed		; ax = error code on failure
+
+; See if we're already on the GDOS drive.
+		les	di, gdos_path
+		mov	dl, es:[di]		; dl = gdos disk drive
+		cmp	dl, saved_drive		; we're already on gdos drive?
+		je	on_gdos_drive		; yes - just change path
+
+; Save the current path on the GDOS drive.
+		inc	dl			; (0 = default, 1 = A, etc.)
+		mov	ax, seg former_path
+		mov	ds, ax				; ds:si -> former_path
+		mov	si, offset former_path + 1	; skip leading '\'
+		mov	ah, GET_DIR
+		int	DOS			; path written to former_path
+		jc	dg_failed		; ax = error code on failure
+
+; Go over to GDOS drive.
+		mov	dl, es:[di]		; gdos dosk drive
+		mov	ah, SET_DRIVE
+		int	DOS
+
+; Get into the GDOS directory.
+on_gdos_drive:
+		mov	ax, es
+		mov	ds, ax
+		mov	dx, di
+		inc	dx			; ds:dx = gdos path
+		mov	ah, SET_DIR
+		int	DOS
+		jc	dg_failed		; ax = error code on failure
+		xor	ax, ax			; return status = success
+
+dg_failed:
+		pop	es
+		pop	ds
+		ret
+
+;************************************************************************
+;*  Set path to fonts directory when current directory is gdos.		*
+;*	WORD:status = dir_fonts()					*
+;************************************************************************
+dir_fonts:
+		push	ds
+
+		mov	ax, seg font_path
+		mov	ds, ax
+		mov	dx, offset font_path	; ds:dx -> font path 
+		mov	ah, SET_DIR
+		int	DOS
+		jc	df_failed		; ax = error code on failure
+		xor	ax, ax			; return status = success
+
+df_failed:
+		pop	ds
+		ret
+		
+;************************************************************************
+;*  Return to the directory we were in when we made a dir_gdos() call.	*
+;*	WORD:status = dir_cur()						*
+;************************************************************************
+dir_cur:
+		push	ds
+
+; See if we're returning to another drive.
+		les	di, gdos_path
+		mov	al, es:[di]		; al = gdos disk drive
+		mov	dl, saved_drive		; dl = saved drive number
+		cmp	al, dl			; do we need to change drives?
+		je	on_right_drive		; no - just change path
+
+; Restore former path on the GDOS drive.
+		mov	dl, es:[di]		; dl = gdos disk drive
+		mov	ax, seg former_path
+		mov	ds, ax
+		mov	dx, offset former_path	; ds:dx = saved path
+		mov	ah, SET_DIR
+		int	DOS
+		jc	dc_failed		; ax = error code on failure
+
+; Go back to the drive we were on.
+		mov	dl, saved_drive
+		mov	ah, SET_DRIVE
+		int	DOS
+
+; Go back to the directory we were on.
+on_right_drive:
+		mov	ax, seg saved_path
+		mov	ds, ax
+		mov	dx, offset saved_path	; ds:dx = saved path
+		mov	ah, SET_DIR
+		int	DOS
+		jc	dc_failed		; ax = error code on failure
+		xor	ax, ax			; return status = success
+
+dc_failed:
+		pop	ds
+		ret
+
+;************************************************************************
+;*	VOID font_id(WORD:index)					*
+;************************************************************************
+font_id:
+		push	bp
+		mov	bp, sp
+
+		mov	si, offset specify_font
+		call	printer_out
+		mov	cx, 4[bp]
+		call	output_digits
+		mov	dl, 'D'
+		call	pout
+
+		pop	bp
+		ret
+
+;************************************************************************
+;*	VOID del_font(WORD:index)					*
+;************************************************************************
+del_font:
+		push	bp
+		mov	bp, sp
+		mov	si, offset specify_font
+		call	printer_out
+		mov	cx, 4[bp]
+		call	output_digits
+		mov	si, offset delete_font
+		call	printer_out
+		pop	bp
+		ret
+
+;************************************************************************
+;*	LONG:addr = get_head()						*
+;************************************************************************
+get_head:
+; Make sure there is sufficient space for another header.
+		mov	bx, dv_free
+		mov	ax, dv_size
+		sub	ax, 32*WIDTH_SIZE + HEADER_SIZE
+		cmp	ax, bx
+		jb	gh_error
+
+; "Allocate" the new header and update the free pointer.
+		mov	ax, bx
+		add	bx, HEADER_SIZE		; segment after new header
+		mov	dv_free, bx
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; paragraph offset
+		mov	bx, dv_free + 2		; bx = header base segment
+		add	ax, bx			; ax = new header segment
+
+; Clear the new header.
+		mov	es, ax
+		xor	di, di
+		xor	al, al
+		mov	cx, HEADER_SIZE
+		rep	stosb
+		mov	dx, es			; return segment address
+		jmps	end_get_header
+
+gh_error:
+		xor	dx, dx			; return segment = 0
+end_get_header:
+		xor	ax, ax			; return offset = 0
+		ret
+
+;************************************************************************
+;*	LONG:addr  = get_off()						*
+;*	"Allocate" the new offset table and update the free pointer.	*
+;************************************************************************
+get_off:
+		mov	ax, dv_free		; return offset
+		mov	dx, ax
+		add	dx, WIDTH_SIZE
+		mov	dv_free, dx		; new free pointer
+		mov	dx, dv_free + 2		; return segment
+		ret
+
+;************************************************************************
+;*	stat = bld_wid(handle, rd_bufsiz, rd_buf, map, maptbl, header)	*
+;*		BOOLEAN	stat:		status indicator		*
+;*		WORD	handle:		input file handle		*
+;*		UWORD	rd_bufsiz:	read buffer size		*
+;*		LONG	rd_buf:		read buffer address		*
+;*		BOOLEAN	map:		map flag (TRUE = map chars)	*
+;*		LONG	maptbl:		character mapping table		*
+;*		LONG	header:		font header address		*
+;************************************************************************
+bld_wid:
+		push	bp
+		mov	bp, sp
+		push	ds
+
+; Save the mapping address and read parameters.
+		mov	ax, permfont
+		mov	permflag, ax
+		mov	ax, 14[bp]
+		mov	map_off, ax
+		mov	ax, 16[bp]
+		mov	map_seg, ax
+		mov	ax, 4[bp]
+		mov	in_handle, ax
+		mov	ax, 6[bp]
+		mov	in_max, ax
+		mov	ax, 8[bp]
+		mov	word ptr in_buf, ax
+		mov	in_ptr, ax
+		mov	ax, 10[bp]
+		mov	word ptr in_buf + 2, ax
+
+; Read a buffer in from the file.
+		call	read_and_send
+		cmp	ax, 0
+		je	bw_error
+		add	ax, word ptr in_buf
+		mov	in_done, ax		; save pointer past end
+
+; Extract information for the font header.
+		les	di, 18[bp]		; es:di -> font header
+		lds	si, in_buf		; ds:si -> buffer
+		call	update_header
+		jc	bw_error
+
+; Extract the width table.
+		mov	dx, 12[bp]		; dx = map flag
+		call	extract_widths
+		mov	ax, 1			; indicate success
+		jmps	end_bld_wid
+
+; Indicate that an error occurred.
+bw_error:
+		xor	ax, ax
+end_bld_wid:
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*	VOID update_header()						*
+;*		DS:SI -> input buffer.					*
+;*		ES:DI -> font header.					*
+;*		Carry flag set if failure.				*
+;************************************************************************
+update_header:
+; Find the "create font descriptor" sequence.  Extract the command length.
+		mov	bx, offset cfd_sequence
+		call	find_sequence
+		jc	end_update_header
+		call	dec_to_bin
+		jc	end_update_header
+		mov	in_comlen, ax
+
+; Set the orientation bit in the flags word:  8000h for portrait, 0 for
+; landscape.
+		test	word ptr 12[si], 100h
+		jnz	uh_verticals
+		or	es:FH_DEV_FLAGS[di], 8000h
+
+; Set the font vertical distances:
+uh_verticals:
+		mov	ax, 6[si]
+		xchg	ah, al
+		mov	bx, 10[si]
+		xchg	bh, bl
+		sub	bx, ax
+		dec	bx
+		mov	es:FH_BOTTOM[di], bx	; set bottom line value
+		shr	bx, 1			; try descent = half of bottom
+		mov	es:FH_DESCENT[di], bx	; set descent line value
+		shr	ax, 1			; fudge for top and ascent
+		mov	es:FH_TOP[di], ax	; set top line value
+		shr	ax, 1			; fudge for half line
+		mov	es:FH_HALF[di], ax	; set half line value
+		mov	bx, ax
+		shr	ax, 1
+		add	ax, bx			; fudge for ascent line
+		mov	es:FH_ASCENT[di], ax	; set ascent line value
+
+; Get the space width and save it for later.
+		mov	al, 13[si]
+		xor	ah, ah
+		mov	proportional, ax
+		cmp	ax, 0			; fixed pitch font?
+		jne	uh_space_width
+		or	es:word ptr FH_FLAGS_WORD[di], 8h
+uh_space_width:
+		mov	ax, 16[si]		; "pitch (default hmi)"
+		xchg	ah, al
+		shr	ax, 1
+		shr	ax, 1
+		mov	space_width, ax
+		clc
+
+end_update_header:
+		ret
+
+;************************************************************************
+;*	VOID extract_widths()						*
+;*		DS:SI -> input buffer.					*
+;*		ES:DI -> font header.					*
+;*		DX = map flag.						*
+;*		Carry flag set if failure.				*
+;************************************************************************
+extract_widths:
+		push	bp
+
+; Prepare for the character offset table loop:
+;	- point the destination to a temporary buffer;
+;	- make the first entry the space width.
+		push	dx
+		push	di
+		push	es
+		mov	ax, seg ptsin
+		mov	es, ax
+		mov	di, offset ptsin
+		mov	max_wid, 0
+
+; Zero out the width table.
+		mov	cx, 224
+		xor	ax, ax
+		push	di
+	rep	stosw
+		pop	di
+		mov	ax, space_width
+		mov	es:word ptr [di], ax
+
+; Top of the width table building loop.  Look for the "specify character code"
+; command and extract the code number.
+ew_width_loop:
+		call	next_command
+		jc	ew_width_loop_done
+		mov	bx, offset scc_sequence
+		call	find_sequence
+		jc	ew_width_loop_done
+		call	dec_to_bin
+		jc	ew_error
+		mov	bx, ax			; bx = character code
+		sub	bx, ' '			; offset by lowest ADE (space)
+		shl	bx, 1			; make word offset
+
+; Look for the "download character" command and get the command length.
+		push	bx			; save destination offset
+		mov	bx, offset dc_sequence
+		call	find_sequence
+		pop	bx
+		jc	ew_error
+		call	dec_to_bin
+		jc	ew_error
+		mov	in_comlen, ax
+
+; Get the character width and save it.  (Don't bother if the character is out
+; of range.)
+		cmp	bx, 2*224
+		ja	ew_next_width
+		push	in_comlen
+		mov	in_comlen, 14		; delta x location
+		call	next_command
+
+		mov	dh, [si]		; high part of "delta x"
+		mov	in_comlen, 1
+		call	next_command
+		mov	dl, [si]		; low part of "delta x"
+		pop	in_comlen
+		sub	in_comlen, 15
+
+		shr	dx, 1
+		shr	dx, 1
+		test	proportional, 0ffffh	; is this a proportional font?
+		jnz	ew_havedelta
+		mov	dx, space_width
+ew_havedelta:
+		mov	es:[di + bx], dx	; save character width
+		cmp	dx, max_wid
+		jna	ew_next_width
+		mov	max_wid, dx
+
+; Process the next character.
+ew_next_width:
+		jmps	ew_width_loop
+
+; Error exit:  set carry flag.
+ew_error:
+		pop	es
+		pop	di
+		pop	dx
+		stc
+		jmps	end_extract_widths
+
+; Restore the destination pointer and store the maximum character width.
+ew_width_loop_done:
+		mov	ax, es
+		mov	ds, ax
+		mov	si, offset ptsin
+		pop	es
+		pop	di
+		mov	ax, max_wid
+		mov	es:FH_MAX_CHAR_WIDTH[di], ax
+		mov	es:FH_MAX_CELL_WIDTH[di], ax
+
+; Convert widths to offsets, mapping if necessary.
+		les	di, es:FH_OFF_TABLE_OFF[di]
+		xor	ax, ax			; ax = accumulator
+		stosw				; save initial zero
+		mov	cx, 224			; cx = number of characters
+		pop	dx
+		cmp	dx, 0
+		jne	ew_mapped
+
+ew_not_mapped_loop:
+		add	ax, [si]
+		inc	si
+		inc	si
+		stosw
+		loop	ew_not_mapped_loop
+		jmps	ew_done
+
+ew_mapped:
+		xor	bx, bx			; index into beginning of map
+ew_mapped_loop:
+		push	bx			; save map index
+		push	ds
+		push	si
+		lds	si, map_addr
+		mov	bl, [bx + si]
+		sub	bx, 20h			; bx = mapped character index
+		pop	si
+		pop	ds
+		shl	bx, 1			; word index
+		add	ax, [bx + si]
+		stosw
+		pop	bx			; restore map index
+		inc	bx
+		loop	ew_mapped_loop
+ew_done:
+		clc
+end_extract_widths:
+		pop	bp
+		ret
+
+;************************************************************************
+;*	WORD read_and_send()						*
+;*		Returns number of bytes read in AX.			*
+;************************************************************************
+read_and_send:
+		push	bx
+		push	cx
+		push	dx
+		mov	bx, in_handle		; bx = input file handle
+		mov	cx, in_max		; cx = bytes to read
+		push	ds
+		lds	dx, in_buf		; ds:dx -> buffer
+		mov	ah, READ_FILE
+		int	DOS
+		pop	ds
+		jc	ras_error
+		cmp	ax, 0
+		jne	ras_send
+ras_error:
+		xor	ax, ax			; return value		
+		jmps	end_read_and_send
+ras_send:
+		cmp	permflag, 0
+		jne	end_read_and_send
+		push	ax
+		push	ds
+		push	es
+		mov	cx, ax			; count of bytes to send
+		mov	ax, seg ptsin
+		mov	ds, ax			; so pout will work
+		les	bx, in_buf
+ras_send_loop:
+		mov	dl, es:[bx]
+		call	pout
+		inc	bx
+		loop	ras_send_loop
+		pop	es
+		pop	ds
+		pop	ax
+end_read_and_send:
+		pop	dx
+		pop	cx
+		pop	bx
+		ret
+
+;************************************************************************
+;*	VOID find_sequence()						*
+;*		DS:SI -> input buffer.					*
+;*		CS:BX -> sequence to search for.			*
+;*		After end of match returned in SI.  Carry flag clear if	*
+;*		successful.  If unsuccessful, SI is trash.		*
+;************************************************************************
+find_sequence:
+; Match the first character.
+fs_first_loop:
+		call	new_buffer_check
+		jnc	fs_no_match
+		lodsb				; al = search string character
+		cmp	al, cs:[bx]		; match first?
+		jne	fs_first_loop
+
+; Match subsequent characters.
+fs_found_first:
+		push	bx
+		push	si
+		inc	bx			; bump match string pointer
+fs_sub_loop:
+		mov	dl, cs:[bx]
+		cmp	dl, 0
+		je	fs_match_done
+		call	new_buffer_check
+		jc	fs_sub_next_byte
+		pop	bx
+		pop	bx
+		jmps	fs_no_match
+fs_sub_next_byte:
+		lodsb				; al = next search string char
+		inc	bx
+		cmp	al, dl
+		je	fs_sub_loop
+		pop	bx
+		pop	bx			; restore match pointer start
+		dec	si			; back up one character
+		jmps	fs_first_loop
+
+; No match was found.  Bail out.
+fs_no_match:
+		stc				; failure
+		jmps	end_find_sequence
+
+; Return the start of the match in si and clear carry to indicate success.
+fs_match_done:
+		pop	bx
+		pop	bx
+		clc				; success
+
+end_find_sequence:
+		ret
+
+;************************************************************************
+;*	VOID next_command()						*
+;*	    SI -> input buffer.						*
+;*	    Carry flag set if error.  SI set to next command start.	*
+;************************************************************************
+next_command:
+; Bump by the current command length.  If past the end of the buffer, adjust.
+		add	si, in_comlen
+		cmp	si, in_done
+		jb	nc_success
+
+; Read in a new buffer.
+		sub	si, in_done		; si -> new command
+		call	read_and_send
+		cmp	ax, 0
+		jne	nc_read_ok
+		stc
+		jmps	end_next_command
+nc_read_ok:
+		add	ax, word ptr in_buf
+		mov	in_done, ax		; save pointer past end
+nc_success:
+		clc
+
+end_next_command:
+		ret
+
+;************************************************************************
+;*	VOID new_buffer_check()						*
+;*	    SI -> input buffer.						*
+;*	    Carry flag cleared if end of file or error.			*
+;************************************************************************
+new_buffer_check:
+		cmp	si, in_done
+		jb	end_new_buffer_check
+
+; A new file buffer must be read in.  Do so and fix up pointers.
+		push	ax
+		call	read_and_send
+		cmp	ax, 0
+		jne	nbc_success
+		pop	ax
+		clc
+		jmps	end_new_buffer_check
+nbc_success:
+		mov	si, word ptr in_buf
+		add	ax, si
+		mov	in_done, ax		; save pointer past end
+		pop	ax
+		stc
+
+end_new_buffer_check:
+		ret
+
+;************************************************************************
+;*	WORD dec_to_bin()						*
+;*	    DS:SI -> input buffer.					*
+;*	    Carry flag set if error.  Value returned in AX.		*
+;*	    SI will point after the character following the decimal	*
+;*		string.							*
+;************************************************************************
+dec_to_bin:
+		push	bx
+
+		xor	ax, ax			; ax = accumulator
+		mov	cx, ax			; cx = new digit
+		mov	bx, 10			; bx = tens multiplier
+dtb_loop:
+		call	new_buffer_check
+		jnc	dtb_done
+		mov	cl, [si]		; cl = new character
+		inc	si
+		cmp	cl, '0'
+		jb	dtb_done
+		cmp	cl, '9'
+		ja	dtb_done
+		sub	cl, '0'			; convert to binary
+		mul	bx			; multiply accumulator by ten
+		add	ax, cx			; add in latest digit
+		jmps	dtb_loop
+
+; If the conversion results in zero, return an error.
+dtb_done:
+		cmp	ax, 1			; carry set if below one
+		pop	bx
+		ret
+
+
+;--------------------------------------------------------------------------
+; Code segment data.
+		extrn	gdos_path:dword
+
+map_addr	rd	0
+map_off		rw	1
+map_seg		rw	1
+max_wid		rw	1
+
+in_buf		rd	1
+in_comlen	rw	1
+in_done		rw	1
+in_count	rw	1
+in_handle	rw	1
+in_max		rw	1
+in_ptr		rw	1
+space_width	rw	1
+proportional	rw	1
+permflag	rw	1
+
+cfd_sequence	db	ESC, ')s', 0		; "create font descriptor"
+dc_sequence	db	ESC, '(s', 0		; "download character"
+scc_sequence	db	ESC, '*c', 0		; "specify character code"
+
+
+;----------------------------------------------------------------------------
+; Data segment data.
+DGROUP	GROUP	DATA
+		dseg
+
+		public	cur_dta
+
+		extrn	ptsin:word
+		extrn	dv_free:word
+		extrn	dv_size:word
+		extrn	permfont:word
+		extrn	dv_rbuf:dword
+		extrn	ds_gdos_path:dword
+
+saved_drive	rb	1
+saved_path	db	'\'
+		rb	64
+former_path	db	'\'
+		rb	64
+
+delete_font	db	df_com_end - df_com
+df_com		db	'd2F'
+df_com_end	rb	0
+
+specify_font	db	sf_com_end - sf_com
+sf_com		db	ESC, '*c'
+sf_com_end	rb	0
+
+cur_dta		rb	128			; my disk transfer area (DTA)
+save_dta	rd	1			; save ADDR:previous DTA
+
+font_path	db	'..\fonts', 0
+
+
+		end

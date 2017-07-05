@@ -1,0 +1,1105 @@
+/*************************************************************************
+**									**
+**  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	**
+**  The Software Code contained in this listing is proprietary to	**
+**  Digital Research, Inc., Monterey, California and is covered by U.S.	**
+**  and other copyright protection.  Unauthorized copying, adaptation,	**
+**  distribution, use or display is prohibited and may be subject to 	**
+**  civil and criminal penalties.  Disclosure to others is prohibited.	**
+**  For the terms and conditions of software code use refer to the 	**
+**  appropriate Digital Research License Agreement.			**
+**									**
+*************************************************************************/
+
+#include "portab.h"
+#include "fontdef.h" 
+#include "gsxextrn.h"
+
+EXTERN	WORD	f_open();		/* imageasm.a86 */
+EXTERN	WORD	f_close();
+EXTERN	WORD	f_read();
+EXTERN	WORD	f_seek();
+EXTERN	WORD	allo_mem();
+EXTERN	WORD	free_mem();
+EXTERN	WORD	str_cmp();		/* dvtasm.hph */
+EXTERN	BYTE	*str_scan();
+EXTERN	VOID	fontpath();
+EXTERN	WORD	f_first();
+EXTERN	WORD	f_next();
+EXTERN	WORD	bld_wid();
+EXTERN	WORD	dvt_size();
+EXTERN	WORD	dir_gdos();
+EXTERN	WORD	dir_fonts();
+EXTERN	WORD	dir_cur();
+EXTERN	BYTE	uppercase();
+EXTERN	VOID	del_font();
+EXTERN	VOID	font_id();
+EXTERN	LONG	hd_allo();
+EXTERN	FHEAD	*get_head();
+EXTERN	UWORD	*get_off();
+EXTERN	VOID	dev_hmi();		/* devdep */
+EXTERN	VOID	set_just();
+EXTERN	VOID	orient();
+EXTERN	VOID	set_undl();
+EXTERN	VOID	set_hv();
+EXTERN	VOID	set_font();
+EXTERN	WORD	tx_out();
+EXTERN	VOID	etx_out();
+
+EXTERN	BYTE	cur_dta[];		/* address of disk transfer area */
+EXTERN	WORD	PSTYLE;
+EXTERN	WORD	STYLE;
+EXTERN	WORD	etx_x;
+EXTERN	WORD	etx_y;
+EXTERN	WORD	h_align;
+EXTERN	WORD	v_align;
+EXTERN	WORD	text_color;
+EXTERN	BYTE	*dv_map;
+EXTERN	FHEAD	*act_font;
+EXTERN	FHEAD	*cur_font;
+EXTERN	FHEAD	*prev_font;
+EXTERN	BYTE	map_tbl[];
+EXTERN	BYTE	fwmap_tbl[];
+
+#define	FILE_BUF_SIZE	4096
+#define	HEADER_BUF_SIZE	65270		/* 107 headers and width tables */
+#define MAX_DEVFONTS	107		/* maximum number of device fonts */
+#define	CONFINFO	struct conf_info
+#define	FONTINFO	struct font_info
+#define	FONTOFFS	struct font_offs
+
+CONFINFO
+{
+	WORD		id;
+	BYTE		*file;
+	CONFINFO	*next;
+};
+
+FONTINFO
+{
+	WORD		face;
+	WORD		point;
+	WORD		attr;
+	WORD		map;
+	BYTE		name[33];		/* font name: 32 + null */
+	BYTE		file[9];		/* file name: 8 + null */
+};
+
+FONTOFFS
+{
+	UWORD		*offset;
+	BOOLEAN		in_use;
+};
+
+GLOBAL	BYTE		dv_numfonts = 0;
+GLOBAL	WORD		dv_font = 0;
+GLOBAL	WORD		dv_pt = 0;
+GLOBAL	WORD		dv_ht = 0;
+GLOBAL	WORD		dv_rot = 0;
+GLOBAL	WORD		dv_attr = 0;
+GLOBAL	UWORD		dv_size = 0;
+GLOBAL	BOOLEAN		dv_selpt = 0;
+GLOBAL	BOOLEAN		dv_cur = 0;
+GLOBAL	BOOLEAN		dv_loaded = 0;
+GLOBAL	LONG		dv_rbuf = 0;
+GLOBAL	FHEAD		*dv_free = 0;
+GLOBAL	FHEAD		*dv_first = 0;
+GLOBAL	FHEAD		*dv_mem = 0;
+GLOBAL	WORD		dv_perm[32] = 0;
+GLOBAL	BOOLEAN		permfont = 0;
+GLOBAL	CONFINFO	*cnftop = 0;
+GLOBAL	CONFINFO	*cnfptr = 0;
+GLOBAL	FONTOFFS	dv_offs[32] = 0;
+
+FHEAD	courier =
+{
+	1,			/* font id */
+	12,			/* point size */
+	"Courier",		/* font name */
+	32,			/* first ADE */
+	255,			/* last ADE */
+	24,			/* top line distance */
+	16,			/* ascent line distance */
+	12,			/* half line distance */
+	6,			/* descent line distance */
+	25,			/* bottom line distance */
+	30,			/* maximum character width */
+	30,			/* maximum cell width */
+	0,			/* left offset */
+	0,			/* right offset */
+	0,			/* thickening */
+	0,			/* underline size */
+	0,			/* lightening mask */
+	0,			/* skew mask */
+	0x4008,			/* primary flags:  DEVICE_FONT, MONOSPACE */
+	0,			/* horizontal offset table pointer */
+	0,			/* offset table pointer */
+	0,			/* data table pointer */
+	0,			/* form width */
+	0,			/* form height */
+	0,			/* next font pointer */
+	0,			/* next multi-seg pointer */
+	0,			/* low lfu count */
+	0,			/* high lfu count */
+	0,			/* file seek value */
+	0,			/* data size */
+	0, 0, 0, 0, 0,		/* reserved */
+	0,			/* map address */
+	0x8200,			/* dev specific flags: PORTRAIT, DOWNLOADED */
+	"\0\033(sp10h12vsb3T"   /* escape sequence */
+};
+
+MLOCAL	WORD		downfirst = 0;
+MLOCAL	BYTE		permfile[] = {"HPLJPLUS.CNF"};
+
+MLOCAL	UWORD	near_attr[4][4] =
+{
+	0, 2, 1, 3,
+	1, 0, 2, 3,
+	1, 2, 0, 3,
+	3, 1, 2, 0
+};
+
+
+/****************************************************************************
+ *  Converts ASCII string to a number, interpreting it as decimal notation. *
+ ****************************************************************************/
+BYTE *asc2dec(ptr, valptr)
+BYTE *ptr;
+WORD *valptr;
+{
+	WORD		fraction, sign, value;
+	BOOLEAN		point, firstpoint;
+	BYTE		ch;
+
+    /* Skip leading white. */
+	while ((ch = *ptr++) <= ' ')
+		;
+
+    /* Initialize for interpretation. */
+	if (ch == '-')
+		sign = -1;
+	else {
+		ptr--;
+		sign = 1;
+	}  /* End else:  not negative. */
+	value = fraction = 0;
+
+    /* Interpret the string. */
+	point = FALSE;
+	FOREVER {
+		ch = *ptr;
+		if (ch == '.') {
+			point = firstpoint = TRUE;
+			ptr++;
+			continue;
+		}  /* End if:  decimal point. */
+
+		if (ch < '0' || ch > '9')
+			break;
+		if (!point)
+			value = 10*value + ch - '0';
+		else if (firstpoint) {
+			firstpoint = FALSE;
+			if (ch >= '5')
+				fraction = 1;
+		}  /* End if:  first digit after decimal point. */
+		ptr++;
+	}  /* End FOREVER. */
+	*valptr = sign * (value + fraction);
+	return(ptr);
+
+}  /* end asc2dec() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	dvt_lf()
+{
+}  /* end dvt_lf() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	just_align(str_wid)
+{
+	if (CONTRL[0] != 11)
+   		PTSIN[2] <<= 1;		/* this line different HPH <=> HPU */
+
+	if (dv_rot == 0) {
+		switch (h_align) {
+			case 1:	/* center */
+				PTSIN[0] -= str_wid >> 1;
+				break;
+			case 2:	/* right */
+				PTSIN[0] -= str_wid;
+				break;
+		}  /* End switch:  horizontal alignment. */
+		
+		switch (v_align) {
+			case 1:	/* half line */
+				PTSIN[1] += cur_font->half;
+				break;
+			case 2:	/* ascent line */
+				PTSIN[1] += cur_font->ascent;
+				break;
+			case 3:	/* bottom line */
+				PTSIN[1] -= cur_font->bottom;
+				break;
+			case 4:	/* descent line */
+				PTSIN[1] -= cur_font->descent;
+				break;
+			case 5:	/* top line */
+				PTSIN[1] += cur_font->top;
+				break;
+		}  /* End switch:  vertical alignment. */
+	}  /* End if:  portrait font */
+
+}  /* end just_align() */
+
+
+/***************************************************************************
+ * Debug routine - disabled.
+ ***************************************************************************/
+VOID see_fhead(fhead, msg)
+FHEAD *fhead;
+BYTE *msg;
+{
+	fhead = (FHEAD *) 0;
+	msg = (BYTE *) 0;
+}
+
+
+/************************************************************************
+ *  Turn cur_font's NEED_DOWNLOAD flag ON.				*
+ ************************************************************************/
+VOID	dvt_dflag()
+{
+	cur_font->dev_flags |= NEED_DOWNLOAD;
+
+}  /* end dvt_dflag() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	set_hmi(act_wid, str_wid, spaces, sp_wid, monosts)
+WORD	act_wid, str_wid, spaces, sp_wid;
+BOOLEAN	monosts;
+{
+	dev_hmi(act_wid, str_wid, spaces, sp_wid, monosts);
+	set_just(str_wid, spaces);
+
+}  /* end set_hmi() */
+
+
+/***************************************************************************
+ *  Analyze the configuration file.
+ ***************************************************************************/
+VOID	anlz_config(size)
+WORD size;
+{
+	WORD		id_max, id_try, val;
+	BOOLEAN		first, found;
+	BYTE		ch;
+	BYTE		*bptr, *endptr;
+	CONFINFO	*cptr, *prevptr;
+
+    /* Parse the permanent file info from the configuration file. */
+	bptr = (BYTE *)(prevptr = cnftop);
+	endptr = bptr + size;
+	first = TRUE;
+	while (size > 0) {
+		if ((bptr = str_scan(bptr, size, "permfont(", 9)) == NULLPTR)
+			break;
+		cptr = (CONFINFO *)(bptr - 9);
+		if (first) {
+			cnfptr = cptr;
+			first = FALSE;
+		}  /* End if:  first time through. */
+		else
+			prevptr->next = cptr;
+		prevptr = cptr;
+		val = 0;
+		while ((ch = *bptr++) >= '0' && ch <= '9')
+			val = 10*val + ch - '0';
+		cptr->id = val;
+		while (*bptr <= ' ')
+			bptr++;
+		cptr->file = bptr;
+		while (bptr < endptr && *bptr != ')') {
+			*bptr = uppercase(*bptr);
+			bptr++;
+		}  /* End while:  over file name. */
+		*bptr++ = '\0';
+		cptr->next = (CONFINFO *)NULLPTR;
+	}  /* End while. */
+
+    /* Find a suitable initial value for downloadable fonts. */
+	for (cptr = cnfptr; cptr != (CONFINFO *)NULLPTR; cptr = cptr->next) {
+		id_try = cptr->id + 1;
+		if (id_try > 32735)
+			continue;
+		id_max = id_try + 32;
+		found = TRUE;
+		for (prevptr = cnfptr; prevptr != (CONFINFO *)NULLPTR;
+			prevptr = prevptr->next) {
+			val = prevptr->id;
+			if (val <= id_try)
+				continue;
+			if (val < id_max) {
+				found = FALSE;
+				break;
+			}  /* End if:  collision. */
+		}  /* End for:  over permanent file data. */
+		if (found) {
+			downfirst = id_try;
+			break;
+		}  /* End if:  downloadable range found. */
+	}  /* End for:  over permanent file data. */
+
+}  /* end anlz_config() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	config()
+{
+	ULONG	new_pos;
+	WORD	handle, i, size, error, avail_mem, bytes_read;
+
+    /* Assume no configuration file. */
+	downfirst = 1;
+	cnftop = cnfptr = (CONFINFO *)NULLPTR;
+	for (i = 0; i < 32; i++)
+		dv_perm[i] = i + downfirst;
+
+    /* Find out if a configuration file exists.  Get its size. */
+    	f_open(permfile, &handle);
+	if (handle == 0)
+		return;
+
+	f_seek(handle, 2, 0L, &new_pos);
+	size = (WORD)new_pos;
+
+    /* Allocate enough memory to read the entire file. */
+    	error = allo_mem((size + 15) >> 4, &cnftop, &avail_mem);
+	if (error != 0) {
+		f_close(handle);
+		return;
+	}  /* End if:  could not allocate memory. */
+
+	f_seek(handle, 0, 0L, &new_pos);
+	f_read(handle, cnftop, size, &bytes_read);
+
+    /* Analyze the file. */
+	anlz_config(size);
+	for (i = 0; i < 32; i++)
+		dv_perm[i] = i + downfirst;
+
+    /* Close the file. */
+	f_close(handle);
+
+}  /* end config() */
+
+
+/************************************************************************
+ *  Initialize for device text:	try to process the configuration file.	*
+ *  Called at open workstation time.					*
+ ************************************************************************/
+VOID	dvt_init()
+{
+	WORD	error;
+
+	error = dir_gdos();
+	error = dir_fonts();
+	config();
+	error = dir_cur();
+
+}  /* end dvt_init() */
+
+
+/***************************************************************************
+ *  Called at v_clswk() time.
+ ***************************************************************************/
+WORD	dvt_close()
+{
+	WORD	error;
+
+	if (dv_mem) {
+		error = free_mem(dv_rbuf);
+		error = free_mem(dv_mem);
+	}  /* End if:  device font chain defined. */
+
+	return(error);
+
+}  /* end dvt_close() */
+
+
+/************************************************************************
+ *  Turn every device font's NEED_DOWNLOAD flag OFF.			*
+ ************************************************************************/
+VOID	dvt_clear()
+{
+	FHEAD	*fptr;
+
+	for (fptr = dv_first; fptr; fptr = fptr->next_font)
+		fptr->dev_flags &= ~NEED_DOWNLOAD;
+
+}  /* end dvt_clear() */
+
+
+/***************************************************************************
+ *  Convert from device graphic resolution to font resolution. 		   *
+ ***************************************************************************/
+WORD	dvt_fres(value)
+WORD value;
+{
+	return(value);			/* this line different HPH <=> HPU */
+
+}  /* end dvt_fres() */
+
+
+/***************************************************************************
+ *  Convert from font resolution to device graphic resolution. 		   *
+ ***************************************************************************/
+WORD	dvt_bres(value)
+WORD value;
+{
+	return(value);		/* this line different HPH <=> HPU */
+
+}  /* end dvt_bres() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	dvt_load(fptr, index)
+FHEAD *fptr;
+WORD index;
+{
+	WORD		handle, hp_id, i, error;
+	BYTE		*dst_ptr, *src_ptr;
+	BYTE		file[13];
+
+    /* Get the file name and open the file. */
+	src_ptr = &fptr->esc_seq[24];
+	dst_ptr = file;
+	for (i = 0; i < 8 && *src_ptr != '\0'; i++)
+		*dst_ptr++ = *src_ptr++;
+	*dst_ptr++ = '.';
+	*dst_ptr++ = 'S';
+	*dst_ptr++ = 'F';
+	*dst_ptr++ = 'P';
+	*dst_ptr = '\0';
+
+	error = dir_gdos();
+	error = dir_fonts();
+
+	f_open(file, &handle);
+	if (handle != FALSE) {
+		permfont = fptr->dev_flags & PERMANENT;
+		if (permfont)
+			dv_perm[index] = fptr->data_size;
+		dst_ptr = &fptr->esc_seq[0];
+		*dst_ptr++ = (BYTE)index;
+		*dst_ptr++ = '\033';
+		*dst_ptr++ = '(';
+		if ((hp_id = dv_perm[index]) > 9999)
+			i = 10000;
+		else if (hp_id > 999)
+			i = 1000;
+		else if (hp_id > 99)
+			i = 100;
+		else if (hp_id > 9)
+			i = 10;
+		else
+			i = 1;
+		while (i != 0) {
+			*dst_ptr++ = (BYTE)(hp_id/i) + '0';
+			hp_id = hp_id % i;
+			i /= 10;
+		}  /* End while:  over digits. */
+		*dst_ptr++ = 'X';
+		*dst_ptr = '\0';
+
+		if (!permfont)
+			font_id(dv_perm[index]);
+		if (bld_wid(handle, FILE_BUF_SIZE, dv_rbuf, \
+						TRUE, fptr->map_addr, fptr))
+			fptr->dev_flags |= DOWNLOADED;
+		f_close(handle);
+	}  /* End if:  file open successful. */
+	else {
+		permfont = fptr->dev_flags & PERMANENT;
+		if (permfont)
+			dv_perm[index] = fptr->data_size;
+		fptr->flags = courier.flags | DOWNLOADED;
+		fptr->max_cell_width = courier.max_cell_width;
+		dst_ptr = &fptr->esc_seq[1];
+		src_ptr = &courier.esc_seq[1];
+		while ((*dst_ptr++ = *src_ptr++) != '\0')
+			;
+		fptr->esc_seq[0] = (BYTE)index;
+	}  /* End else:  unsuccessful open. */
+	error = dir_cur();
+
+}  /* end dvt_load() */
+
+
+/***************************************************************************
+ * Downloads device fonts that have a header in the chain. 
+ * Called from bld_page() in jmptbl.c
+ ***************************************************************************/
+VOID	dvt_downfont()
+{
+	WORD	index;
+	UWORD	flags;
+	FHEAD	*fptr;
+
+    /* set printer's orientation according to value of p_orient. */
+	orient();
+	set_hv(0, 0);
+
+	for (fptr = dv_first; fptr; fptr = fptr->next_font) {
+		flags = fptr->dev_flags;
+		if (flags & NEED_DOWNLOAD) {
+			if (flags & DOWNLOADED)
+				continue;
+			for (index = 0; index < 32; index++) {
+				if (!dv_offs[index].in_use)
+					break;
+
+			}  /* End for:  over fonts allowed. */
+			if (index == 32)
+				break;
+
+			dv_offs[index].in_use = TRUE;
+			fptr->off_table = dv_offs[index].offset;
+			dvt_load(fptr, index);
+		}  /* End if:  font needs to be downloaded. */
+		else if (flags & DOWNLOADED) {
+			index = (WORD)fptr->esc_seq[0];
+			fptr->off_table = (UWORD *)NULLPTR;
+			dv_offs[index].in_use = FALSE;
+			fptr->dev_flags &= ~DOWNLOADED;		/* flag off */
+			if (flags & PERMANENT)
+				dv_perm[index] = index + downfirst;
+			else
+				del_font(dv_perm[index]);
+		}  /* End else:  font needs to be deleted. */
+	}  /* End for:  over device fonts. */
+
+}  /* end dvt_downfont() */
+
+
+/***************************************************************************
+ * Debug routine - disabled.
+ ***************************************************************************/
+VOID see_foffs(foffs, msg)
+FONTOFFS *foffs;
+BYTE *msg;
+{
+
+}
+
+/***************************************************************************
+ * Debug routine - disabled.
+ ***************************************************************************/
+VOID see_finfo(finfo, msg)
+FONTINFO *finfo;
+BYTE *msg;
+{
+	finfo = (FONTINFO *) 0;
+	msg = (BYTE *) 0;
+}
+
+
+/***************************************************************************
+ *  Fill in a font header.
+ ***************************************************************************/
+VOID fill_head(info, new_font)
+FONTINFO *info;
+FHEAD *new_font;
+{
+	WORD		font, size, temp;
+	BYTE		ch;
+	BYTE		*dst_ptr, *src_ptr;
+	FHEAD		*current, *previous;
+
+    /* Fill in the font header with as much information as possible. */
+	new_font->map_addr = info->map == 0 ? map_tbl : fwmap_tbl;
+	font = info->face & 0xff;
+	new_font->font_id = font | (info->attr << 8);
+	new_font->point = size = info->point;
+	new_font->first_ade = 32;
+	new_font->last_ade = 255;
+	new_font->flags |= DEVICE_FONT;
+	new_font->dev_flags = info->attr;
+	if (info->map == 1)
+		new_font->flags |= MAPPED;
+
+	src_ptr = &info->file[0];			/* file name */
+	dst_ptr = &new_font->esc_seq[24];
+	while ((ch = *src_ptr++) != '\0' && ch != '/')
+		*dst_ptr++ = ch;
+	*dst_ptr = '\0';
+
+	src_ptr = &info->name[0];			/* font name */
+	dst_ptr = &new_font->name[0];
+	while ((ch = *src_ptr++) != '\0' && ch != '/')
+		*dst_ptr++ = ch;
+	*dst_ptr = '\0';
+
+    /* Link the new font into the device font chain. */
+	if (new_font == dv_mem)
+		dv_first = new_font;
+	else {
+		if ((temp = dv_first->font_id & 0xff) > font ||
+				(temp == font && dv_first->point > size)) {
+			new_font->next_font = dv_first;
+			dv_first = new_font;
+		}  /* End if:  insert at beginning. */
+		else {
+		    previous = dv_first;
+		    while ((current = previous->next_font) != (FHEAD *)0) {
+			if ((temp = current->font_id & 0xff) > font || \
+			              (temp == font && current->point > size))
+			    break;
+			    previous = current;
+		    }  /* End while:  over fonts. */
+		    previous->next_font = new_font;
+		    new_font->next_font = current;
+		}  /* End else:  not insertion at beginning. */
+	}  /* End else:  not the first font. */
+
+}  /* end fill_head() */
+
+
+/***************************************************************************
+ *  (Ability to download with permanent status isn't used in GEM/3 model.) *
+ ***************************************************************************/
+VOID	permcheck(fptr)
+FHEAD *fptr;
+{
+	UWORD		flags, i;
+	BYTE		ch;
+	BYTE		*ptr;
+	BYTE		filename[13];
+	CONFINFO	*cptr;
+
+    /* Get the current flags and assume downloadable. */
+	flags = fptr->dev_flags & ~PERMANENT;
+
+     /* Further processing only if permanent requested. */
+	if ((INTIN[0] & 0x80) != 0) {
+		ptr = &fptr->esc_seq[24];
+        	for (i = 0; i < 8; i++) {
+			if ((ch = *ptr++) == '\0')
+				break;
+			filename[i] = uppercase(ch);
+		}  /* End for:  over filename string. */
+		filename[i++] = '.';
+		filename[i++] = 'S';
+		filename[i++] = 'F';
+		filename[i++] = 'P';
+		filename[i] = '\0';
+
+	    /* Scan the permanent list for a matching file. */
+		for (cptr = cnfptr; cptr != (CONFINFO *)NULLPTR;
+			cptr = cptr->next) {
+			if (str_cmp(&filename[0], cptr->file) == 0) {
+				flags |= PERMANENT;
+				fptr->data_size = cptr->id;
+				break;
+			}  /* End if:  match. */
+		}  /* End for:  over permanent list. */
+	}  /* End if:  permanent requested. */
+
+    /* Set the flags word appropriately. */
+	fptr->dev_flags = flags;
+
+}  /* end permcheck() */
+
+
+/************************************************************************
+ *  Initialize header if memory was allocated, or update the header if	*
+ *  the font was already in the chain.					*
+ ************************************************************************/
+VOID	dvt_head(info)
+FONTINFO *info;
+{
+	FHEAD	*new_font;
+
+    /* If the device font chain was not allocated, abandon. */
+	if (!dv_mem)
+		return;
+
+    /* If this font is already in the chain, just update its download-	*/
+    /* permanent flag, file name, and esc_seq.	*/
+	if (dup_font(info))
+		return;
+
+
+    /* Initialize a new font header using the information passed in. */
+	if ((new_font = get_head()) != (FHEAD *)0) {
+		dv_loaded = TRUE;
+		fill_head(info, new_font);
+		permcheck(new_font);
+	}  /* End if:  header space available. */
+
+}  /* end dvt_head() */
+
+
+/****************************************************************
+ *  Fill in a FONTINFO structure by reading a font's .hfi file	*
+ ****************************************************************/
+BOOLEAN	find_devfont(firstcall, finfo)
+BOOLEAN firstcall;
+FONTINFO *finfo;
+{
+	BYTE	filename[66];
+	BYTE	*src, *dst;
+	WORD	size, count, handle, error;
+	ULONG	new_pos;
+	WORD	got_one;
+
+    /* build a drive, path, file name string */
+    	filename[0] = '\0';
+	fontpath(filename, "*.hfi");
+
+    /* Get a font file name from the fonts directory */
+	got_one = (firstcall ? f_first(filename) : f_next(filename));
+
+    /* process the font's .HFI ("H.P. font info") file */
+    if (got_one) {
+    	dv_numfonts++;
+	fontpath(filename, &cur_dta[30]);
+	error = f_open(filename, &handle);
+	if (handle != 0) {
+	    error = f_seek(handle, 2, 0L, &new_pos);	     /* seek to end */
+	    size = (WORD)new_pos;			  /* save file size */
+	    error = f_seek(handle, 0, 0L, &new_pos);	     /* rewind file */
+	    error = f_read(handle, dv_rbuf, size, &count);
+	    if (count > 0) {
+		if ((src = str_scan((BYTE *)dv_rbuf, count, "file(", 5)) \
+			       				         != NULLPTR) {
+		    dst = &finfo->file[0];
+		    while ((*dst++ = *src++) != ')')
+			    ;
+		    *(--dst) = '\0';
+		}
+
+		if ((src = str_scan((BYTE *)dv_rbuf, count, "name(", 5)) \
+			       				         != NULLPTR) {
+		    dst = &finfo->name[0];
+		    while ((*dst++ = *src++) != ')')
+			    ;
+		    *(--dst) = '\0';
+		}
+
+		if ((src = str_scan((BYTE *)dv_rbuf, count, "face(", 5)) \
+			       					   != NULLPTR)
+		    asc2dec(src, &finfo->face);
+	        if ((src = str_scan((BYTE *)dv_rbuf, count, 
+					       "attributes(", 11)) != NULLPTR)
+		    asc2dec(src, &finfo->attr);
+		if ((src = str_scan((BYTE *)dv_rbuf, count, "encode(", 7)) \
+			       				           != NULLPTR)
+		    asc2dec(src, &finfo->map);
+		if ((src = str_scan((BYTE *)dv_rbuf, count, "point(", 6)) \
+			       				           != NULLPTR)
+		    asc2dec(src, &finfo->point);
+	    }  /* End if: file wasn't empty */
+	    f_close(handle);
+	}  /* End if: file opened successfully */
+    }  /* End if: got a device font file */
+
+    return(got_one);
+    
+}  /* end find_devfonts() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	dvt_first()
+{
+	WORD		save, error, avail_mem;
+	FONTINFO	finfo;
+	BOOLEAN		firstcall;
+
+    /* If a "first" has already been done, ignore this one. */
+	if (dv_first)
+		return;
+
+    /* Allocate memory for the file buffer. */
+    	error = allo_mem(FILE_BUF_SIZE/16, &dv_rbuf, &avail_mem);
+	if (error != FALSE) {
+		dv_free = dv_mem = (FHEAD *)NULLPTR;
+		return;
+	}  /* End if:  file buffer allocation failed. */
+
+    /* Allocate memory for downloadable font headers and widths. */
+    /* Actual size of allocation returned in dv_size. 		 */
+	if ((dv_free = dv_mem = (FHEAD *)hd_allo(HEADER_BUF_SIZE/16)) \
+							     == (FHEAD *) 0) {
+		free_mem(dv_rbuf);
+		return;
+	}  /* End if:  allocation failed. */
+
+    /* Initialize headers for the available device fonts. */
+	save = INTIN[0];
+	INTIN[0] &= 0xff7f;
+	for (firstcall = TRUE; find_devfont(firstcall, &finfo); \
+							firstcall = FALSE) 
+         	dvt_head(&finfo);
+	INTIN[0] = save;
+
+}  /* end dvt_first() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	dvt_last()
+{
+	WORD	index, error;
+
+    /* If the device font chain was not allocated, abandon. */
+	if (!dv_mem)
+		return;
+
+	for (index = 0; index < dv_numfonts; index++)
+		dv_offs[index].offset = get_off();
+
+    /* Set up the offset table pointers. */
+	for (index = 0; index < 32; index++) {
+		dv_offs[index].in_use = FALSE;
+
+	}  /* End for:  over number of fonts allowed at once. */
+
+    /* Size the font chain down. */
+	if (dv_size < (UWORD)((LONG)dv_free))
+		error = dvt_size(dv_mem, dv_size/32);
+	else
+		error = dvt_size(dv_mem, (((UWORD)((LONG)dv_free)) >> 4) + 1);
+
+}  /* end dvt_last() */
+
+
+/**********************************************************************
+ *
+ **********************************************************************/
+VOID	init_device_fonts() 
+{
+	WORD error;
+
+    /* Establish appropriate current directory. */
+	error = dir_gdos();
+	error = dir_fonts();
+
+    /* Build the header chain. */
+	dvt_first();
+
+    /* Size down header chain memory. */
+	dvt_last();
+
+    /* Restore appropriate current directory. */
+	error = dir_cur();
+	
+}  /* end init_device_fonts() */
+
+
+/*************************************************************************
+ *  Returns current font type (0 = BITMAP, 1 = DEVICE).  For small model *
+ *  routines in monoprin.c that can't use 32 bit cur_font pointer.	 *
+ *************************************************************************/
+BOOLEAN font_type()
+{
+	if (cur_font->flags & DEVICE_FONT)
+		return(TRUE);
+	else return(FALSE);
+
+}  /* end font_type() */
+
+
+/************************************************************************
+ *  Find the requested device font.  GLOBAL dv_font = request on entry.	*
+ *  GLOBALS act_font = cur_font = chosen font on exit.			*
+ ************************************************************************/
+BOOLEAN	dvt_set_font()
+{
+	WORD	best_val, f_attr_index, f_font, f_points,
+	 	points, rq_attr_index, value;
+	FHEAD	*saved_font, *best, *fptr;
+
+    /* If we have no device fonts, we're not looking for portrait, */
+    /* or white text has been requested, bail out */
+	if ((!dv_first) || (dv_rot != 0) || (text_color == 0))
+		return(FALSE);
+
+    /* Look for a device font. */
+    /* Assume an error will occur and set to default font. */
+    	saved_font = cur_font;
+	act_font = cur_font = &courier;
+	dv_cur = TRUE;
+
+    /* If Courier was requested and point size was already set, we're done. */
+	if (!((dv_font != -1) && ((dv_selpt && (dv_pt != -1)) ||
+		(!dv_selpt && (dv_ht != -1)))))
+		return(TRUE);
+
+    /* Work with the point size */
+	if (dv_selpt)
+		points = dv_pt;
+	else
+		points = (3*dv_ht*36 + 150)/300;       /* different HPH/HPU */
+
+    /* If 12 point Courier was requested, we're done. */
+	if (points == 12 && (dv_font == 1 || dv_font == 102))
+		return(TRUE);
+
+    /* Satisfy the request with the closest matching font. */
+	rq_attr_index = (dv_attr & THICKEN) + ((dv_attr & SKEW) >> 1);
+	best_val = 0x7fff;
+	for (fptr = dv_first; fptr; fptr = fptr->next_font) {
+		f_font = fptr->font_id & 0xff;
+		f_points = fptr->point;
+		f_attr_index = (fptr->dev_flags & THICKEN) +
+			((fptr->dev_flags & SKEW) >> 1);
+		value = (f_points > points ? (f_points - points) | 0x100 :
+			points - f_points) << 2;
+		value |= (f_font != dv_font ? 0x800 : 0x0) |
+			near_attr[rq_attr_index][f_attr_index];
+		if (value < best_val) {
+			best = fptr;
+			if (value == 0) {
+				act_font = cur_font = best;
+				return(TRUE);
+			}  /* End if: value == 0 */
+			best_val = value;
+		}  /* End if:  new best found. */
+	}  /* End for:  over device font chain. */
+
+	act_font = cur_font = saved_font;
+	return(FALSE);
+
+}  /* end dvt_set_font() */
+
+
+/************************************************************************
+ *  If white text has been requested, bail out.  Return a huge clipping	*
+ *  width so that clipping will eventually take effect. 		*
+ ************************************************************************/
+WORD text_out(ade, mono_status)
+WORD ade;
+BOOLEAN	mono_status;
+{
+	if (text_color == 0)
+		return(2400);
+	return(tx_out(ade, mono_status));
+
+}  /* end text_out() */
+
+
+/***************************************************************************
+ *  
+ ***************************************************************************/
+VOID	dvt_etext()
+{
+	WORD		bottom, dv_x, dv_y, first, i, ix, top, wd;
+	WORD		ch_wid;
+	BOOLEAN		mono;
+
+    /* If white text has been requested, bail out */
+	if (text_color == 0)
+		return;
+
+    /* Perform trivial rejection clipping. */
+	dv_x = dvt_fres(PTSIN[0]);
+	dv_y = dvt_fres(PTSIN[1]);
+	top = cur_font->top;
+	bottom = cur_font->bottom;
+	mono = cur_font->flags & MONOSPACE ? TRUE : FALSE;
+	ch_wid = cur_font->max_cell_width;
+
+	if (dv_rot == 0) {
+		if (dv_y + bottom < fcl_ymin || dv_y - top > fcl_ymax)
+			return;
+	}  /* End if:  portrait. */
+
+	if (cur_font != prev_font) {
+		set_font(&act_font->esc_seq[0]);
+		prev_font = cur_font;
+	}  /* End if:  font selection needs to be output. */
+
+	if ((STYLE & UNDER) != (PSTYLE & UNDER)) {
+		set_hv(PTSIN[0], PTSIN[1]);
+		PSTYLE = STYLE;
+		set_undl(STYLE & UNDER);
+	}  /* End if:  underlining on. */
+
+	dv_map = act_font->map_addr;
+	first = cur_font->first_ade;
+	etx_x = ~etx_x;
+	etx_y = ~etx_y;
+	for (i = 0; i < CONTRL[3]; i++) {
+		/* Get the character position. */
+		if (i > 0) {
+			wd = dvt_fres(PTSIN[i + 1]);
+			if (dv_rot == 0)
+				dv_x += wd;
+		}  /* End if:  not first character. */
+
+	    /* Perform character clipping. */
+		ix = INTIN[i] - first;
+		wd = mono ? ch_wid : act_font->off_table[ix + 1] -
+			act_font->off_table[ix];
+		if (dv_rot == 0) {
+			if (dv_x > fcl_xmax)
+				break;
+			if (dv_x + wd - 1 < fcl_xmin)
+				continue;
+		}  /* End if:  portrait. */
+
+	    /* Output the character. */
+		etx_out(dv_x, dv_y, INTIN[i]);
+	}  /* End for:  over characters. */
+
+}  /* end dvt_etext() */
+
+
+/************************************************************************
+ *  Search font chain for a font with the given id and point size (a	*
+ *  duplicate).  If there is one, update its header's name and esc_seq	*
+ *  fields.								*
+ ************************************************************************/
+BOOLEAN	dup_font(info)
+FONTINFO *info;
+{
+	WORD		font, point;
+	BOOLEAN		duplicate;			/* return value */
+	FHEAD		*ptr;
+
+	font = (info->face & 0xff) | (info->attr << 8);
+	point = info->point;
+	duplicate = FALSE;
+
+	for (ptr = dv_first; ptr != (FHEAD *)NULLPTR; ptr = ptr->next_font) {
+		if (font != ptr->font_id)
+			continue;
+		if (point != ptr->point)
+			continue;
+		duplicate = TRUE;
+		permcheck(ptr);
+	}  /* End for:  over font chain. */
+
+	return(duplicate);
+
+}  /* end dup_font() */
+
+

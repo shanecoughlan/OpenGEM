@@ -1,0 +1,25 @@
+GEM bindings for DJGPP, v1.0.2                       John Elliott, 5 Oct 2002.
+==============================================================================
+  This is based on (and includes) the GEM Programmers' Toolkit, version 3.0.
+
+  Detailed documentation is in DOC\DJGPP.TXT.
+
+  The following directories are present:
+
+* BIN      - The sample applications, as compiled with DJGPP.
+* DOC      - The DOC directory from the GEM PTK, plus DJGPP-specific 
+	    documentation.
+* INCLUDE  - The headers used when compiling with DJGPP.
+* LIB      - The bindings as a DJGPP library.
+* SAMPLE   - The SAMPLE directory from the GEM PTK. This contains the 
+            original 16-bit source code for the library and sample
+            applications.
+* SRC      - The 32-bit source code for the library and sample applications.
+* TOOLS    - The TOOLS directory from the GEM PTK. This contains 16-bit
+            binaries of the sample applications, and the Resource Editor
+            (RCS.APP).
+
+
+  To build, use "make".
+  To copy the library and header files to your main DJGPP directory, use 
+"make install".

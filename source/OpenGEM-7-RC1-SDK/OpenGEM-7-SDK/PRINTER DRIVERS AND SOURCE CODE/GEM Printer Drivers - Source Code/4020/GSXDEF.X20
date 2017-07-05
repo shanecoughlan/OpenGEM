@@ -1,0 +1,108 @@
+/*****************************************************************
+ *  Device dependent constants for the Xerox 4020 Color Ink Jet. *
+ *****************************************************************/
+
+/* image_to_cmy[] maps .IMG file RGB format to CMY format as required by    * 
+ * the printer.  .IMG RGB format has bit 0 = red, bit 1 = green, 	    * 
+ * bit 2 = blue, except that white has bit code 00000000 instead of         * 
+ * 00000111 and black has bit code 00000111 instead of 00000000.	    * 
+ * The output from this mapping should have bit 0 = 1st plane in raster     * 
+ * slice, bit 1 = 2nd plane, and bit 2 = 3rd plane.			    * 
+ * For this printer 1st plane = MAGENTA, 2nd = YELLOW, 3rd = CYAN	    * 
+ *	.IMG code COLOR	   RGB  CMY  CYM				    * 
+ *	    0     WHITE    111  000  000				    * 
+ *	    1     RED      100  011  000				    * 
+ *	    2     GREEN    010  101  110				    * 
+ *	    3     YELLOW   110  001  010				    * 
+ *	    4     BLUE     001  110  101				    * 
+ *	    5     MAGENTA  101  010  001				    * 
+ *	    6     CYAN     011  100  100				    * 
+ *	    7     BLACK    000  111  111				    */
+
+static UBYTE	image_to_cmy[8] = {0, 3, 6, 2, 5, 1, 4, 7};
+#define COLOR_PRINTER
+
+#define cdo_text	FALSE
+#define cdo_rule	FALSE
+#define no_tintrule	FALSE
+#define autocopy	FALSE		/* device has multicopy support? */
+
+#define MIN_L_WIDTH	1
+#define MAX_L_WIDTH	150
+#define MAX_COLOR	8
+#define MAX_LINE_STYLE	7
+#define MAX_MARK_INDEX	6
+#define MX_FIL_STYLE	4
+#define MX_FIL_INDEX	24
+#define MAX_WRITE_MODE	3
+#define MAX_ARC_CT	120
+
+/********************************************************
+ *  Xerox 4020 Color Ink Jet Printer:			*
+ *  NOTE:  X must be an even multiple of 8 (-1)		*
+ *	   Y must be EXACT here, and will be translated	*
+ *	    to an even multiple of G_SL_HGT (-1) at	*
+ *	    v_opnwk() time.				*
+ *	Letter size paper - 8.5 x 11 inches		*
+ *	    print area - 8 x 11 inches			*
+ *		120 dpi -> 960 horizontal dots		*
+ *		120 dpi -> 1320 vertical dots		*
+ *	Half size paper - 8.5 x 5.5 inches		*
+ *	    print area - 8 x 5.5 inches			*
+ *		120 dpi -> 960 horizontal dots		*
+ *		120 dpi -> 660 vertical dots 		*
+ *	B5 size paper - 17.6 x 25 cm. (6.93" x 9.84")   *
+ *	    print area - 6.43 x 9.84 inches		*
+ *		120 dpi -> 771.6 horizontal dots**	*
+ *				**(8 x 96 = 768)	*
+ *		120 dpi -> 1180.8 vertical dots 	*
+ *	A4 size paper - 21 x 29.7 cm. (8.27" x 11.69")  *
+ *	    print area - 7.77 x 11.69 inches		*
+ *		120 dpi -> 932.4 horizontal dots**	*
+ *				**(8 x 116 = 928)	*
+ *		120 dpi -> 1402.8 vertical dots 	*
+ *	Legal size paper - 8.5 x 14 inches		*
+ *	    print area - 8 x 14 inches			*
+ *		120 dpi -> 960 horizontal dots		*
+ *		120 dpi -> 1680 vertical dots		*
+ *	Double size paper - 11 x 17 inches		*
+ *	    print area - 11 x 17 inches			*
+ *		120 dpi -> 1320 horizontal dots		*
+ *		120 dpi -> 2040 vertical dots		*
+ *	Broad sheet paper - 18 x 24 inches		*
+ *	    print area - LETTER				*
+ ********************************************************/
+/* These constants are one less than the number of pixels because they	*/
+/*    are used to reference array values (i.e. 0 -> 959 = 960) 		*/
+#define	X_LETTER	959
+#define	Y_LETTER	1320
+#define	X_HALF		959
+#define	Y_HALF		660
+#define	X_B5		767
+#define	Y_B5		1180
+#define	X_A4		927
+#define	Y_A4		1402
+#define	X_LEGAL		959			
+#define	Y_LEGAL		1680
+#define	X_DOUBLE	1319
+#define	Y_DOUBLE	2040
+#define	X_BROAD		X_LETTER
+#define	Y_BROAD		Y_LETTER
+
+#define TOP_MARGIN	0
+#define BOT_MARGIN	0
+#define LEFT_MARGIN	30	/* quarter inch */
+#define RIGHT_MARGIN	30	/* quarter inch */
+
+/* Duplicates of assembly constants for C code - used in v_opnwk() */
+#define	C_GSLHGT	4		/* G_SL_HGT */
+#define C_ASLHGT	20		/* A_SL_HGT */
+#define C_RESXMX	1319		/* RES_XMX */
+#define C_RESYMX	32763		/* RES_YMX */
+#define	C_XDPI		120		/* XDPI */
+#define	C_YDPI		120		/* YDPI */
+#define X_ASPECT        212		/* XSIZE */
+#define Y_ASPECT        212		/* YSIZE */
+
+/* Used in alphtext.c to build alpha map table file name */
+#define DEVICE_ABBREVIATION "x20"

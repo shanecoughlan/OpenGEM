@@ -1,0 +1,182 @@
+SYSFONT v1.02                                   John Elliott, 14 December 2002
+==============================================================================
+
+  SYSFONT is a program which can edit the GEM system font (as stored in a
+GEM driver). It can also be used as a DOS font editor.
+  SYSFONT has been tested under GEM/2 and later; it looks its best under
+FreeGEM. 
+
+Release History
+===============
+
+1.02: Added support for Windows .FON files (not full support, but enough
+     to import/export the FixedSys font (VGAFIX.FON)). Automated transcoding
+     function to convert DOS or Windows fonts to GEM. Some usability bug fixes 
+     and better error reporting.
+1.01: Added keyboard shortcuts for Copy/Cut/Paste. Included a copy of 
+     SDPSC9.VGA with a more ViewMAXy font.
+1.00: Initial release.
+
+Installation
+============
+
+1. Copy SYSFONT.APP and SYSFONT.RSC to a directory in your search path -
+  in GEM/3, I recommend \GEMAPPS.
+
+2. Under GEM: Highlight SYSFONT.APP, select "Configure application" from the
+  "options" menu, and set up as follows:
+              Document types:    PSF ROM VGA FON
+              Application type:  GEM
+              Needs full memory: No
+              Memory required:   256k
+              Icon type:         Whatever you want.
+
+  Note that if you have the EDICON icon editor, you can use it to import the
+two supplied icon files into DESKHI.ICN.
+
+  Then select "Save desktop" from the "options" menu.
+
+3. Under ViewMAX: Highlight SYSFONT.APP, select "Configure application" from
+  the "options" menu, and set up as follows:
+
+              Takes parameters:   [ ]
+              Document types:     PSF ROM VGA FON
+              Icon type:          Whatever
+
+  Then select "Save preferences" from the "options" menu.
+  Note that to use SYSFONT from ViewMAX, you will need a working GEM
+ installation as well.
+
+
+Use
+===
+
+  Start SYSFONT by clicking its icon, or by double-clicking a font/driver 
+file. If you double-click a file, it will be opened within SYSFONT;
+otherwise SYSFONT will start with no files open.
+  SYSFONT supports files in these formats:
+* GEM driver
+* PSF (Linux console font) - note that the PSF2 format is not supported.
+* DOS console font
+* Spectrum +3 font
+* TOS 1.00 ROM image
+* Windows .FON font (only tested with the Windows 3.x VGA fonts VGAFIX.FON and 
+ VGAOEM.FON, and the Windows 1.x fonts HIFONTS.FON and LOFONTS.FON).
+
+  When you open a file, it appears in a split-pane format. The left-hand pane
+contains an enlarged view of the current character, while the right-hand pane
+shows the characters in the font. Use the scrollbar at the bottom of the
+window to move through the characters. The currently selected character is
+highlighted; you can select a different character by clicking on it.
+
+  Some types of file have two or three fonts in them. In this case, the arrows
+on the vertical scrollbar can be used to select the current font; or click on
+a character in the requested font.
+
+  It is possible to have multiple characters selected for an operation. To
+do this, move the text cursor over the first one, click, and drag to the last
+one. The window will scroll automatically if you go off the left or right end.
+
+The File menu
+=============
+  This menu has five options:
+
+New...       Create a new font file from scratch.
+Open...      Open a file. You can have multiple fonts loaded at once.
+Save         Save the current file.
+Save As...   Save the current file under a new name, and maybe in a new format
+             as well.
+Quit         Quit the program.
+
+The Edit menu
+=============
+
+Edit | Cut and Edit | Copy
+--------------------------
+  The Cut and Copy options will copy the selected character (or range of
+characters) to the clipboard. In the case of Cut, the selected characters
+are then blanked.
+
+Edit | Paste
+------------
+
+  The contents of the clipboard are copied into the currently selected font.
+If a single character is selected, then that character and as many subsequent
+characters as necessary will be replaced with the characters on the clipboard.
+If multiple characters are selected, then only the selected characters will
+be replaced.
+
+  For example: Highlight the range A-H, and then do Edit | Copy.
+  Click on Z, and do Edit | Paste. 8 characters are pasted.
+  Highlight the range Q-T, and do Edit | Paste. 4 characters are pasted.
+
+Edit | Select all
+-----------------
+  Selects the current font. Note that if a file contains more than one font,
+only the currently active font will be selected.
+
+Edit | Preferences
+------------------
+  The Preferences command allows you to choose the colours used in the font
+window and for highlighting selections.
+  Colour settings are stored in the file SYSFONT.CFG; delete this file to
+restore the default settings.
+
+The Font menu
+=============
+  The Font menu only has one option: Transcode. This will shuffle the 
+characters in a font, converting between GEM, DOS, and ISO-8859-1 codepages.
+This is a lossy operation; characters in the destination codepage which 
+aren't in the source codepage will be set to blank.
+
+The Transform and Effects menus
+===============================
+  These menus can only be used when a font is being edited. They both
+describe various transformations that can be done to the selected character
+or range of characters. Be careful - you can't undo them!
+
+The Window menu
+===============
+
+  This has two ways of arranging all the SYSFONT windows on the screen. It
+does not affect desk accessory windows.
+
+Example of use
+==============
+  To replace the 8x16 font in the GEM/3 driver with the ViewMAX one:
+
+* Load UDUNI9.VGA and SDPSC9.VGA into SYSFONT.
+* On the UDUNI9.VGA window, click on a character in the bottom font.
+* Highlight the characters SPACE to ¨.
+* Use Edit | Copy.
+* On the SDPSC9.VGA window, click on the SPACE character in the bottom font.
+* Use Edit | Paste.
+* Save SDPSC9.VGA, and leave the program.
+
+  Note that I only copied SPACE to ¨ (characters 32 - 168). Outside
+this range, the characters don't correspond (though you could copy more 
+over, one at a time, or transcode the font from DOS to GEM and copy the 
+characters in larger groups).
+
+  The example file SDPSC9.VGA has had this done; you can use it as-is in 
+GEM/3, or transfer the font into another driver such as SDPSC11.BS for GEM/5.
+
+Licence
+=======
+
+    Copyright (C) 2002  John Elliott <jce@seasip.demon.co.uk>
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+

@@ -1,13 +1,11 @@
 ---------------------------------------------------------------------------
- OpenGEM User Guide                        Release 6 -- 14th July 2006
+ OpenGEM User Guide                        Release 7 RC 1 -- 5th July 2017
 ---------------------------------------------------------------------------
 
 This is a user's guide for OpenGEM.
 
-It is currently maintained by Opendawn.com <info@opendawn.com> 
+It is currently maintained by Opendawn.com <shane@opendawn.com> 
 and any comments, suggestions or error reports are welcome.
-
-This document can be found on the Internet at <http://gem.opendawn.com/>
 
 CREDITS: The OpenGEM User Guide is based on the PC GEM FAQ, which was 
 created by Rory Beaton for the FreeGEM community.  Thanks to Liam Proven
@@ -28,8 +26,6 @@ TABLE OF CONTENTS
     1.1  What is GEM?
     1.2  What is FreeGEM?
     1.3  What is OpenGEM?
-     1.3.1  What is GEMini?
-     1.3.2  What is OpenGEM/XM?
     1.4  Why is OpenGEM free?
     1.5  Where can I get OpenGEM?
     1.6  Where can I discuss or get help with OpenGEM?
@@ -111,51 +107,19 @@ TABLE OF CONTENTS
   
   OpenGEM is a FreeGEM distribution.  It contains a collection of DR GEM
   and FreeGEM code, is released under the GPL license.  It is actively 
-  developed by Shane M. Coughlan.
+  developed by Shane Coughlan.
 
   OpenGEM is the main FreeGEM distribution.  It is designed to be easy to
   install and use, and is tested to work with virtually all versions of 
   DOS.  
 
-  There are two versions of OpenGEM:
-
-  OpenGEM 
   OpenGEM can be compared to DR's ViewMax file manager for DR-DOS 6 and 7 
   - see: <http://en.wikipedia.org/wiki/ViewMAX>.  However, unlike ViewMax, 
   OpenGEM is a full GEM desktop that is capable of running applications
-  through its simple packaging system. 
-
-  OpenGEM/XM
-  OpenGEM is an experimental multi-tasking version of OpenGEM.
-
+  through its simple packaging system.
 
   The OpenGEM homepage is <http://gem.opendawn.com/>
-  You can get more information by emailing <info@opendawn.com>
-
-
-***************************************************************************
-1.3.1   What is GEMini?
-***************************************************************************
-  
-  GEMini was a tiny FreeGEM distribution.  It contained a collection of 
-  DR GEM and FreeGEM code, and was released under the GPL license.
-
-  GEMini is no longer developed.  Opendawn still offers technical support
-  for GEMini users but it is recommended to migrate to OpenGEM.
-
-  The OpenGEM homepage is <http://gem.opendawn.com/>
-  You can get more information by emailing <gem@shaneland.co.uk>
-
-
-***************************************************************************
-1.3.2   What is OpenGEM/XM?
-***************************************************************************
-  
-  OpenGEM/XM is the multi-tasking version of OpenGEM.  It is currently
-  being tested, and is not suitable for production use.
-
-  The OpenGEM homepage is <http://gem.opendawn.com/>
-  You can get more information by emailing <gem@shaneland.co.uk>
+  You can get more information by emailing <shane@opendawn.com>
 
 
 ***************************************************************************
@@ -298,18 +262,7 @@ TABLE OF CONTENTS
 2.2   Which version of OpenGEM should I install?
 ***************************************************************************
 
-  This is really dependent on your requirements. 
-
-  The current main FreeGEM is distribution is OpenGEM, which includes
-  most major FreeGEM code and original GEM applications.  It is available
-  for free download from <http://gem.opendawn.com/>
-
-  There are two versions of OpenGEM to choose from:
-  
-  OpenGEM Core offers a small GEM environment tested on modern machines.  
-  
-  OpenGEM Complete offers the same base as OpenGEM Core, and includes
-  all the known PC GEM applications. 
+  It is recommended that you install OpenGEM 6 or above.
 
 
 ***************************************************************************

@@ -1,0 +1,64 @@
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        * 
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;************************************************************************
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+; Equates for offsets in font header of font files.
+FH_ID			equ	0	; offset to font id
+FH_POINT_SIZE		equ	2	; offset to font point size
+FH_FACE_NAME		equ	4	; offset to face name
+FH_FILE_NAME_OFF	equ	32	; offset to font file name offset
+FH_FILE_NAME_SEG	equ	34	; offset to font file name segment
+FH_FIRST_ADE		equ	36	; offset to lowest ade
+FH_LAST_ADE		equ	38	; offset to highest ade
+FH_TOP			equ	40	; offset to top distance
+FH_ASCENT		equ	42	; offset to ascent distance
+FH_HALF			equ	44	; offset to half distance
+FH_DESCENT		equ	46	; offset to descent distance
+FH_BOTTOM		equ	48	; offset to bottom distance
+FH_MAX_CHAR_WIDTH	equ	50	; offset to maximum character width
+FH_MAX_CELL_WIDTH	equ	52	; offset to maximum cell width
+FH_LEFT_OFF		equ	54	; offset to left offset
+FH_RIGHT_OFF		equ	56	; offset to right offset
+FH_THICKEN		equ	58	; offset to thickening
+FH_UL_SIZE		equ	60	; offset to underline size
+FH_LIGHTEN		equ	62	; offset to lightening mask
+FH_SKEW			equ	64	; offset to skewing mask
+FH_FLAGS_WORD		equ	66	; offset to font flags
+FH_HOR_TABLE_OFF	equ	68	; offset to horizontal table offset
+FH_HOR_TABLE_SEG	equ	70	; offset to horizontal table segment
+FH_OFF_TABLE_OFF	equ	72	; offset to offset table offset (!?)
+FH_OFF_TABLE_SEG	equ	74	; offset to offset table segment
+FH_DAT_TABLE_OFF	equ	76	; offset to data table offset
+FH_DAT_TABLE_SEG	equ	78	; offset to data table segment
+FH_FORM_WIDTH		equ	80	; offset to form width
+FH_FORM_HEIGHT		equ	82	; offset to form height
+FH_NEXT_FONT_OFF	equ	84	; offset to next font header offset
+FH_NEXT_FONT_SEG	equ	86	; offset to next font header segment
+FH_NEXT_SET_OFF		equ	88	; offset to multi-set offset
+FH_NEXT_SET_SEG		equ	90	; offset to mutli-set segment
+FH_USE_COUNT_LO		equ	92	; offset to use counter (low word)
+FH_USE_COUNT_HI		equ	94	; offset to use counter (high word)
+FH_FILE_DATA_OFF	equ	96	; offset to font file data offset
+FH_FILE_DATA_SEG	equ	98	; offset to font file data segment
+FH_FILE_DATA_SIZE	equ	100	; offset to font file data size
+FH_RESERVED		equ	102	; offset to reserved section
+FH_DEV_FLAGS		equ	116	; offset to device specific flags
+FH_DEV_ESC		equ	118	; offset to device escape sequence
+
+FH_FACE_NAME_LENGTH	equ	32	; length of the face name field
+FH_HEADER_LENGTH	equ	150	; length of font header

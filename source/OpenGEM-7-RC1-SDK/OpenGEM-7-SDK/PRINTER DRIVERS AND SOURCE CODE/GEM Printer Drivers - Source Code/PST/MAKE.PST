@@ -1,0 +1,138 @@
+GEM = d:\gemapps\gemsys
+
+update:
+	copy pdpst8.sys $(GEM)
+	copy pst.pre $(GEM)
+	copy pst.cnf $(GEM)
+
+pdpst8.sys:	obj\alpha.obj		\
+		obj\coninq.obj		\
+		obj\data.obj		\
+		obj\dispatch.obj	\
+		obj\downfont.obj	\
+		obj\graphics.obj	\
+		obj\image.obj		\
+		obj\include.obj		\
+		obj\init.obj		\
+		obj\primattr.obj	\
+		obj\utility.obj		\
+		obj\entry.obj		\
+		obj\misc.obj		\
+		obj\serio.obj		\
+		obj\xio.obj		\
+		pst.lnk
+	cd obj
+	link @..\pst.lnk
+#	link @..\pstdeb.lnk
+	mv pd*.* ..
+	cd ..
+
+obj\alpha.obj:	alpha.c portab.h vdidef.alw vdiext.alw
+	hc alpha 
+	mv alpha.obj obj 
+obj\coninq.obj:	coninq.c portab.h vdidef.alw vdiext.alw vdifunc.alw
+	hc coninq 
+	mv coninq.obj obj 
+obj\data.obj:	data.c portab.h vdidef.alw vdiext.alw vdifunc.alw
+	hc data 
+	mv data.obj obj
+obj\dispatch.obj:	dispatch.c portab.h vdidef.alw vdiext.alw
+	hc dispatch 
+	mv dispatch.obj obj
+obj\downfont.obj:	downfont.c portab.h vdidef.alw vdiext.alw
+	hc downfont
+	mv downfont.obj obj
+obj\graphics.obj:	graphics.c portab.h vdidef.alw vdiext.alw
+	hc graphics 
+	mv graphics.obj obj
+obj\image.obj:	image.c portab.h vdidef.alw vdiext.alw
+	hc image
+	mv image.obj obj
+obj\include.obj:	include.c portab.h vdidef.alw vdiext.alw
+	hc include
+	mv include.obj obj
+obj\init.obj:	init.c portab.h vdidef.alw vdiext.alw
+	hc init 
+	mv init.obj obj
+obj\primattr.obj:	primattr.c portab.h vdidef.alw vdiext.alw
+	hc primattr
+	mv primattr.obj obj
+obj\utility.obj:	utility.c portab.h vdidef.alw vdiext.alw
+	hc utility 
+	mv utility.obj obj
+
+obj\entry.obj:	entry.a86
+	rasm86 entry $pzsz
+	mv entry.obj obj
+obj\misc.obj:	misc.a86
+	rasm86 misc $pzsz
+	mv misc.obj obj
+obj\serio.obj:	serio.a86
+	rasm86 serio $pzsz
+	mv serio.obj obj
+obj\xio.obj:	xio.a86
+	rasm86 xio $pzsz
+	mv xio.obj obj
+
+pdpst8.hir:	alpha.xrf coninq.xrf data.xrf dispatch.xrf downfont.xrf \
+		graphics.xrf image.xrf include.xrf init.xrf primattr.xrf \
+		utility.xrf 
+	hier -p dispatch *.xrf >pdpst8.hir
+	hier -p open_wk *.xrf >>pdpst8.hir
+	hier -p close_wk *.xrf >>pdpst8.hir
+	hier -p clear_wk *.xrf >>pdpst8.hir
+	hier -p update_wk *.xrf >>pdpst8.hir
+	hier -p escape *.xrf >>pdpst8.hir
+	hier -p polyline *.xrf >>pdpst8.hir
+	hier -p polymarker *.xrf >>pdpst8.hir
+	hier -p text *.xrf >>pdpst8.hir
+	hier -p fill_area *.xrf >>pdpst8.hir
+	hier -p gdp *.xrf >>pdpst8.hir
+	hier -p t_height *.xrf >>pdpst8.hir
+	hier -p t_rotation *.xrf >>pdpst8.hir
+	hier -p l_type *.xrf >>pdpst8.hir
+	hier -p l_width *.xrf >>pdpst8.hir
+	hier -p l_color *.xrf >>pdpst8.hir
+	hier -p m_type *.xrf >>pdpst8.hir
+	hier -p m_height *.xrf >>pdpst8.hir
+	hier -p m_color *.xrf >>pdpst8.hir
+	hier -p t_face *.xrf >>pdpst8.hir
+	hier -p t_color *.xrf >>pdpst8.hir
+	hier -p f_interior *.xrf >>pdpst8.hir
+	hier -p f_style *.xrf >>pdpst8.hir
+	hier -p f_color *.xrf >>pdpst8.hir
+	hier -p w_mode *.xrf >>pdpst8.hir
+	hier -p t_alignment *.xrf >>pdpst8.hir
+	hier -p q_extended *.xrf >>pdpst8.hir
+	hier -p f_perimeter *.xrf >>pdpst8.hir
+	hier -p t_effects *.xrf >>pdpst8.hir
+	hier -p t_point *.xrf >>pdpst8.hir
+	hier -p l_end_styles *.xrf >>pdpst8.hir
+	hier -p f_ud_pattern *.xrf >>pdpst8.hir
+	hier -p l_ud_style *.xrf >>pdpst8.hir
+	hier -p f_rectangle *.xrf >>pdpst8.hir
+	hier -p load_fonts *.xrf >>pdpst8.hir
+	hier -p clip *.xrf >>pdpst8.hir
+
+alpha.xrf:	alpha.c portab.h vdidef.alw vdiext.alw
+	hc alpha -xref -noobject
+coninq.xrf:	coninq.c portab.h vdidef.alw vdiext.alw vdifunc.alw
+	hc coninq -xref -noobject
+data.xrf:	data.c portab.h vdidef.alw vdiext.alw vdifunc.alw
+	hc data -xref -noobject
+dispatch.xrf:	dispatch.c portab.h vdidef.alw vdiext.alw
+	hc dispatch -xref -noobject
+downfont.xrf:	downfont.c portab.h vdidef.alw vdiext.alw
+	hc downfont -xref -noobject
+graphics.xrf:	graphics.c portab.h vdidef.alw vdiext.alw
+	hc graphics -xref -noobject
+image.xrf:	image.c portab.h vdidef.alw vdiext.alw
+	hc image -xref -noobject
+include.xrf:	include.c portab.h vdidef.alw vdiext.alw
+	hc include -xref -noobject
+init.xrf:	init.c portab.h vdidef.alw vdiext.alw
+	hc init -xref -noobject
+primattr.xrf:	primattr.c portab.h vdidef.alw vdiext.alw
+	hc primattr -xref -noobject
+utility.xrf:	utility.c portab.h vdidef.alw vdiext.alw
+	hc utility -xref -noobject -noobject

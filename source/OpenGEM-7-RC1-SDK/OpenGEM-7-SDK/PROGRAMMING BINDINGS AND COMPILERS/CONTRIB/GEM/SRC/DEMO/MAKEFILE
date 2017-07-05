@@ -1,0 +1,29 @@
+
+CC     = gcc
+CFLAGS = -I../../include
+LIBS   = -L../../lib -lgem
+CP     = copy
+RM     = xdel /n
+
+TARGET=demo
+
+all:	$(TARGET).app
+
+$(TARGET).app:	$(TARGET).exe
+	$(CP) $(TARGET).exe $(TARGET).app
+	$(CP) $(TARGET).app ..\..\bin
+	$(CP) $(TARGET).rsc ..\..\bin
+
+$(TARGET).exe:	$(TARGET).o
+	$(CC) -o $(TARGET) $< $(LIBS)
+
+$(TARGET).o: $(TARGET).h
+
+tidy:
+	-$(RM) *.bak
+	-$(RM) $(TARGET).o
+	-$(RM) $(TARGET).exe
+	-$(RM) $(TARGET)
+
+clean:	tidy
+	-$(RM) $(TARGET).app

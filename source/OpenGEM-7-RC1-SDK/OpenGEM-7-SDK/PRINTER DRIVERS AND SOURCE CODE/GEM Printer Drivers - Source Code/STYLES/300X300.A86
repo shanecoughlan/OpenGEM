@@ -1,0 +1,542 @@
+DGROUP	GROUP	DATA
+		dseg
+
+		public	dither, hatch0, hatch1, oempat, ud_patrn, hollow
+		public	solid
+		public	oemmskpat, hat_0_msk, hat_1_msk, dithrmsk, udpatmsk
+		public	line_styl, ud_lstyl
+
+; Line styles.
+line_styl	dw	0FFFFh, 0FFF0h, 0C0C0h, 0FF18h, 0FF00h, 0F191h
+ud_lstyl	dw	0
+
+; User defined fill pattern.
+udpatmsk 	dw	0fh
+ud_patrn	dw	0
+		dw	0
+		dw	3ffch
+		dw	2004h
+		dw	2004h
+		dw	2e74h
+		dw	2e54h
+		dw	2e54h
+		dw	2e54h
+		dw	2e54h
+		dw	2e74h
+		dw	2004h
+		dw	2004h
+		dw	3ffch
+		dw	0
+		dw	0
+
+; Fill patterns.
+oemmskpat	dw	0fh
+oempat		dw	0ffffh			; brick
+		dw	8000h
+		dw	8000h
+		dw	8000h
+		dw	8000h
+		dw	8000h
+		dw	8000h
+		dw	8000h
+		dw	0ffffh
+		dw	0080h
+		dw	0080h
+		dw	0080h
+		dw	0080h
+		dw	0080h
+		dw	0080h
+		dw	0080h
+
+		dw	0400h			; diagonal bricks
+		dw	0800h
+		dw	1000h
+		dw	2000h
+		dw	5000h
+		dw	8800h
+		dw	0401h
+		dw	0202h
+		dw	0104h
+		dw	0088h
+		dw	0050h
+		dw	0020h
+		dw	0040h
+		dw	0080h
+		dw	0100h
+		dw	0200h
+
+		dw	0000h			; grass
+		dw	0000h
+		dw	0000h
+		dw	0100h
+		dw	0280h
+		dw	0440h
+		dw	0820h
+		dw	1010h
+		dw	0000h
+		dw	0000h
+		dw	0000h
+		dw	0001h
+		dw	8002h
+		dw	4004h
+		dw	2008h
+		dw	1010h
+
+		dw	0cccch			; trees
+		dw	0cccch
+		dw	03f00h
+		dw      03f00h
+		dw      00c00h
+		dw      00c00h
+		dw     	00c00h
+		dw	00c00h
+		dw	0cccch
+		dw	0cccch
+		dw	0003fh
+		dw      0003fh
+		dw      0000ch
+		dw      0000ch
+		dw      0000ch
+		dw	0000ch	
+
+		dw	3000h			; dashed x's
+		dw	6000h
+		dw	0c000h
+		dw	8000h
+		dw	0000h
+		dw	0080h
+		dw	00c0h
+		dw	0060h
+		dw	0030h
+		dw	0018h
+		dw	000ch
+		dw	0004h
+		dw	0000h
+		dw	0400h
+		dw	0c00h
+		dw	1800h
+
+		dw	0c071h			; cobble stone
+		dw	00070h
+		dw	01c00h
+		dw	01c0fh
+		dw	01c0fh
+		dw	0000fh
+		dw	003c0h
+		dw	003c0h
+		dw	0e3c1h
+		dw	0e001h
+		dw	0e001h
+		dw	001e0h
+		dw	001e0h
+		dw	001e0h
+		dw	0c001h
+		dw	0c071h
+
+		dw	0001h			; sand
+		dw	0000h
+		dw	0040h
+		dw	0000h
+		dw	0000h
+		dw	1002h
+		dw	0000h
+		dw	0000h
+		dw	0100h
+		dw	0008h
+		dw	4000h
+		dw	0000h
+		dw	0200h
+		dw	0000h
+		dw	0010h
+		dw	1000h
+
+		dw	0ff80h			; rough weave
+		dw	07ec0h
+	 	dw	03c60h
+		dw	01830h
+		dw	03018h
+		dw	0603ch
+		dw	0c07eh
+		dw	080ffh
+		dw	001ffh
+		dw	0037eh
+		dw	0063ch
+		dw	00c18h
+		dw	0180ch
+		dw	03c06h
+		dw	07e03h
+		dw	0ff01h
+
+		dw	0cccch			; quilt
+		dw	0cccch
+		dw	00000h
+		dw	0000h
+		dw	0c080h
+		dw	0c1c0h
+		dw	0360h
+		dw	0630h
+		dw	0c18h
+		dw	180ch
+		dw	3006h
+		dw	6003h
+		dw	0c0c1h
+		dw	80c0h
+		dw	0000h
+		dw	0000h
+
+		dw	00c0h			; patterned cross
+		dw	00c0h
+		dw	0h
+		dw	0h
+		dw	0cccch
+		dw	0cccch
+		dw	0h
+		dw	0h
+		dw	00c0h
+		dw	00c0h
+		dw	0h
+		dw	0h
+		dw	0c0c0h
+		dw	0c0c0h
+		dw	0h
+		dw	0h
+
+		dw	0bf7fh			; balls
+		dw	07fbfh
+		dw	0c7c0h
+		dw	0c7c0h
+		dw	0ffc0h
+		dw	0ffc0h
+		dw	0ffc0h
+		dw	0ffc0h
+		dw	07fbfh
+		dw	0bf7fh
+		dw	0c0c7h
+		dw	0c0c7h
+		dw	0c0ffh
+		dw	0c0ffh
+		dw	0c0ffh
+		dw	0c0ffh
+
+		dw	08000h			; vertical scales
+		dw	08000h
+		dw	08000h
+		dw	04001h
+		dw	02002h
+		dw	01004h
+		dw	00ff8h
+		dw	00080h
+		dw	00080h
+		dw	00080h
+		dw	00140h
+		dw	00140h
+		dw	00220h
+		dw	00410h
+		dw	00808h
+		dw	0f007h
+
+		dw	08001h			; diagonal scales
+		dw	04002h
+		dw	02004h
+		dw	01008h
+		dw	00810h
+		dw	00420h
+		dw	00240h
+		dw	00180h
+		dw	00060h
+		dw	00018h
+		dw	00006h
+		dw	00001h
+		dw	08000h
+		dw	04000h
+		dw	04000h
+		dw	08000h
+
+		dw	0f0f0h			; checker board
+		dw	0f0f0h
+		dw	0f0f0h
+		dw	0f0f0h
+		dw	0f0f0h
+		dw	0f0f0h
+		dw	0f0f0h
+		dw	0f0f0h
+		dw	00f0fh
+		dw	00f0fh
+		dw	00f0fh
+		dw	00f0fh
+		dw	00f0fh
+		dw	00f0fh
+		dw	00f0fh
+		dw	00f0fh
+
+		dw	001c0h			; filled diamonds
+		dw	003e0h
+		dw	007f0h
+		dw	00ff8h
+		dw      01ffch
+		dw	03ffeh
+		dw	07fffh
+		dw	0ffffh
+		dw	07fffh
+		dw	03ffeh
+		dw	01ffch
+		dw	00ff8h
+		dw	007f0h
+		dw	003e0h
+		dw	001c0h
+		dw	00080h
+
+		dw	00101h			; herringbone
+		dw	00202h
+		dw	00404h
+		dw	00808h
+		dw	01010h
+		dw	02020h
+		dw	04040h
+		dw	0ffffh
+		dw	08080h
+		dw	04040h
+		dw	02020h
+		dw	01010h
+		dw	00808h
+		dw	00404h
+		dw	00202h
+		dw	0ffffh
+
+; Fill dither patterns.
+dithrmsk	dw	7
+dither		dw	08000h, 00000h, 00000h, 00000h
+		dw	00080h, 00000h, 00000h, 00000h
+
+		dw	00000h, 02020h, 00000h, 00202h
+		dw	00000h, 02020h, 00000h, 00202h
+
+		dw	00000h, 04444h, 00000h, 01111h
+		dw	00000h, 04444h, 00000h, 01111h
+
+		dw	08888h, 00000h, 05555h, 00000h
+		dw	02222h, 00000h, 05555h, 00000h
+
+		dw	01111h, 04444h, 01111h, 04444h
+		dw	01111h, 04444h, 01111h, 04444h
+
+		dw	08888h, 05555h, 02222h, 05555h
+		dw	08888h, 05555h, 02222h, 05555h
+
+		dw	0aaaah, 05555h, 0aaaah, 05555h
+		dw	0aaaah, 05555h, 0aaaah, 05555h
+
+		dw	0ffffh, 0ffffh, 0ffffh, 0ffffh
+		dw	0ffffh, 0ffffh, 0ffffh, 0ffffh
+
+; Fill hatch styles.
+hat_0_msk	dw	0fh
+hatch0		dw	8080h			; narrow spaced +45
+		dw	0101h
+		dw	0202h
+		dw	0404h
+		dw	0808h
+		dw	1010h
+		dw	2020h
+		dw	4040h
+		dw	8080h
+		dw	0101h
+		dw	0202h
+		dw	0404h
+		dw	0808h
+		dw	1010h
+		dw	2020h
+		dw	4040h
+
+		dw	8181h			; medium spaced thick +45
+		dw	0303h
+		dw	0606h
+		dw	0c0ch
+		dw	1818h
+		dw	3030h
+		dw	6060h
+		dw	0c0c0h
+		dw	8181h
+		dw	0303h
+		dw	0606h
+		dw	0c0ch
+		dw	1818h
+		dw	3030h
+		dw	6060h
+		dw	0c0c0h
+
+		dw	0180h			; medium spaced +-45
+		dw	0240h
+		dw	0420h
+		dw	0810h
+		dw	1008h
+		dw	2004h
+		dw	4002h
+		dw	8001h
+		dw	8001h
+		dw	4002h
+		dw	2004h
+		dw	1008h
+		dw	0810h
+		dw	0420h
+		dw	0240h
+		dw	0180h
+
+		dw	08080h			; medium spaced vertical
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw   	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw     	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+
+		dw	0ffffh			; medium spaced horizontal
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0ffffh
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0     
+
+		dw	0ffffh			; medium spaced crossed
+		dw	08080h
+		dw      08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	0ffffh
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+		dw	08080h
+
+hat_1_msk	dw	0fh
+hatch1		dw	8000h			; wide spaced +45
+		dw	0001h
+		dw	0002h
+		dw	0004h
+		dw	0008h
+		dw	0010h
+		dw	0020h
+		dw	0040h
+		dw	0080h
+		dw	0100h
+		dw	0200h
+		dw	0400h
+		dw	0800h
+		dw	1000h
+		dw	2000h
+		dw	4000h	   
+
+		dw	08003h			; wide spaced thick +45
+		dw	0007h
+		dw	000eh
+		dw	001ch
+		dw	0038h 
+		dw	0070h
+		dw	00e0h
+		dw	01c0h
+		dw	0380h
+		dw	0700h
+		dw	0e00h
+		dw	1c00h
+		dw	3800h
+		dw	7000h
+		dw	0e000h
+		dw	0c001h
+
+		dw	8000h			; wide spaced +-45
+		dw	4001h
+		dw	2002h
+		dw	1004h
+		dw	0808h
+		dw	0410h
+		dw	0220h
+		dw	0140h
+		dw	0080h
+		dw	0140h
+		dw	0220h
+		dw	0410h
+		dw	0808h
+		dw	1004h
+		dw	2002h
+		dw	4001h
+
+		dw	08000h			; wide spaced vertical
+		dw	08000h
+		dw      08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h	 
+		dw	08000h
+		dw	08000h
+		dw	08000h
+
+		dw	0ffffh			; wide spaced horizontal
+		dw	0
+		dw	0
+		dw	0
+		dw	0     
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0     
+		dw	0
+		dw	0
+
+		dw	0ffffh			; wide spaced crossed
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+		dw	08000h
+
+; Fill interior hollow and solid.
+hollow		dw	0
+solid		dw	0ffffh
+

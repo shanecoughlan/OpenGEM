@@ -1,0 +1,323 @@
+;/*		DOSUTIL.A86	1/29/87 - 3/11/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	access_file
+		public	close_file
+		public	find_first_font
+		public	open_string_file
+		public	read_file
+		public	read_string_data
+		public	reset_current_directory
+		public	reset_dta
+		public	seek_file
+		public	set_gdos_directory
+		public	set_gdos_dta
+		public	set_font_directory
+
+; External entry points.
+		extrn	build_info_file:near
+
+; External data.
+include externs.a86
+
+
+
+;************************************************************************
+;* access_file								*
+;*	ds:dx -> name of file to open.					*
+;*	Returns file handle in bx (zero if error) and file size in	*
+;*	paragraphs in dx.						*
+;************************************************************************
+access_file:
+
+; Open the file.
+		mov	ax, 256*FILE_OPEN
+		int	PCDOS			; open the file (read access)
+		jc	access_file_error
+
+; Find the size of the file and restore the file pointer to the beginning
+; of the file.
+		mov	bx, ax			; bx = file handle
+		mov	ax, (256*FILE_SEEK) + 2	; seek from end-of-file
+		xor	cx, cx
+		xor	dx, dx			; no offset from end-of-file
+		int	PCDOS			; size in dx:ax
+		add	ax, 15			; round up
+		mov	cx, 4			; shift count:  paragraph
+access_file_shift_loop:
+		shr	dx, 1
+		rcr	ax, 1
+		loop	access_file_shift_loop	; shift right four bits
+		push	ax			; save file size
+		mov	ax, 256*FILE_SEEK	; seek from beginning of file
+		xor	cx, cx
+		xor	dx, dx			; no offset
+		int	PCDOS			; restore to beginning of file
+		pop	dx			; restore file size
+		jmps	end_access_file
+
+; An error occurred opening the file.  Return a handle of zero.
+access_file_error:
+		xor	bx, bx
+end_access_file:
+		ret
+
+
+;************************************************************************
+;* close_file								*
+;*	bx = file handle.						*
+;************************************************************************
+close_file:
+		mov	ah, FILE_CLOSE
+		int	PCDOS
+		ret
+
+
+;************************************************************************
+;* find_first_font							*
+;*	Returns carry flag set if error.				*
+;************************************************************************
+find_first_font:
+		push	ax
+		push	cx
+		push	dx
+		push	ds
+
+; Find the first font.
+		mov	ax, cs
+		mov	ds, ax
+		cmp	work_identifier, 9	; screen or printer?
+		ja	fff_printer
+		mov	dx, offset sd_font	; screen font
+		jmps	fff_find_first
+fff_printer:
+		mov	dx, offset pd_font	; printer font
+fff_find_first:
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS			; status in carry flag
+
+; That's all!
+		pop	ds
+		pop	dx
+		pop	cx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* open_string_file							*
+;*	Returns carry flag set if error.				*
+;*	Returns file handle in bx and str_handle if successful.		*
+;************************************************************************
+open_string_file:
+		push	ax
+		push	dx
+		push	si
+		push	di
+		push	ds
+
+; Open the font headers string file.
+		mov	di, offset info_file	; di -> destination path
+		mov	dx, offset str_suffix	; dx -> "FSTR.INF"
+		call	build_info_file
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset info_file
+		mov	ax, 256*FILE_OPEN
+		int	PCDOS
+		jc	end_open_string_file
+		mov	str_handle, ax		; save file handle
+		mov	bx, ax
+
+end_open_string_file:
+		pop	ds
+		pop	di
+		pop	si
+		pop	dx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* read_file								*
+;*	bx = file handle.						*
+;*	cx = number of bytes to read.					*
+;*	ds:dx -> read buffer.						*
+;*	Returns number of bytes read in ax.				*
+;************************************************************************
+read_file:
+
+; Read everything from the file.
+		mov	ah, FILE_READ
+		int	PCDOS			; read the data
+		jnc	end_read_file
+		xor	ax, ax			; error:  return no bytes read
+end_read_file:
+		ret
+
+
+;************************************************************************
+;* read_string_data							*
+;*	bx = file handle.						*
+;*	ax = string index.						*
+;************************************************************************
+read_string_data:
+		push	ax
+		push	cx
+		push	dx
+
+; Get the string index and seek to the appropriate file location.
+		mov	dx, STR_BUFSIZ
+		mul	dx
+		mov	dx, ax
+		xor	cx, cx
+		mov	ax, 256*FILE_SEEK
+		int	PCDOS
+
+; Read the string data.
+		push	ds
+		mov	cx, STR_BUFSIZ
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset str_buf	; ds:dx -> string buffer
+		mov	ah, FILE_READ
+		int	PCDOS			; read the data
+		pop	ds
+
+end_read_string_data:
+		pop	dx
+		pop	cx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* reset_current_directory						*
+;************************************************************************
+reset_current_directory:
+
+; Reset the path on the GDOS drive (i.e., the current drive).
+		mov	ax, seg saved_path
+		mov	ds, ax
+		mov	dx, offset saved_path	; ds:dx = saved path
+		mov	ah, SET_DIR
+		int	PCDOS
+
+; Reset the current drive.
+		mov	dl, saved_drive		; dl = saved drive number
+		mov	ah, SET_DRIVE
+		int	PCDOS
+		ret
+
+
+;************************************************************************
+;* reset_dta								*
+;************************************************************************
+reset_dta:
+		push	ds
+		push	dx
+		lds	dx, save_dta
+		mov	ah, SET_DTA
+		int	PCDOS
+		pop	dx
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* seek_file								*
+;*	bx = file handle.						*
+;*	cx:dx = distance to move from beginning.			*
+;*	Carry flag set if error occurs.					*
+;************************************************************************
+seek_file:
+
+; Seek to the appropriate file location.
+		mov	ax, 256*FILE_SEEK
+		int	PCDOS
+		ret
+
+
+;************************************************************************
+;* set_gdos_directory							*
+;************************************************************************
+set_gdos_directory:
+
+; Get the current drive and save it.
+		mov	ah, GET_DRIVE
+		int	PCDOS
+		mov	saved_drive, al		; save the drive
+
+; Get the current path and save it.
+		mov	ax, seg saved_path
+		mov	ds, ax
+		mov	si, offset saved_path	; ds:si = saved path
+		inc	si			; save space for '\'
+		mov	dl, gdos_drive
+		inc	dl			; dl = gdos disk drive
+		mov	ah, GET_DIR
+		int	PCDOS			; path written to saved_path
+
+; Set the current drive to the GDOS drive.
+		mov	dl, gdos_drive		; dl = gdos disk drive
+		mov	ah, SET_DRIVE
+		int	PCDOS
+
+; Set the current path to be the GDOS path.
+		mov	ax, seg gdos_path
+		mov	ds, ax
+		mov	dx, offset gdos_path	; ds:dx = gdos path
+		clc
+		mov	ah, SET_DIR
+		int	PCDOS
+		ret
+
+
+;************************************************************************
+;* set_gdos_dta								*
+;************************************************************************
+set_gdos_dta:
+		push	ds
+		push	es
+		push	bx
+		push	dx
+
+; Get the current DTA and save it.
+		mov	ah, GET_DTA
+		int	PCDOS
+		mov	word ptr save_dta, bx
+		mov	word ptr save_dta + 2, es
+
+; Set the current DTA to the GDOS DTA.
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset gdos_dta
+		mov	ah, SET_DTA
+		int	PCDOS
+
+end_set_gdos_dta:
+		pop	dx
+		pop	bx
+		pop	es
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* set_font_directory							*
+;************************************************************************
+set_font_directory:
+		call	set_gdos_directory	; first to gdos directory
+		mov	ax, seg font_path	; then font_path relative to
+		mov	ds, ax			; gdos directory
+		mov	dx, offset font_path	; ds:dx = font path
+		mov	ah, SET_DIR
+		int	PCDOS
+		ret
+
+		end

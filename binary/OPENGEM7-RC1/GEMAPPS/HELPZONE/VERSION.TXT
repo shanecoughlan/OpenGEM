@@ -1,6 +1,6 @@
 What version of OpenGEM am I using?
 ========================================================================
-You are using OpenGEM Release 6
+You are using OpenGEM Release 7
 ========================================================================
 You can check for updates to this software at http://gem.opendawn.com.
 For more information please email info@opendawn.com

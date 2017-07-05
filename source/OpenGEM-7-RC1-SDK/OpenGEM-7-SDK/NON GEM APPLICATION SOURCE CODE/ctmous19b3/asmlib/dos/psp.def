@@ -1,0 +1,44 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+PSP		segment page at 0
+DOS_exit	dw ?		; =INT 20 instruction (20CDh)
+next_seg	dw ?		; seg beyond program memory
+		db 6 dup(?)
+terminate	dd ?		; terminate routine (see INT 22)
+ctrlBreak	dd ?		; Ctrl-Break handler (see INT 23)
+critErr		dd ?		; Critical Error handler (see INT 24)
+parent		dw ?		; parent's PSP seg
+JFT		db 20 dup(?)	; Jof File Table, one byte per file handle
+env_seg		dw ?		; process environment seg
+		dd ?
+JFT_size	dw ?		; number of entries in JFT (default 20)
+JFT@		dd ?		; pointer to JFT (default PSP:JFT)
+prev		dd ?		; pointer to previous PSP (default FFFF:FFFFh)
+		db 18 dup(?)
+PSP_TSR		equ $-DOS_exit	; memory below available to reuse in TSR
+		db  2 dup(?)
+DOS_call	db  3 dup(?)	; =INT 21/RETF instructions
+		db  9 dup(?)	; can be used to make extended FCB from FCB1
+FCB1		db 16 dup(?)	; unopened FCB for 1st cmd argument
+FCB2		db 16 dup(?)	; unopened FCB for 2nd cmd argument
+		db  4 dup(?)
+DTA		label
+cmdline_len	db ?
+cmdline		db 127 dup(?)
+PSP		ends		; sizeof(PSP) == 256

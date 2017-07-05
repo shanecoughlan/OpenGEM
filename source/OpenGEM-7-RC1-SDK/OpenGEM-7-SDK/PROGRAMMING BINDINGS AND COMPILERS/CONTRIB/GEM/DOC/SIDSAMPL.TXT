@@ -1,0 +1,1156 @@
+
+
+
+                         SID-86 Sample Session
+
+In the following sample session,  the user interactively debugs a simple 
+program.  Remarks in brackets explain the steps involved.
+
+
+[Type source file of program to test.]
+
+C>type sample.a86
+;
+;  This program reads an ASCII file, breaking it up into "tokens",
+;  which are displayed on the console.
+;
+fcb		equ	5ch
+cr		equ	0dh
+lf		equ	0ah
+tab		equ	09h
+end_file	equ	1ah
+
+init:
+	mov	dx,fcb
+	mov	ah,15
+	int	21h
+	or	al,al
+	jnz	err
+main_loop:
+	call	collect_token
+	cmp	token,end_file
+	jz	done
+	call	print_token
+	jmps	main_loop
+done:
+	retf
+
+err:	mov	dx,offset nofile
+	call	printm
+	jmp	done
+
+collect_token:
+	call	get_char
+	call	check_delim
+	jz	col1
+	mov	bx,token_len
+	mov	token[bx],al
+	inc	token_len
+	jmps	collect_token
+col1:	ret
+
+check_delim:
+	cmp	al,cr
+	jz	cret
+	cmp	al,lf
+	jz	cret
+	cmp	al,tab
+	jz	cret
+	cmp	al,' '
+cret:	ret
+
+get_char:
+	cmp	buffptr, buffsize
+	jc	get1
+	mov	dx,offset buff
+	call	setdta
+	mov	dx,fcb
+	call	readsec
+	mov	buffptr,0
+get1:
+	mov	bx,buffptr
+	mov	al,buff[bx]
+	inc	buffptr
+	ret
+
+print_token:
+	mov	cx,token_len
+	jcxz	pr2
+	sub	bx,bx
+pr1:	mov	dl,token[bx]
+	push	cx
+	push	bx
+	call	conout
+	pop	bx
+	pop	cx
+	inc	bx
+	dec	cx
+	loop	pr1
+	mov	dl,cr
+	call	conout
+	mov	dl,lf
+	call	conout
+pr2:
+	ret
+
+conout:	mov	ah,2
+	int	21h
+	ret
+
+printm:	mov	ah,9
+	int	21h
+	ret
+
+readsec:
+	mov	ah,20
+	int	21h
+	ret
+
+setdta:	mov	ah,26
+	int	21h
+	ret
+
+	dseg
+
+nofile		db	'NO FILE$'
+
+buffsize	equ	128
+buffptr		dw	0
+buff		rb	buffsize
+
+max_token	equ	40
+token_len	rw	1
+token		rb	max_token
+
+	end
+
+[Assemble the file using the $LO option, which puts local symbols into 
+the object file.]
+ 
+C>rasm86 sample $lo
+--------------------------------------------------
+RASM-86 Relocating Assembler           Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1982,1983     Digital Research, Inc.
+--------------------------------------------------
+
+END OF PASS 1
+END OF PASS 2
+
+SEGMENTS
+--------
+
+00B4 DATA
+00A7 CODE
+
+END OF ASSEMBLY.  NUMBER OF ERRORS:   0.  USE FACTOR:  1%
+
+[Link the object file to produce an executable (EXE) file and a symbol
+table (SYM) file.]
+
+C>link86 sample
+--------------------------------------------------
+LINK-86 Linkage Editor                 Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1982,1983     Digital Research, Inc.
+--------------------------------------------------
+
+CODE    000AC
+DATA    001B4
+
+USE FACTOR:  00%
+
+[TEST.TEX has test data for SAMPLE.]
+
+C>type test.tex
+
+Now is the time for all good men to come to the aid of their country.
+ 
+[Try running SAMPLE on TEST.TEX.]
+
+C>sample test.tex
+
+NowqPF1RwqB[
+{   QR@]BUlF91Rwq   C
+{#"F1RwqB	Q0RH"]BUlG"!LH9"wN6"F"sd]CUl
+^7Qcv	Hw&t#"R	"!t9wa#
+"!"@;:%v
+!:%+"@wa#
+"!"#I~u!V#66
+"8(Ph}!"#V66
+"8(Ph~]BUl0vh]BUl0vv-
+^7Q7vh~~
+^7Qc]BUv8k6jht""
+"7
+lP^C
+
+[This does not look quite right.  Load the EXE and SYM files under SID-
+86 (the appropriate file types are assumed).]
+
+C>sid86 sample sample
+--------------------------------------------------
+SID-86 Symbolic Debugger               Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1983          Digital Research, Inc.
+--------------------------------------------------
+
+  START      END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+
+[List the symbols that SID-86 reads from SAMPLE.SYM.]
+
+#h
+
+0009 TAB
+001A END_FILE
+000D CR
+000A LF
+005C FCB
+0028 MAX_TOKEN
+0000 NUMBERS
+0010 MAIN_LOOP
+00A2 READSEC
+0005 INIT
+004E CRET
+0076 PRINT_TOKEN
+0020 ERR
+0040 CHECK_DELIM
+001F DONE
+0029 COLLECT_TOKEN
+004F GET_CHAR
+009D PRINTM
+0098 CONOUT
+0097 PR2
+007E PR1
+0069 GET1
+003F COL1
+00A7 SETDTA
+0000 LABELS
+018A TOKEN_LEN
+0100 NOFILE
+010A BUFF
+0108 BUFFPTR
+018C TOKEN
+0000 VARIABLES
+0000 SAMPLE
+
+[Disassemble the beginning of the program.]
+
+#l
+
+SAMPLE:
+  0B9F:0000 NOP    
+  0B9F:0001 NOP    
+  0B9F:0002 NOP    
+  0B9F:0003 NOP    
+  0B9F:0004 NOP    
+INIT:
+  0B9F:0005 MOV    DX,005C .FCB
+  0B9F:0008 MOV    AH,0F
+  0B9F:000A INT    21
+  0B9F:000C OR     AL,AL
+  0B9F:000E JNZ    0020 .ERR
+MAIN_LOOP:
+  0B9F:0010 CALL   0029 .COLLECT_TOKEN
+  0B9F:0013 CMP    BYTE [018C],1A .TOKEN
+
+[Start the program with a breakpoint at MAIN_LOOP.]
+
+#g,10
+NO FILE
+PROGRAM TERMINATED NORMALLY
+#^C
+
+[Oops!  Forgot to tell SAMPLE the name of the file to process.  Reload 
+the program.]
+
+C>sid86 sample sample
+--------------------------------------------------
+SID-86 Symbolic Debugger               Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1983          Digital Research, Inc.
+--------------------------------------------------
+
+  START      END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+
+[Set up the file name for SAMPLE to use.]
+
+#
+itest.tex
+
+[Go with breakpoint at 10H (MAIN_LOOP).]
+
+#g,10
+
+*0B9F:0010 .MAIN_LOOP
+
+[Got there this time!  List next instructions.]
+
+#l
+
+MAIN_LOOP:
+  0B9F:0010 CALL   0029 .COLLECT_TOKEN
+  0B9F:0013 CMP    BYTE [018C],1A .TOKEN
+  0B9F:0018 JZ     001F .DONE
+  0B9F:001A CALL   0076 .PRINT_TOKEN
+  0B9F:001D JMPS   0010 .MAIN_LOOP
+DONE:
+  0B9F:001F RETF   
+ERR:
+  0B9F:0020 MOV    DX,0100 .NOFILE
+  0B9F:0023 CALL   009D .PRINTM
+  0B9F:0026 JMP    001F .DONE
+COLLECT_TOKEN:
+  0B9F:0029 CALL   004F .GET_CHAR
+  0B9F:002C CALL   0040 .CHECK_DELIM
+  0B9F:002F JZ     003F .COL1
+
+[Trace without call to see the results of COLLECT_TOKEN without worrying 
+about what happens at lower levels.]
+
+#tw3
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I--Z-P- 0F00 0BAA 0000 005C 037B 0000 0100 0100 0010
+ CALL   0029 .COLLECT_TOKEN
+--I--Z-P- 1420 0003 0000 005C 037B 0000 0100 0100 0013
+ CMP    BYTE [018C],1A .TOKEN =00
+--I-S-A-C 1420 0003 0000 005C 037B 0000 0100 0100 0018
+ JZ     001F .DONE
+*0B9F:001A
+
+[Display the contents of the TOKEN array.]
+
+#d.token,+f
+
+0BAA:018C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
+................
+
+[The TOKEN array is empty!  No wonder it does not work.  Reload the 
+program.]
+
+#esample sample
+
+  START      END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+#itest.tex
+
+[Go up to MAIN_LOOP.]
+
+#g,10
+
+*0B9F:0010 .MAIN_LOOP
+#l,+9
+
+MAIN_LOOP:
+  0B9F:0010 CALL   0029 .COLLECT_TOKEN
+  0B9F:0013 CMP    BYTE [018C],1A .TOKEN
+  0B9F:0018 JZ     001F .DONE
+
+[This time trace through COLLECT_TOKEN routine.]
+
+#t
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I--Z-P- 0F00 0BAA 0000 005C 037B 0000 0100 0100 0010
+ CALL   0029 .COLLECT_TOKEN
+*0B9F:0029 .COLLECT_TOKEN
+#l
+
+COLLECT_TOKEN:
+  0B9F:0029 CALL   004F .GET_CHAR
+  0B9F:002C CALL   0040 .CHECK_DELIM
+  0B9F:002F JZ     003F .COL1
+  0B9F:0031 MOV    BX,[018A] .TOKEN_LEN
+  0B9F:0035 MOV    018C[BX],AL .TOKEN
+  0B9F:0039 INC    WORD [018A] .TOKEN_LEN
+  0B9F:003D JMPS   0029 .COLLECT_TOKEN
+COL1:
+  0B9F:003F RET    
+CHECK_DELIM:
+  0B9F:0040 CMP    AL,0D .CR
+  0B9F:0042 JZ     004E .CRET
+  0B9F:0044 CMP    AL,0A .LF
+  0B9F:0046 JZ     004E .CRET
+
+[Trace through GET_CHAR routine.]
+
+#t
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I--Z-P- 0F00 0BAA 0000 005C 0379 0000 0100 0100 0029
+ CALL   004F .GET_CHAR
+*0B9F:004F .GET_CHAR
+#l
+GET_CHAR:
+  0B9F:004F CMP    WORD [0108],0080 .BUFFPTR
+  0B9F:0055 JB     0069 .GET1
+  0B9F:0057 MOV    DX,010A .BUFF
+  0B9F:005A CALL   00A7 .SETDTA
+  0B9F:005D MOV    DX,005C .FCB
+  0B9F:0060 CALL   00A2 .READSEC
+  0B9F:0063 MOV    WORD [0108],0000 .BUFFPTR
+GET1:
+  0B9F:0069 MOV    BX,[0108] .BUFFPTR
+  0B9F:006D MOV    AL,010A[BX] .BUFF
+  0B9F:0071 INC    WORD [0108] .BUFFPTR
+  0B9F:0075 RET    
+PRINT_TOKEN:
+  0B9F:0076 MOV    CX,[018A] .TOKEN_LEN
+#t2
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I--Z-P- 0F00 0BAA 0000 005C 0377 0000 0100 0100 004F
+ CMP    WORD [0108],0080 .BUFFPTR =0000
+--I-S---C 0F00 0BAA 0000 005C 0377 0000 0100 0100 0055
+ JB     0069 .GET1
+*0B9F:0069 .GET1
+#l
+
+GET1:
+  0B9F:0069 MOV    BX,[0108] .BUFFPTR
+  0B9F:006D MOV    AL,010A[BX] .BUFF
+  0B9F:0071 INC    WORD [0108] .BUFFPTR
+  0B9F:0075 RET    
+PRINT_TOKEN:
+  0B9F:0076 MOV    CX,[018A] .TOKEN_LEN
+  0B9F:007A JCXZ   0097 .PR2
+  0B9F:007C SUB    BX,BX
+PR1:
+  0B9F:007E MOV    DL,018C[BX] .TOKEN
+  0B9F:0082 PUSH   CX
+  0B9F:0083 PUSH   BX
+  0B9F:0084 CALL   0098 .CONOUT
+  0B9F:0087 POP    BX
+
+[Trace through RET instruction to see what value is returned.]
+
+#t4
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I-S---C 0F00 0BAA 0000 005C 0377 0000 0100 0100 0069
+ MOV    BX,[0108] .BUFFPTR =0000
+--I-S---C 0F00 0000 0000 005C 0377 0000 0100 0100 006D
+ MOV    AL,010A[BX] .BUFF =00
+--I-S---C 0F00 0000 0000 005C 0377 0000 0100 0100 0071
+ INC    WORD [0108] .BUFFPTR =0000
+--I-----C 0F00 0000 0000 005C 0377 0000 0100 0100 0075
+ RET    
+*0B9F:002C
+
+[A zero is returned in AL.  This is no surprise because the code to read 
+from the disk file was not executed.  BUFFPTR should be initialized to 
+the size of the buffer, rather than 0.  Use the editor to change the 
+source file.]
+
+#^C
+
+C>edlin sample.a86
+
+End of input file
+*sbuffptr               dw
+   106: buffptr         dw      0
+*106
+   106:*buffptr         dw      0
+   106:*buffptr         dw      0 buffsize
+*e
+
+[Reassemble and relink.]
+
+C>rasm86 sample $lo
+--------------------------------------------------
+RASM-86 Relocating Assembler           Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1982,1983     Digital Research, Inc.
+--------------------------------------------------
+
+END OF PASS 1
+END OF PASS 2
+
+SEGMENTS
+--------
+
+00B4 DATA
+00A7 CODE
+
+END OF ASSEMBLY.  NUMBER OF ERRORS:   0.  USE FACTOR:  1%
+
+C>link86 sample
+--------------------------------------------------
+LINK-86 Linkage Editor                 Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1982,1983     Digital Research, Inc.
+--------------------------------------------------
+CODE    000AC
+DATA    001B4
+
+USE FACTOR:  00%
+
+[Try it again.]
+
+C>sample test.tex
+
+NowqPF1RwqB[
+{   QR@]BUlF91Rwq   C
+{#"F1RwqB       Q0RH"]BUlG"!LH9"wN6"F"sd]CUl
+^7Qcv^C
+
+[Still not quite perfect.  These "simple" programs are never as easy as 
+they look!  Invoke SID-86 again.]
+
+C>sid86 sample sample
+--------------------------------------------------
+SID-86 Symbolic Debugger               Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1983          Digital Research, Inc.
+--------------------------------------------------
+
+  START      END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+#itest.tex
+
+#g,10
+
+*0B9F:0010 .MAIN_LOOP
+
+[Execute COLLECT_TOKEN to see what happens.]
+
+#tw3
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I--Z-P- 0F00 0BAA 0000 005C 037B 0000 0100 0100 0010
+ CALL   0029 .COLLECT_TOKEN
+--I--Z-P- 1420 0003 0000 005C 037B 0000 0100 0100 0013
+ CMP    BYTE [018C],1A .TOKEN =4E
+--I------ 1420 0003 0000 005C 037B 0000 0100 0100 0018
+ JZ     001F .DONE
+*0B9F:001A
+
+[See what is in TOKEN.]
+
+#d.token,+f
+
+0BAA:018C 4E 6F 77 00 00 00 00 00 00 00 00 00 00 00 00 00 Now..........
+
+[Looks good this time.  Execute the PRINT_TOKEN routine.]
+
+#tw2
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I------ 1420 0003 0000 005C 037B 0000 0100 0100 001A
+ CALL   0076 .PRINT_TOKENNow^C
+{   QR@]BUlF91Rwq   C
+{#"F1RwqB       Q0RH"]BUlG"!LH9"wN6"F"sd]CUl
+^7Qcv^C
+
+[PRINT_TOKEN is not working correctly.  Reload the file.]
+
+
+#esample sample
+
+  START      END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+#itest.tex
+
+[Run program with breakpoint at PRINT_TOKEN.]
+
+#g,.print_token
+
+*0B9F:0076 .PRINT_TOKEN
+#l
+
+PRINT_TOKEN:
+  0B9F:0076 MOV    CX,[018A] .TOKEN_LEN
+  0B9F:007A JCXZ   0097 .PR2
+  0B9F:007C SUB    BX,BX
+PR1:
+  0B9F:007E MOV    DL,018C[BX] .TOKEN
+  0B9F:0082 PUSH   CX
+  0B9F:0083 PUSH   BX
+  0B9F:0084 CALL   0098 .CONOUT
+  0B9F:0087 POP    BX
+  0B9F:0088 POP    CX
+  0B9F:0089 INC    BX
+  0B9F:008A DEC    CX
+  0B9F:008B LOOP   007E .PR1
+#t2
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I------ 1420 0003 0000 005C 0379 0000 0100 0100 0076
+ MOV    CX,[018A] .TOKEN_LEN =0003
+--I------ 1420 0003 0003 005C 0379 0000 0100 0100 007A
+ JCXZ   0097 .PR2
+*0B9F:007C
+
+[TOKEN length of 3 looks good.  Trace through end of loop.]
+
+#tw#10
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I------ 1420 0003 0003 005C 0379 0000 0100 0100 007C
+ SUB    BX,BX
+PR1:
+--I--Z-P- 1420 0000 0003 005C 0379 0000 0100 0100 007E
+ MOV    DL,018C[BX] .TOKEN =4E
+--I--Z-P- 1420 0000 0003 004E 0379 0000 0100 0100 0082
+ PUSH   CX
+--I--Z-P- 1420 0000 0003 004E 0377 0000 0100 0100 0083
+ PUSH   BX
+--I--Z-P- 1420 0000 0003 004E 0375 0000 0100 0100 0084
+ CALL   0098 .CONOUTN
+--I--Z-P- 024E 0000 0003 004E 0375 0000 0100 0100 0087
+ POP    BX
+--I--Z-P- 024E 0000 0003 004E 0377 0000 0100 0100 0088
+ POP    CX
+--I--Z-P- 024E 0000 0003 004E 0379 0000 0100 0100 0089
+ INC    BX
+--I------ 024E 0001 0003 004E 0379 0000 0100 0100 008A
+ DEC    CX
+--I------ 024E 0001 0002 004E 0379 0000 0100 0100 008B
+ LOOP   007E .PR1
+*0B9F:007E .PR1
+
+[The first character was printed (on the line after ".CONOUT").  Go 
+through the loop again.]
+
+#tw9
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I------ 024E 0001 0001 004E 0379 0000 0100 0100 007E
+ MOV    DL,018C[BX] .TOKEN =6F
+--I------ 024E 0001 0001 006F 0379 0000 0100 0100 0082
+ PUSH   CX
+--I------ 024E 0001 0001 006F 0377 0000 0100 0100 0083
+ PUSH   BX
+--I------ 024E 0001 0001 006F 0375 0000 0100 0100 0084
+ CALL   0098 .CONOUTo
+--I------ 026F 0001 0001 006F 0375 0000 0100 0100 0087
+ POP    BX
+--I------ 026F 0001 0001 006F 0377 0000 0100 0100 0088
+ POP    CX
+--I------ 026F 0001 0001 006F 0379 0000 0100 0100 0089
+ INC    BX
+--I------ 026F 0002 0001 006F 0379 0000 0100 0100 008A
+ DEC    CX
+--I--Z-P- 026F 0002 0000 006F 0379 0000 0100 0100 008B
+ LOOP   007E .PR1
+*0B9F:007E .PR1
+
+[The "o" was printed.  Do the loop once more.]
+
+#tw9
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I--Z-P- 026F 0002 FFFF 006F 0379 0000 0100 0100 007E
+ MOV    DL,018C[BX] .TOKEN =77
+--I--Z-P- 026F 0002 FFFF 0077 0379 0000 0100 0100 0082
+ PUSH   CX
+--I--Z-P- 026F 0002 FFFF 0077 0377 0000 0100 0100 0083
+ PUSH   BX
+--I--Z-P- 026F 0002 FFFF 0077 0375 0000 0100 0100 0084
+ CALL   0098 .CONOUTw
+--I--Z-P- 0277 0002 FFFF 0077 0375 0000 0100 0100 0087
+ POP    BX
+--I--Z-P- 0277 0002 FFFF 0077 0377 0000 0100 0100 0088
+ POP    CX
+--I--Z-P- 0277 0002 FFFF 0077 0379 0000 0100 0100 0089
+ INC    BX
+--I----P- 0277 0003 FFFF 0077 0379 0000 0100 0100 008A
+ DEC    CX
+--I-S---- 0277 0003 FFFE 0077 0379 0000 0100 0100 008B
+ LOOP   007E  .PR1
+*0B9F:007E .PR1
+
+[The "w" was printed, but now the count in CX should be 0, and it is 
+FFFE. That is going to loop for a long time.  If you look at the code, 
+CX seems to be decremented by 2 each time through the loop.  That "DEC 
+CX" does not belong there because the LOOP instruction automatically 
+decremented CX. Reload the program.]
+
+#esample sample
+
+  START      END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+
+[List the area containing the extra instruction.]
+
+#18a,+9
+
+0B9F:008A DEC    CX
+0B9F:008B LOOP   007E .PR1
+0B9F:008D MOV    DL,OD .CR
+0B9F:008F CALL   0098 .CONOUT
+0B9F:0092 MOV    DL,0A .LF
+
+[Use the Assemble command to overwrite the instruction with a NOP.]
+
+#a8a
+
+0B9F:008A nop
+
+0B9F:008B\ .
+
+#itest.tex
+
+[Run it again.]
+
+#g
+
+Now
+Nowis
+Nowisthe
+Nowisthetime
+Nowisthetimefor
+Nowisthetimeforall
+Nowisthetimeforallgood
+Nowisthetimeforallgoodmen
+Nowisthetimeforallgoodmento
+Nowisthetimeforallgoodmentocome
+Nowisthetimeforallgoodmentocometo
+Nowisthetimeforallgoodmentocometothe
+Nowisthetimeforallgoodmentocometotheaid
+Nowisthetimeforallgoodmentocometotheaidof^C
+
+[Looking better, but still not right!]
+
+C>sid86
+--------------------------------------------------
+SID-86 Symbolic Debugger               Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1983          Digital Research, Inc.
+--------------------------------------------------
+
+[This time patch the program to avoid the edit, assemble, and link loop.  
+Use the Read command to bring in the file with its header.]
+
+#rsample.exe
+
+  START      END
+OB4F:0000 0B4F:09FF
+
+[List the area to patch (add 60H paragraphs to where the file was loaded 
+to get past the header).]
+
+#lb4f+60:8a
+
+   0BAF:008A DEC    CX
+   0BAF:008B LOOP   007E
+   0BAF:008D MOV    DL,0D
+   0BAF:008F CALL   0098
+   0BAF:0092 MOV    DL,0A
+   0BAF:0094 CALL   0098    
+   0BAF:0097 RET     
+   0BAF:0098 MOV    AH,02 
+   0BAF:009A INT    21
+   0BAF:009C RET 
+   0BAF:009D MOV    AH,09 
+   0BAF:009F INT    21
+
+[Assemble the NOP instruction.]
+
+#a8a
+
+0BAF:008A nop
+
+0BAF:008B\ .
+
+[Write the file back to disk (no start and end addresses are needed 
+since the length of the file did not change).]
+
+#wsample.exe
+
+[Reload the patched file and the symbols.]
+
+
+
+
+#esample sample
+
+  START     END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+#itest.tex
+
+[Set a pass point of MAIN_LOOP with a count of 2 because the first token 
+came out correct.]
+
+#p.main_loop,2
+
+[Start program.  Execution stops when pass count reaches 1.]
+
+#g
+
+0002 PASS 0B9F:0010 .MAIN_LOOP
+--I--Z-P- 0F00 0BAA 0000 005C 037B 0000 0100 0100 0010
+ CALL     0029 .COLLECT_TOKENNow
+
+0001 PASS 0B9F:0010 .MAIN_LOOP
+--I----P- 020A 0003 0000 000A 037B 0000 0100 0100 0010
+ CALL     0029 .COLLECT_TOKEN
+*0B9F:0029 .COLLECT_TOKEN
+#1
+
+COLLECT_TOKEN:
+  0B9F:0029 CALL   004F .GET_CHAR  
+  0B9F:002C CALL   0040 .CHECK_DELIM
+  0B9F:002F JZ     0031 .COLI
+  0B9F:0031 MOV    BX,[018A] .TOKEN_LEN
+  0B9F:0035 MOV    018C[BX],AL .TOKEN
+  0B9F:0039 INC    WORD [018A] .TOKEN_LEN
+  0B9F:003D JMPS   0029 .COLLECT_TOKEN
+COL1:
+  0B9F:003F RET
+CHECK_DELIM:
+  0B9F:0040 CMP    AL,0D .CR
+  0B9F:0042 JZ     004E .CRET
+  0B9F:0044 CMP    AL,0A .LF
+  0B9F:0046 JZ     004E .CRET
+
+[Trace without call to see what GET_CHAR and CHECK_DELIM return.]
+
+#tw3
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I----P- 020A 0003 0000 000A 0379 0000 0100 0100 0029
+ CALL   004F .GET_CHAR
+--I----PC 0269 0004 0000 000A 0379 0000 0100 0100 002C
+ CALL   0040 .CHECK_DELIM
+--I------ 0269 0004 0000 000A 0379 0000 0100 0100 002F
+ JZ     003F .COL1
+*0B9F:0031
+
+[GET_CHAR returns a 69H.  To translate to ASCII, use the M command.]
+
+#h69
+
+0069 #105 'i' .GET1
+
+[That looks good.  See what happens next.]
+
+#1
+
+  0B9F:0031 MOV    BX,[018A] .TOKEN_LEN
+  0B9F:0035 MOV    018C[BX],AL .TOKEN
+  0B9F:0039 INC    WORD [018A] .TOKEN_LEN
+  0B9F:003D JMPS   0029 .COLLECT_TOKEN
+COL1:
+  0B9F:003F RET
+CHECK_DELIM:
+  0B9F:0040 CMP    AL,OD .CR              
+  0B9F:0042 JZ     004E .CRET
+  0B9F:0044 CMP    AL,OA .LF
+  0B9F:0046 JZ     004E .CRET
+  0B9F:0048 CMP    AL,09 .TAB
+  0B9F:004A JZ     004E .CRET
+  0B9F:004C CMP    AL,20 .ERR
+
+[Trace the code that puts the character into the TOKEN buffer.]
+
+#tw4
+
+           AX   BX   CX   DX   SP   BP   SI   DI   IP
+--I------ 0269 0004 0000 000A 0379 0000 0100 0100 0031
+ MOV    BX,[018A] .TOKEN_LEN =0003
+--I------ 0269 0003 0000 000A 0379 0000 0100 0100 0035
+ MOV    018C[BX],AL .TOKEN =00
+--I------ 0269 0003 0000 000A 0379 0000 0100 0100 0039
+ INC    WORD [018A] .TOKEN_LEN =0003
+--I------ 0269 0003 0000 000A 0379 0000 0100 0100 003D
+ JMPS   0029 .COLLECT_TOKEN
+*0B9F:0029 .COLLECT_TOKEN
+
+[Aha!  TOKEN_LEN is 3, instead of 0.  It seems that TOKEN_LEN is not 
+getting reset for each new token.  Try changing TOKEN_LEN on the fly to 
+see if our theory is correct.]
+
+  START      END
+0B5F:0000 0B5F:09FF        
+SYMBOLS
+#itest.tex
+
+#p.main_loop,2
+
+#g
+
+
+
+0002 PASS 0B9F:0010 .MAIN_LOOP
+--I--Z-P- 0F00 0BAA 0000 005C 037B 0000 0100 0100 0010
+ CALL    0029 .COLLECT_TOKENow
+
+0001 PASS 0B9F:0010 .MAIN_LOOP
+--I----P- 020A 0003 0000 000A 037B 0000 0100 0100 0010
+ CALL    0029 .COLLECT_TOKEN
+
+[Change the value of TOKEN_LEN to 0.]
+
+#sw.token_len
+
+0BAA:018A 0003 0
+
+0BAA:018C 6F4E\ .
+
+[Press next token (pass point still set at MAIN_LOOP).]
+
+#g
+is
+
+0001 PASS 0B9F:0010 .MAIN_LOOP
+--I------ 020A 0002 0000 000A 037B 0000 0100 0010
+ CALL    0029 .COLLECT_TOKEN
+*0B9F:0029 .COLLECT_TOKEN
+
+[It printed "is" correctly.  That must be the problem.  Put in both 
+changes at the source level, reassemble, and relink.]
+
+#^C
+
+C>edlin sample.a86
+
+End of input file
+*sdec     cx
+    75:         dec     cx
+*75d
+*1,20sloop:
+    17: main_loop:
+*18i
+    18:*        mov      token_len,0
+    19:*^Z
+*e
+
+C>rasm86 sample $1o
+--------------------------------------------------
+RASM-86 Relocating Assembler           Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights reserved
+Copyright (C) 1982,1983     Digital Research, Inc.
+--------------------------------------------------
+
+END OF PASS 1
+END OF PASS 2
+
+
+SEGMENTS
+________
+
+00B4 DATA
+00AC CODE
+
+END OF ASSEMBLY.  NUMBER OF ERRORS:    0.   USE FACTOR:  1%
+
+C>link86 sample
+--------------------------------------------------
+LINK-86 Linkage Editor                 Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1982,1983     Digital Research, Inc.
+--------------------------------------------------
+CODE    000B1
+DATA    001B4
+
+USE FACTOR:  00%
+
+[One last try!]
+
+C>sample test.tex
+
+Now
+is
+the
+time
+for
+all
+good
+men
+to 
+come
+to 
+the
+aid 
+of 
+their
+country.
+
+[Finally!  Just out of curiosity, use the pass point feature to count 
+the number of tokens in the file.]
+
+C>sid86 sample sample
+--------------------------------------------------
+SID-86 Symbolic Debugger               Version 1.0
+Serial No. PPPP-OOOO-SSSSSS    All Rights Reserved
+Copyright (C) 1983          Digital Research, Inc.
+--------------------------------------------------
+
+  START      END
+0B5F:0000 0B5F:09FF
+SYMBOLS
+#itest.tex
+
+[Set pass count of FFFF, so SID-86 counts each time MAIN_LOOP is 
+executed.]
+
+#p.main_loop,ffff
+
+[Execute program, suppressing pass point display.]
+
+#-g
+
+Now
+is
+the
+time
+for
+all
+good
+men
+to
+come
+to
+the
+aid
+of
+their
+country.
+
+PROGRAM TERMINATED NORMALLY
+
+[Display the pass point and its current pass count.]
+
+#p
+
+FFED 0B9F:0010 .MAIN_LOOP
+
+[Subtract from FFFF to calculate number of times MAIN_LOOP was 
+executed.]
+
+#hffff-ffed
+
+0012 #18
+
+[There are 18 tokens in the file.]
+
+#^C
+
+[List the final version of the program.]
+
+C>type sample.a86
+
+;
+;  This program reads an ASCII file, breaking it up into "tokens",
+;  which are displayed on the console.
+;
+fcb             equ     5ch
+cr              equ     0dh
+lf              equ     0ah
+tab             equ     09h
+end_file        equ     1ah
+
+init:
+        mov     dx,fcb
+	mov	ah,15
+	int	21h
+	or	al,al
+	jnz	err
+main_loop:
+	mov	token_len,0
+	call	collect_token
+	cmp	token,end_file
+	jz	done
+	call	print_token
+	jmps	main_loop
+done:
+	retf
+
+err:	mov	dx,offset nofile
+	call 	printm
+	jmp	done
+
+collect_token:
+	call	get_char
+	call	check_delim
+	jz	coli
+	mov	bx,token_len
+	mov	token[bx],al
+	inc	token_len
+	jmps	collect_token
+coli:	ret
+
+check_delim:
+	cmp	al,cr
+	jz	cret
+	cmp	al,lf
+	jz	creet
+	cmp	al,tab
+	jz	cret
+	cmp	al,' '
+cret:	ret
+
+get_char:
+	cmp	buffptr, buffsize
+	jc	get1
+	mov	dx,offset buff
+	call	setdta
+	mov	dx,fcb
+	call	readsec
+	mov	buffptr,0
+get1:
+	mov	bx,buffptr
+	mov	al,buff[bx]
+	inc	buffptr
+	ret
+
+print_token:
+	mov	cx,token_len
+        jcxz	pr2
+	sub	bx,bx
+pr1:	mov	dl,token[bx]
+	push	cx
+	push	bx
+	call	conout
+	pop	bx
+	pop	cx
+	inc	bx
+	loop	pr1
+	mov	dl,cr
+	call	conout
+	mov	dl,lf
+	call	conout
+pr2:
+	ret
+
+conout:	mov	ah,2
+	int	21h
+	ret
+
+printm:	mov	ah,9
+	int	21h
+	ret
+
+readsec:
+	mov	ah,20
+	int	21h
+	ret
+
+setdta:	mov	ah,26
+	int	21h
+	ret
+	dseg
+
+nofile		db	'NO FILE$'
+
+buffsize	equ	128
+buffptr		dw	buffsize
+buff		rb	buffsize
+
+max_token	equ	40
+token_len	rw	1
+token		rb	max_token
+
+	end
+
+ÿ

@@ -1,0 +1,247 @@
+;/*		UTILITY.A86	1/29/87 - 3/7/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	build_info_file
+		public	cat_string
+		public	clear_ws_table_entry
+		public	ds_font_info
+		public	es_font_info
+		public	load_file
+		public	upper_case
+		public	validate_handle
+
+; External entry points.
+		extrn	close_file:near
+		extrn	read_file:near
+
+; External data.
+include externs.a86
+
+
+;************************************************************************
+;* build_info_file							*
+;*	di -> destination for path name string				*
+;*	dx -> final string						*
+;************************************************************************
+build_info_file:
+		push	ds
+		push	es
+
+; If the info path exists, copy it.
+		mov	ax, cs
+		mov	ds, ax
+		mov	si, offset info_path	; ds:si -> info path
+		mov	es, ax			; es:di -> destination path
+		cmp	byte ptr [si], 0
+		je	bfp_cat_font_type
+		call	cat_string
+		dec	di
+		mov	al, '\'
+		stosb				; append '\'
+
+; Concatenate the font extension string.
+bfp_cat_font_type:
+		mov	si, offset sd_font + 2	; ds:si -> screen font ext
+		mov	bx, ws_index		; bx = workstation index
+		cmp	ws_id[bx], 21
+		jl	bfp_font_type
+		mov	si, offset pd_font + 2	; ds:si -> printer font ext
+bfp_font_type:
+		call	cat_string
+		dec	di			; remove null
+
+; Concatenate the final string.
+bfp_cat_font_string:
+		mov	si, dx			; ds:si -> final string
+		call	cat_string
+
+end_build_info_file:
+		pop	es
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* cat_string								*
+;*	ds:si -> source string (null terminated)			*
+;*	es:di -> destination string					*
+;************************************************************************
+cat_string:
+		lodsb
+		stosb
+		cmp	al, 0
+		jne	cat_string
+		ret
+
+
+;************************************************************************
+;* clear_ws_table_entry							*
+;*	bx = workstation table index.					*
+;************************************************************************
+clear_ws_table_entry:
+; Zero out the entry associated with the table index passed in.
+		push	ds			; save registers, first
+		push	ax
+		mov	ax, cs			; get appropriate data segment
+		mov	ds, ax
+		xor	ax, ax
+		mov	ws_id[bx], ax
+		mov	ws_xres[bx], ax
+		mov	ws_yres[bx], ax
+		mov	ws_size[bx], ax
+		mov	ws_coff[bx], ax
+		mov	ws_cseg[bx], ax
+		mov	ws_chead[bx], ax
+		mov	ws_xform[bx], ax
+		mov	ws_flags[bx], ax
+		mov	ws_dseg[bx], ax
+		mov	ws_dsize[bx], ax
+		mov	ws_root[bx], ax
+		mov	ws_font_seg[bx], ax
+		mov	ws_texbuf[bx], ax
+		mov	ws_font_block[bx], ax
+		mov	ws_phdr_low[bx], ax
+		mov	ws_phdr_count[bx], ax
+		mov	ws_face[bx], ax
+		mov	ws_point[bx], ax
+		mov	ws_absize[bx], ax
+		mov	ws_selmode[bx], ax
+		mov	ws_lrulo[bx], ax
+		mov	ws_lruhi[bx], ax
+		pop	ax			; restore registers
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* ds_font_info								*
+;*	ds:0 -> font header						*
+;************************************************************************
+ds_font_info:
+		push	ax
+
+; Set up the current font id and attribute values, assuming that ds:0
+; points to the font header.
+		mov	ax, .FONT_ID
+		mov	attr_val, ah		; save current attribute
+		test	word ptr .FLAGS_WORD, USE_FULL_ID
+		jz	dfi_normal
+		mov	ax, .FONT_FULL_ID	; get full font id
+		jmps	dfi_save_font_id
+dfi_normal:
+		xor	ah, ah			; ignore attribute
+dfi_save_font_id:
+		mov	font_val, ax		; save current font id
+end_ds_font_info:
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* es_font_info								*
+;*	es:0 -> font header						*
+;************************************************************************
+es_font_info:
+		push	ax
+
+; Set up the current font id and attribute values, assuming that es:0
+; points to the font header.
+		mov	ax, es:.FONT_ID
+		mov	attr_val, ah		; save current attribute
+		test	es:word ptr .FLAGS_WORD, USE_FULL_ID
+		jz	efi_normal
+		mov	ax, es:.FONT_FULL_ID	; get full font id
+		jmps	efi_save_font_id
+efi_normal:
+		xor	ah, ah			; ignore attribute
+efi_save_font_id:
+		mov	font_val, ax		; save current font id
+end_es_font_info:
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* load_file								*
+;*	ds:dx -> read buffer.						*
+;************************************************************************
+load_file:
+
+; Read in the file.
+		mov	bx, file_handle
+		mov	cx, driver_size
+		shl	cx, 1
+		shl	cx, 1
+		shl	cx, 1
+		shl	cx, 1			; cx = size in bytes
+		call	read_file
+
+; If an error occurred, indicate such.  Otherwise, indicate a successful
+; loading and return driver starting segment.
+		mov	load_successful, 0	; assume bad load
+		cmp	ax, 0			; records read successfully?
+		je	load_file_done
+		inc	load_successful		; indicate good load
+		mov	cx, driver_head		; get header location
+		mov	ds, cx
+		mov	bx, ds:.14h		; bx = IP register at entry
+		mov	driver_off, bx		; save starting offset
+		mov	bx, ds:.08h		; bx = load module offset
+		add	bx, ds:.16h		; bx = code segment offset
+		add	cx, bx			; cx = absolute code segment
+		mov	driver_seg, cx		; save starting location
+
+; Close the file.
+load_file_done:
+		mov	bx, file_handle
+		call	close_file
+		ret
+
+
+;************************************************************************
+;* upper_case								*
+;*	al = character to convert to upper case.			*
+;************************************************************************
+upper_case:
+		cmp	al, 'a'
+		jb	end_upper_case
+		cmp	al, 'z'
+		ja	end_upper_case
+		and	al, 11011111b		; convert to upper case
+end_upper_case:
+		ret
+
+
+;************************************************************************
+;* validate_handle							*
+;*	Carry flag set if the handle is invalid.  The workstation	*
+;*	table index is returned in bx.					*
+;************************************************************************
+validate_handle:
+; If the handle is out of range or if no open workstation is associated with
+; the handle, set the carry flag.
+		lds	si, contrl
+		cmp	word ptr 12[si], 0	; is the id positive?
+		jle	bad_handle		; no:  set carry flag
+
+		mov	bx, word ptr 12[si]
+		dec	bx
+		shl	bx, 1			; bx = table index
+		cmp	ws_id[bx], 0		; workstation associated?
+		jz	bad_handle		; no:  set carry flag
+
+		test	ws_flags[bx],WS_OPEN	; is the workstation open?
+		jz	bad_handle		; no:  set carry flag
+		clc				; clear the carry flag
+		ret
+
+; An error was detected.  Set the carry flag and return.
+bad_handle:
+		stc				; set carry flag (error)
+		ret
+
+		end

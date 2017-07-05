@@ -1,0 +1,251 @@
+
+                         GEM/3 PROGRAMMER'S TOOLKIT
+
+                            Function References
+
+
+FUNCTION LIST
+
+The following table lists the AES and VDI functions in alphabetical order
+with the function's opcode, library or group name, and description
+page number.
+
+
+
+                   Table 2.  Alphabetical Function List
+
+                       Opcode
+ Function            Dec    Hex  Library or Group  Manual Page
+
+ appl_bvset          16     10   Application        AES   3-10
+ appl_exit           19     13   Application        AES   3-12
+ appl_find           13      D   Application        AES   3-6
+ appl_init           10      A   Application        AES   3-3
+ appl_read           11      B   Application        AES   3-4
+ appl_tplay          14      E   Application        AES   3-7
+ appl_trecord        15      F   Application        AES   3-8
+ appl_write          12      C   Application        AES   3-5
+ appl_yield          17     11   Application        AES   3-11
+
+ evnt_button         21     15   Event              AES   4-13
+ evnt_dclick         26     1A   Event              AES   4-24
+ evnt_keybd          20     14   Event              AES   4-12
+ evnt_mesag          23     17   Event              AES   4-18
+ evnt_mouse          22     16   Event              AES   4-16
+ evnt_multi          25     19   Event              AES   4-20
+ evnt_timer          24     18   Event              AES   4-19
+
+ form_alert          52     34   Form               AES   7-14
+ form_button         56     38   Form               AES   7-19
+ form_center         54     36   Form               AES   7-16
+ form_dial           51     33   Form               AES   7-12
+ form_do             50     32   Form               AES   7-11
+ form_error          53     35   Form               AES   7-15
+ form_keybd          55     37   Form               AES   7-17
+
+ fsel_input          90     5A   File select        AES   10-5
+
+ graf_dragbox        71     47   Graph              AES   8-4
+ graf_handle         77     4D   Graph              AES   8-11
+ graf_mbox           72     48   Graph              AES   8-6
+ graf_mkstate        79     4F   Graph              AES   8-14
+ graf_mouse          78     4E   Graph              AES   8-12
+ graf_rubbox         70     46   Graph              AES   8-3
+ graf_slidebox       76     4C   Graph              AES   8-9
+ graf_watchbox       75     4B   Graph              AES   8-7
+
+ menu_bar            30     1E   Menu               AES   5-6
+ menu_click          37     25   Menu               Release Note
+ menu_icheck         31     1F   Menu               AES   5-7
+ menu_ienable        32     20   Menu               AES   5-8
+ menu_register       35     23   Menu               AES   5-12
+ menu_text           34     22   Menu               AES   5-10
+ menu_tnormal        33     21   Menu               AES   5-9
+ menu_unregister     36     24   Menu               AES   5-13
+
+ objc_add            40     28   Object             AES   6-28
+ objc_change         47     2F   Object             AES   6-38
+ objc_delete         41     29   Object             AES   6-29
+ objc_draw           42     2A   Object             AES   6-30
+ objc_edit           46     2E   Object             AES   6-36
+ objc_find           43     2B   Object             AES   6-32
+ objc_offset         44     2C   Object             AES   6-34
+ objc_order          45     2D   Object             AES   6-35
+
+ rsrc_free           111    6F   Resource           AES   12-4
+ rsrc_gaddr          112    70   Resource           AES   12-5
+ rsrc_load           110    6E   Resource           AES   12-3
+ rsrc_obfix          114    72   Resource           AES   12-8
+ rsrc_saddr          113    71   Resource           AES   12-7
+
+ scrp_clear          82     52   Scrap              AES   9-7
+ scrp_read           80     50   Scrap              AES   9-4
+ scrp_write          81     51   Scrap              AES   9-6
+
+ shel_envrn          125    7D   Shell              AES   13-10
+ shel_find           124    7C   Shell              AES   13-8
+ shel_rdef           126    7E   Shell              AES   13-11
+ shel_read           120    78   Shell              AES   13-5
+ shel_wdef           127    7F   Shell              AES   13-12
+ shel_write          121    79   Shell              AES   13-6
+
+ v_alpha_text       5-25   5-19  Escape             VDI   9-31 & Release Note
+ v_arc              11-2    B-2  Output             VDI   4-17
+ v_bar              11-1    B-1  Output             VDI   4-16
+ v_bit_image        5-23   5-17  Escape             VDI   9-26
+ v_cellarray         10      A   Output             VDI   4-12
+ v_circle           11-4    B-4  Output             VDI   4-21
+ v_clear_disp_list  5-22   5-16  Escape             VDI   9-25
+ v_clrwk              3      3   Control            VDI   3-13
+ v_clsvwk            101    65   Control            VDI   3-17
+ v_clswk              2      2   Control            VDI   3-12
+ v_contourfill       103    67   Output             VDI   4-29
+ v_copies            5-28  5-1C  Escape             Release Note
+ v_curdown           5-5    5-5  Escape             VDI   9-7
+ v_curhome           5-8    5-8  Escape             VDI   9-10
+ v_curleft           5-7    5-7  Escape             VDI   9-9
+ v_curright          5-6    5-6  Escape             VDI   9-8
+ v_curtext          5-12    5-C  Escape             VDI   9-14
+ v_curup             5-4    5-4  Escape             VDI   9-6
+ v_dspcur           5-18   5-12  Escape             VDI   9-20
+ v_eeol             5-10    5-A  Escape             VDI   9-12
+ v_eeos              5-9    5-9  Escape             VDI   9-11
+ v_ellarc           11-6    B-6  Output             VDI   4-23
+ v_ellipse          11-5    B-5  Output             VDI   4-22
+ v_ellpie           11-7    B-7  Output             VDI   4-24
+ v_enter_cur         5-3    5-3  Escape             VDI   9-5
+ v_etext	    11-11   B-B  Output             Release Note
+ v_exit_cur          5-2    5-2  Escape             VDI   9-4
+ v_fillarea           9      9   Output             VDI   4-10
+ v_form_adv         5-20   5-14  Escape             VDI   9-22
+ v_get_pixel         105    69   Raster             VDI   6-9
+ v_gtext              8      8   Output             VDI   4-8
+ v_hardcopy         5-17   5-11  Escape             VDI   9-19
+ v_hide_c            123    7B   Input              VDI   7-26
+ v_justified        11-10   B-A  Output             VDI   8-29
+ v_meta_extents     5-98   5-62  Escape             VDI   9-45
+ v_opnvwk            100    64   Control            VDI   3-15
+ v_opnwk              1      1   Control            VDI   3-2 & Release Note
+ v_orient           5-27   5-1B  Escape             Release Note
+ v_output_window    5-21   5-15  Escape             VDI   9-23
+ v_pline              6      6   Output             VDI   4-4
+ v_pmarker            7      7   Output             VDI   4-6
+ v_rbox             11-8    B-8  Output             VDI   4-25
+ v_rfbox            11-9    B-9  Output             VDI   4-26
+ v_rmcur            5-19   5-13  Escape             VDI   9-21
+ v_rvoff            5-14    5-E  Escape             VDI   9-16
+ v_rvon             5-13    5-D  Escape             VDI   9-15
+ v_show_c            122    7A   Input              VDI   7-24
+ v_sound            5-61   5-3D  Escape             VDI   9-34
+ v_tray             5-29   5_1D  Escape             Release Note
+ v_updwk              4      4   Control            VDI   3-14
+ v_write_meta       5-99   5-63  Escape             VDI   9-46
+ v_xbit_image       5-101  5-65  Escape             Release Note
+ vex_butv            125    7D   Input              VDI   7-28
+ vex_curv            127    7F   Input              VDI   7-32
+ vex_motv            126    7E   Input              VDI   7-30
+ vex_timv            118    76   Input              VDI   7-22
+
+ vm_filename        5-100  5-64  Escape             VDI   9-47
+
+ vq_cellarray        27     1B   Inquiry            VDI   4-12
+ vq_chcells          5-1    5-1  Escape             VDI   9-3
+ vq_color            26     1A   Inquiry            VDI   8-2
+ vq_curaddress      5-15    5-F  Escape             VDI   9-17
+ vq_extnd            102    66   Inquiry            VDI   8-14 & Release Note
+ vq_key_s            128    80   Input              VDI   7-34
+ vq_mouse            124    7C   Input              VDI   7-27
+ vq_scan            5-24   5-18  Escape             VDI   9-29
+ vq_tabstatus       5-16   5-10  Escape             VDI   9-18
+ vq_tdimensions     5-84   5-54  Escape             VDI   9-39
+
+ vqf_attributes      37     25   Inquiry            VDI   8-10
+
+ vqin_mode           115    73   Inquiry            VDI   8-18
+
+ vql_attributes      35     23   Inquiry            VDI   8-6
+
+ vqm_attributes      36     24   Inquiry            VDI   8-8
+
+ vqp_filmname       5-92   5-5C  Escape             VDI   9-42
+
+ vqt_attributes      38     26   Inquiry            VDI   8-12
+ vqt_extent          116    74   Inquiry            VDI   8-19
+ vqt_fontinfo        131    83   Inquiry            VDI   8-26
+ vqt_name            130    82   Inquiry            VDI   8-24
+ vqt_width           117    75   Inquiry            VDI   8-22
+
+ vr_recfl            114    72   Output             VDI   4-30
+ vr_trnfm            110    6E   Raster             VDI   6-12
+
+ vro_cpyfm           109    6D   Raster             VDI   6-10
+ vrq_choice          30     1E   Input              VDI   7-13
+ vrq_locator         28     1C   Input              VDI   7-5
+ vrq_string          31     1F   Input              VDI   7-16
+ vrq_valuator        29     1D   Input              VDI   7-9
+
+ vrt_cpyfm           121    79   Raster             VDI   6-13
+
+ vs_clip             129    81   Control            VDI   3-20
+ vs_color            14      E   Attribute          VDI   5-6
+ vs_curaddress      5-11    5-B  Escape             VDI   9-13
+ vs_mute            5-62   5-3E  Escape             VDI   9-35
+ vs_palette         5-60   5-3C  Escape             VDI   9-33
+
+ vsc_expose         5-93   5-5D  Escape             VDI   9-44
+ vsc_form            111    6F   Input              VDI   7-20
+
+ vsf_color           25     19   Attribute          VDI   5-38
+ vsf_interior        23     17   Attribute          VDI   5-33
+ vsf_perimeter       104    68   Attribute          VDI   5-39
+ vsf_style           24     18   Attribute          VDI   5-35
+ vsf_udpat           112    70   Attribute          VDI   5-40
+
+ vsin_mode           33     21   Input              VDI   7-3
+
+ vsl_color           17     11   Attribute          VDI   5-12
+ vsl_ends            108    6C   Attribute          VDI   5-13
+ vsl_type            15      F   Attribute          VDI   5-8
+ vsl_udsty           113    71   Attribute          VDI   5-10
+ vsl_width           16     10   Attribute          VDI   8-22
+
+ vsm_choice          30     1E   Input              VDI   7-14
+ vsm_color           20     14   Attribute          VDI   5-18
+ vsm_height          19     13   Attribute          VDI   5-17
+ vsm_locator         28     1C   Input              VDI   7-7
+ vsm_string          31     1F   Input              VDI   7-18
+ vsm_type            18     12   Attribute          VDI   5-15
+ vsm_valuator        29     1D   Input              VDI   7-11
+ vsp_film           5-91   5-5B  Escape             VDI   9-41
+
+ vst_alignment       39     27   Attribute          VDI   5-31
+ vst_color           22     16   Attribute          VDI   5-27
+ vst_effects         106    6A   Attribute          VDI   5-28
+ vst_ex_load_fonts   119    77   Control            Release Note
+ vst_font            21     15   Attribute          VDI   5-25
+ vst_height          12      C   Attribute          VDI   5-19
+ vst_load_fonts       9      9   Control            VDI   3-18
+ vst_point           107    6B   Attribute          VDI   5-21
+ vst_rotation        13      D   Attribute          VDI   5-23
+ vst_unload_fonts    120    78   Control            VDI   3-19
+
+ vswr_mode           32     20   Attribute          VDI   5-3
+
+ vt_alignment       5-85   5-55  Escape             VDI   9-40
+ vt_axis            5-82   5-52  Escape             VDI   9-37
+ vt_origin          5-83   5-53  Escape             VDI   9-38
+ vt_resolution      5-81   5-51  Escape             VDI   9-36
+
+ wind_calc           108    6C   Window             AES   11-29
+ wind_close          102    66   Window             AES   11-17
+ wind_create         100    64   Window             AES   11-14
+ wind_delete         103    67   Window             AES   11-18
+ wind_find           106    6A   Window             AES   11-26
+ wind_get            104    68   Window             AES   11-19
+ wind_open           101    65   Window             AES   11-16
+ wind_set            105    69   Window             AES   11-23
+ wind_update         107    6B   Window             AES   11-27
+
+ xgrf_stepcalc       130    82   Ex. Graphics       AES   14-2
+ xgrf_2box           131    83   Ex. Graphics       AES   14-4
+

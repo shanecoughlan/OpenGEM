@@ -1,0 +1,59 @@
+
+	public	x_open, x_close, x_read;
+
+;	WORD	x_open (name, mode)
+;	BYTE	*name;
+;	WORD	mode;
+
+x_open:
+	push	bp
+	mov	bp, sp
+	mov	dx, 4[bp]		; pick up file name
+	mov	al, 6[bp]		; open mode = 0, 1 or 2
+	mov	ah, 3dh			; version 2 open function
+	int	21h			; call MS DOS
+	jnc	x_open_ok		; test for error
+	neg	ax			; make it negative if error
+x_open_ok:
+	pop	bp
+	ret
+
+
+;	WORD	x_close (handle)
+;	WORD	handle;
+
+x_close:
+	push	bp
+	mov	bp, sp
+	mov	bx, 4[bp]		; pick up file handle
+	mov	ah, 3eh			; version 2 close function
+	int	21h			; call MS DOS
+	jnc	x_close_ok		; test for error
+	neg	ax			; make it negative if error
+x_close_ok:
+	pop	bp
+	ret
+
+
+;	WORD	x_read (handle, buffer, count)
+;	WORD	handle;
+;	BYTE	*buffer;
+;	WORD	count;
+
+x_read:
+	push	bp
+	mov	bp, sp
+	mov	bx, 4[bp]		; pick up file handle
+	mov	dx, 6[bp]		; get memory address
+	mov	cx, 8[bp]		; get byte count
+	mov	ah, 3fh			; version 2 read function
+	int	21h			; call MS DOS
+	jnc	x_read_ok		; test for error
+	neg	ax			; make it negative if error
+x_read_ok:
+	pop	bp
+	ret
+
+
+	END
+

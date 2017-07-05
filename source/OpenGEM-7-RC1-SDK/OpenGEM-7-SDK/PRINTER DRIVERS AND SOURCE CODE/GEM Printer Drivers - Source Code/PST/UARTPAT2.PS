@@ -1,0 +1,66 @@
+%!Copyright 1985,1986 Adobe Systems Inc.  All rights reserved.
+%Subject: improved LaserWriter serial I/O patch
+
+%Several months ago, I circulated a downloadable program that corrects
+%several known problems in the LaserWriter's serial I/O handler.
+%Unfortunately, the patch did not completely fix one of the problems.
+%This message contains a revised patch that works better.
+
+%The problems corrected by the patch are:
+
+%  - occasional failure to send a needed XON after XOFF;
+%  - erroneously reading past end-of-file under some circumstances;
+%  - lost or garbled characters in serial output to the host.
+
+%The patch applies only to the original LaserWriter (PostScript version
+%23.0) and not to any other PostScript printer; it affects serial
+%communication only (not AppleTalk). To install the patch, first edit
+%the program if necessary to change the system administrator password;
+%then send it as a separate job to the printer. Once installed, the
+%patch persists until the printer is next turned off.
+
+%	Adobe Systems, Inc.
+
+%---------- cut here ----------
+%! 
+0000000000			% the exitserver password
+
+version (23.0) ne
+   {(Patch not installed -- wrong printer type or version) = stop} if
+statusdict /Patch1Installed known
+   {(Patch already installed -- not installed again) = stop} if
+serverdict begin exitserver
+statusdict /Patch1Installed true put
+currentfile eexec
+c3c703843e75cc772962e3a7fadee742bb1258167ac7020cbc1cdfd379c35f53
+da38afaed75c86541fde979ff594180fe542991f2199c8614247e4a1e3e5ecff
+8bc3844d36e2d091e9f649518473592b44be262c7a2929ac4a9acd626bd3c441
+e2aae320e60b2c21e02bc9c4f3cde0d5eca674f5b0bbff3ee860a7cd2e4e9f7b
+9eed9b1286e5a9b9b0fdf8e73951152837a16a6913e477cc8a4f3cebbf2e78e8
+fe5b0f92d45a274e75df31e5182cd81dce61bc53bdb8685f0a7ce24c0b8440f7
+67b7fd750bb998fc775415b1c7b8502ea7c744ccb807635f7244d3fdd6ebd01f
+634c9f3241fddc1a95d62bfb710a9ea6831ec6e1792f60503f077868e860dc3a
+518d8ac29dc625ec65157889cd1f943a37eb55ef0e44c3a4776a481f1dd10cda
+79b3db9907295c0ab9e3142df3ef0840b07f29d67c4f8aba333c9cc6e9f57d3f
+47083e0bd9e85151ef158308a7d991b02ddcf47bffe6fed2f8e342dd7d2f81ca
+80bb689bd0cb5af2a471b5577a4f8dbdfd2b0fcd0267bfa4dc6038bc235d3d8b
+35469a680b41dc95e6a1d48ba543d291575d72475ef512492547629c4db741b8
+68705f01282c230e1570cea8daea989707e99dce1d11d561256bd24608a66945
+2042384aadfcc25cb0167b5896b1a13092d0a7c4ce1343e30834de5d5df345b9
+ccb742acf36f7d3a9b43361cf5a9e0121fec84ba8b6c06312a71600ab9783ddc
+59b8cb4da03019e82690df5cb2aefd9026aed30efb24b19e5405410685eb35b3
+b25cf8ba535156ee600749abf2e3c572313c62dcd9492ca3abcfe7ee8fd40410
+902f417c82908b412c9a826206f4292ab5196013a5f3615661cf81fc60b36a84
+f457c2adb1a0c1c19f089d170de47d6933ce247d44865035caa1a6d4a2f6986f
+9856de5f3d05a5a1020bce9768df8e8aab928b90029dfc2bbb715e19b5e7bc3e
+11f05c1dad24849f8aadb7867f9d92f4400a432cdd6587057c582dc25fbeadde
+f75121202e2a90dc6a4491ae9ee2b39c5fab5071a2f415d4a3cf8357fff771d8
+790cc5788d506086c5a07ddbc2997f3abe28972cd40275c0117c77f479fd0b74
+53a0bfcd82f30d1eb3c35fc914657d6f484bf3be81c54238267ccc2a19ec42a3
+1336014c6446b12e3fe7746b658f829c52173a78e456ad78c2d65a3209949a5a
+735d3795579151ee0102773c204134e8563b011a90c7cf0622058081c60b4d5d
+6a146eb610c92e2e9c05f7ca40a1375e7c397def7f0d6a4c65e22728ae30adc2
+b1b088339a7e7ab8f2dc6a3b5abd1318663cc5d3c37edd57f8ace64a565d1775
+6e5a1268986105c918547306e0bf12d128220771e074323746ac15c52ef16e95
+c0e62a0746b7c202a2e2aba2060cd64d5f656dbeb1fa837734d4a23093ddb312
+537c0a6f8e224e5aa6cd22f1740e3611550b85d1a447c58ca8

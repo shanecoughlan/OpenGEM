@@ -1,0 +1,196 @@
+#
+#	make.HPH  (Hewlett Packard LaserJet+ HiRes - 150 x 150 dpi)
+#
+#-----------------------
+# Build the whole driver
+#-----------------------
+pdhph8.hph: 	obj\devdep.obj		\
+	    	obj\dvtasm.obj		\
+	    	obj\buf.obj		\
+	    	obj\pentry.obj		\
+	    	obj\textblt.obj		\
+	    	obj\image.obj		\
+	    	obj\jmptbl.obj		\
+		obj\monoprin.obj	\
+	    	obj\monout.obj		\
+	    	obj\text.obj		\
+	    	obj\devtext.obj		\
+	    	..\common\obj\io.obj		\
+		..\common\obj\imageasm.obj	\
+	    	..\common\obj\enddseg.obj	\
+	    	..\common\obj\isin.obj		\
+		..\styles\150x150.obj		\
+		pdhph8.inp
+	cd obj
+	copy ..\pdhph8.inp/v
+	copy ..\..\common\obj\*.* *.xxx
+	del devtext.xxx
+	del dvtasm.xxx
+	rename *.xxx *.obj
+	copy ..\..\styles\150x150.obj/v
+	link /dosseg /map @pdhph8.inp, pdhph8.hph, pdhph8.sym;
+ 	mv pdhph8.* ..
+	del io.obj
+	del imageasm.obj
+	del enddseg.obj
+	del isin.obj
+	del 150x150.obj
+	cd ..\..\common
+	del externs.a86
+	del devinfo.a86
+	del dvtasm.a86
+	del devtext.c
+	del gsxdef.h
+	cd ..\hph
+	del *.a86
+
+#-----------------------------
+# Device dependent RASM files 
+#-----------------------------
+obj\devdep.obj: 	devdep.hph	\
+	    		devdata.hph	\
+			externs.hph	\
+			..\common\devind.a86
+	copy devdep.hph *.a86/v
+	copy devdata.hph *.a86/v
+	copy externs.hph *.a86/v
+	copy ..\common\devind.a86/v
+	rasm86 devdep $pz sz
+	mv devdep.obj obj
+
+obj\devtext.obj: 	devtext.hph	\
+			..\common\portab.h	\
+			..\common\fontdef.h	\
+			..\common\gsxextrn.h     
+	cd ..\common
+	copy ..\hph\devtext.hph devtext.c/v
+	hc devtext -mm Compact
+	mv devtext.obj ..\hph\obj
+	cd ..\hph
+
+obj\dvtasm.obj: 	dvtasm.hp	\
+			..\common\fhinc.a86
+	cd ..\common
+	copy ..\hph\dvtasm.hp *.a86/v
+	rasm86 dvtasm $pz sz
+	mv dvtasm.obj ..\hph\obj
+	cd ..\hph
+
+..\styles\150x150.obj:	..\styles\150x150.a86
+	cd ..\styles
+	rasm86 150x150 $pz sz
+	cd ..\hph
+
+
+#------------------------
+# Common code RASM files
+#------------------------
+..\common\obj\io.obj: ..\common\io.a86
+	cd ..\common
+	rasm86 io $pz sz
+	mv io.obj obj
+	cd ..\hph
+
+obj\buf.obj: 		..\common\buf.a86	\
+			externs.hph
+	cd ..\common
+	copy ..\hph\externs.hph *.a86/v
+	rasm86 buf $pz sz
+	mv buf.obj ..\hph\obj
+	cd ..\hph
+
+obj\pentry.obj:		..\common\pentry.a86	\
+			externs.hph		\
+			devinfo.hph
+	cd ..\common
+	copy ..\hph\externs.hph *.a86/v
+	copy ..\hph\devinfo.hph *.a86/v
+	rasm86 pentry $pz sz
+	mv pentry.obj ..\hph\obj
+	cd ..\hph
+
+obj\textblt.obj: ..\common\textblt.a86	\
+		..\common\fhinc.a86	\
+		externs.hph	
+	cd ..\common
+	copy ..\hph\externs.hph *.a86/v
+	rasm86 textblt $pz sz
+	mv textblt.obj ..\hph\obj
+	cd ..\hph
+
+..\common\obj\imageasm.obj:	..\common\imageasm.a86
+	cd ..\common
+	rasm86 imageasm $pz sz
+	mv imageasm.obj obj
+	cd ..\hph
+
+..\common\obj\enddseg.obj: ..\common\enddseg.a86
+	cd ..\common
+	rasm86 enddseg $pz sz
+	mv enddseg.obj obj
+	cd ..\hph
+
+#---------------------
+# Common code C files
+#---------------------
+obj\monoprin.obj: 	..\common\monoprin.c	\
+			..\common\portab.h	\
+			..\common\defines.h	\
+			gsxdef.hph
+	cd ..\common
+	copy ..\hph\gsxdef.hph gsxdef.h/v
+	hc monoprin
+	mv monoprin.obj ..\hph\obj
+	cd ..\hph
+
+..\common\obj\isin.obj: ..\common\isin.c	\
+			..\common\portab.h
+	cd ..\common
+	hc isin
+	mv isin.obj obj
+	cd ..\hph
+
+obj\jmptbl.obj:		..\common\jmptbl.c	\
+			..\common\portab.h	\
+			..\common\gsxextrn.h	\
+			..\common\jmptbl.h	\
+			..\common\defines.h	\
+			gsxdef.hph
+	cd ..\common
+	copy ..\hph\gsxdef.hph gsxdef.h/v
+	hc jmptbl
+	mv jmptbl.obj ..\hph\obj
+	cd ..\hph
+
+obj\monout.obj:		..\common\monout.c	\
+			..\common\portab.h	\
+			..\common\gsxextrn.h	\
+			..\common\defines.h	\
+			gsxdef.hph
+	cd ..\common
+	copy ..\hph\gsxdef.hph gsxdef.h/v
+	hc monout
+	mv monout.obj ..\hph\obj
+	cd ..\hph
+
+obj\text.obj: 		..\common\text.c	\
+			..\common\portab.h	\
+			..\common\fontdef.h	\
+			..\common\gsxextrn.h	\
+			..\common\defines.h	\
+			gsxdef.hph
+	cd ..\common
+	copy ..\hph\gsxdef.hph gsxdef.h/v
+	hc text -mm Compact
+	mv text.obj ..\hph\obj
+	cd ..\hph
+
+obj\image.obj:  	..\common\image.c	\
+			..\common\portab.h	\
+			..\common\defines.h	\
+			gsxdef.hph
+	cd ..\common
+	copy ..\hph\gsxdef.hph gsxdef.h/v
+	hc image -mm Compact
+	mv image.obj ..\hph\obj
+	cd ..\hph

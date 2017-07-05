@@ -1,0 +1,243 @@
+DJGPP wrapper functions for the GEM API
+=======================================
+
+- Note: This is one method of accessing GEM from 32-bit code. The other one
+ is to use Portability Macros - see DJMACROS.DOC.
+
+  These functions allow you to manipulate GEM objects in your local memory
+space (where you are limited only by the amount of swap space, and no
+pesky 64k limits on anything). They attempt to hide the fact that GEM is
+only a 16-bit program.
+
+String functions
+================
+
+LPBYTE dj_string_addr(char *s)
+
+  Allocates real-mode space for the string "s", and copies it in. Returns the
+real-mode address of the string. When you have finished with the string,
+dos_free() it.
+
+WORD dj_form_alert(WORD opt, char *fmt, ...)
+
+  Does a form_alert() using text in the program's address space. You can use
+a format string as you would in a sprintf():
+
+     dj_form_alert(1, "[0][Your weight is %d kilos][ OK ]", kilos);
+
+WORD dj_lstrlen(LPBYTE s)
+
+  Returns the length of a string in GEM's address space.
+
+WORD dj_putb2w(BYTE *s, LPBYTE d)
+
+  Converts a string in the program's address space to a list of WORDs in GEM's
+address space. This is used by a number of VDI calls which take text as a list 
+of WORDs. Returns the length of the string, excluding the final 0.
+
+WORD dj_getw2b(LPBYTE s, WORD cnt, BYTE *d)
+
+  Converts a list of "cnt" words in GEM's address space to a 0-terminated
+string in the program's address space. Returns "cnt".
+
+WORD dj_wind_setl(WORD w_handle, WORD w_field, LPVOID l1, LPVOID l2)
+
+  As wind_set(), but takes addresses rather than words. This is used to
+set the text of titlebars and information bars:
+
+  w_title = dj_string_addr("title");
+  dj_wind_setl(handle, WF_TITLE, title, 0L);
+  ...
+  dos_free(w_title);
+
+  Tree functions
+  ==============
+
+  The functions in this section allow you to manipulate object trees in
+DJGPP's normal 32-bit address space. The trees are automatically converted
+into 16-bit GEM format and back on the fly.
+
+  The original sample program DEMO was written with portability macros. The
+ sample DJDEMO was written using these functions instead; it is instructive
+ to compare the two files. The "System Info" desk accessory shows that
+ DJDEMO uses 149k less "lower" memory then DEMO does.
+
+  If you want to use these functions, there are some points to be wary of:
+
+i) INDIRECT objects. In 16-bit GEM these are formed:
+
+     +----------+
+     |  OBJECT  |
+     |          |
+     |  ob_spec-------------> real ob_spec [4 bytes]
+     +----------+
+
+
+  If you want to use an INDIRECT object with these functions, it must be
+formed:
+
+     +----------+      +---->+------------------------+
+     |  OBJECT  |      |     | INDBLOCK or similar    |
+     |          |      |     |                        |
+     |  ob_spec--------+     | real ob_spec [4 bytes] |
+     +----------+            | size of this INDBLOCK  |
+                             | additional data        |
+                             +------------------------+
+
+  In other words, the 32-byte integer immediately after the real ob_spec
+  must be the number of bytes to copy, including the ob_spec. For example, in
+  DJDEMO an array of LONGs became an array of CLR_ARRAY blocks.
+
+ii) USERDEF objects. These are managed by dj_userdef() and their object
+   specification is always an address in 16-bit space; see DJUDEF.DOC.
+   The spec will also be a Segment:Offset value, and you may have to
+   use the SEGOFF() macro to put it into this format.
+
+iii) Some functions work on copies of structures, not originals.
+
+  The simple way to avoid the first two problems is not to use INDIRECT
+or USERDEF objects with these functions. Failing that, take a look at
+DJDEMO.C which uses both.
+
+  The functions are listed below. They attempt to wrap the GEM functions
+with similar names:
+
+WORD dj_menu_bar(OBJECT *tree, WORD showit);
+
+  This makes a COPY in low memory of the object tree passed to it.
+Therefore any manual changes to the tree itself will not be reflected in
+the menu unless it is passed in again with dj_menu_bar().
+
+WORD dj_menu_icheck(WORD itemnum, WORD checkit);
+WORD dj_menu_ienable(WORD itemnum, WORD enableit);
+WORD dj_menu_tnormal(WORD titlenum, WORD normalit);
+WORD dj_menu_text(WORD inum, LPBYTE ptext);
+
+  Note that the menu items don't take a tree pointer. They use the one
+that was passed to dj_menu_bar(). 
+
+WORD dj_objc_add(OBJECT *tree, WORD parent, WORD child);
+WORD dj_objc_delete(OBJECT *tree, WORD delob);
+WORD dj_objc_draw(OBJECT *tree, WORD drawob, WORD depth, WORD xc, WORD yc, WORD wc, WORD hc);
+WORD dj_objc_find(OBJECT *tree, WORD startob, WORD depth, WORD mx, WORD my);
+WORD dj_objc_offset(OBJECT *tree, WORD obj, WORD *poffx, WORD *poffy);
+WORD dj_objc_edit(OBJECT *tree, WORD obj, WORD inchar, WORD *idx, WORD kind);
+WORD dj_objc_change(OBJECT *tree, WORD drawob, WORD depth, WORD xc, WORD yc, 
+		 WORD wc, WORD hc, WORD newstate, WORD redraw);
+WORD dj_form_do(OBJECT *tree, WORD start);
+WORD dj_form_center(OBJECT *tree, WORD *pcx, WORD *pcy, WORD *pcw, WORD *pch);
+WORD dj_form_keybd(OBJECT *tree, WORD obj, WORD nxt_obj, WORD thechar, 
+		WORD *pnxt_obj, WORD *pchar);
+WORD dj_form_button(OBJECT *tree, WORD obj, WORD clks, WORD *pnxt_obj);
+WORD dj_rsrc_obfix(OBJECT *tree, WORD obj);
+
+  This one isn't so obvious:
+
+WORD dj_rsrc_treeaddr(WORD rsid, OBJECT **paddr);
+
+  This function differs from rsrc_gaddr() in the following respects:
+* It only works on object trees.
+* It returns a malloc()ed COPY of the object, not the original.
+  Therefore if you want to make persistent changes to that object tree
+  (such as transforming icon bitmaps or setting up USERDEF objects) then
+  you have to use rsrc_gaddr() and compatibility macros.
+* The object must be free()d after you've finished with it.
+
+  MFDB functions
+  ==============
+
+VOID dj_vro_cpyfm( WORD handle, WORD wr_mode, WORD xy[],
+                   MFDB *srcMFDB, MFDB *desMFDB);
+VOID dj_vrt_cpyfm( WORD handle, WORD wr_mode, WORD xy[],
+                   MFDB *srcMFDB, MFDB *desMFDB, WORD *index );
+VOID dj_vr_trnfm( WORD handle, MFDB *srcMFDB, MFDB *desMFDB );
+
+  These three functions behave just like the VDI functions with similar
+names, except the the memory pointer member of the MFDB (mfdb->mp) refers
+to an address in DJGPP's address space. Bitmaps handled by these functions
+can be up to 32768 pixels wide, and of arbitrary height. 
+
+  Tree transformation functions
+  =============================
+
+  These functions are used to move an object tree from GEM's address space
+to the program's, or vice versa.
+
+LONG dj_tree_size32(OBJECT *tree);
+LONG dj_tree_size16(LPTREE tree);
+
+  Find the size of an object tree and every object it refers to
+(eg: for an icon, ICONBLK+icon bitmap+mask bitmap+title). This will be
+the amount of memory needed to make a copy of the object tree.
+
+void dj_tree_32to16(OBJECT *tree, LPTREE tree16);
+void dj_tree_16to32(LPTREE tree16, OBJECT *tree);
+
+  Move an object tree between GEM memory & DJGPP memory. These copies are
+"deep" copies; they require the destination arrays to hold at least
+dj_size_32(tree) or dj_size_16(tree16) bytes respectively.
+
+void dj_tree_16to32s(LPTREE tree16, OBJECT *tree);
+void dj_tree_32to16s(OBJECT *tree,  LPTREE tree16);
+
+  These copy functions assume that the destination and source trees have an 
+identical structure. They are intended to be used when a copy has been
+manipulated in some way and the change needs to be applied to the original:
+
+   dj_tree_32to16(tree32, tree16);
+   some_manipulation(tree16);
+   dj_tree_16to32s(tree16, tree32);
+
+  Bitmap transformation functions
+  ===============================
+
+  LONG dj_mfdb_size32(MFDB *fdb);
+  LONG dj_mfdb_size16(LPWORD mfdb);
+
+    These functions will calculate the amount of memory occupied by an
+  MFDB and its accompanying bitmap data.
+
+  LPMFDB dj_mfdb_32to16(MFDB  *mfdb,   LPMFDB *dest);
+  MFDB  *dj_mfdb_16to32(LPMFDB mfdb16, BYTE  **dest);
+
+    Move an MFDB and its data between GEM memory and DJGPP memory. This
+  should only be done with relatively small images (such as those in colour
+  icons); large MFDBs should be handled by the bitmap functions above.
+
+ typedef void (*MFUNC)(LPMFDB mfsrc, LPMFDB mfdst, int sy, int dy, int sh,
+                       int dh, void *lParam);
+  void mfdb_2ops(MFDB *src, MFDB *dst, MFUNC cpyfunc, void *lParam);
+
+    mfdb_2ops() is the underlying engine behind the three bitmap functions
+  listed above. It takes two MFDBs in 32-bit space, a bitmap copy function,
+  and an arbitrary parameter to pass to the copy function. The bitmaps will be
+  split up into small (32k or 64k) slices, and the copy function will be
+  called on each possible pair of slices. For example, when copying from one
+  640x480 bitmap to another:
+
+  - A 32k slice will hold 102 lines. Therefore each bitmap will be split
+   into five sections: four of 102 lines, and the last of 72 lines.
+
+  - The following 25 calls will be made:
+      (*cpyfunc)(src, dst,   0,   0, 102, 102, lParam);
+      (*cpyfunc)(src, dst,   0, 102, 102, 102, lParam);
+      (*cpyfunc)(src, dst,   0, 204, 102, 102, lParam);
+      (*cpyfunc)(src, dst,   0, 306, 102, 102, lParam);
+      (*cpyfunc)(src, dst,   0, 408, 102,  72, lParam);
+      (*cpyfunc)(src, dst, 102,   0, 102, 102, lParam);
+      (*cpyfunc)(src, dst, 102, 102, 102, 102, lParam);
+      (*cpyfunc)(src, dst, 102, 204, 102, 102, lParam);
+
+      /* ... in the interests of space, some *
+       *     calls have been omitted ...     */
+
+      (*cpyfunc)(src, dst, 408, 204,  72, 102, lParam);
+      (*cpyfunc)(src, dst, 408, 306,  72, 102, lParam);
+      (*cpyfunc)(src, dst, 408, 408,  72,  72, lParam);
+
+   where "src" and "dst" will be 16-bit MFDBs for the slices in question.
+   If "src" or "dst" represents memory, then valid coordinates within it
+   start at 0; if it represents the screen, valid coordinates start at
+   "sy"/"dy". All in all, mfdb_2ops() is a complicated function and there
+   shouldn't be any need for you to deal with it.
+

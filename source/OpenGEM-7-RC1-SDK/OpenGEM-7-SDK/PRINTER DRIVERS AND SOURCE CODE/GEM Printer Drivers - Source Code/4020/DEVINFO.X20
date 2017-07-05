@@ -1,0 +1,11 @@
+; Short name must be 13 chars long, long name 81 chars, both NULL terminated
+
+		db	'zyxg'
+vp_port		db	0
+		db	'Xerox 4020'
+		db	0,0,0
+		db	'Xerox 4020 Color Ink Jet (120 x 240 dots/inch)'
+		db	' 8 Color'
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0
+		end

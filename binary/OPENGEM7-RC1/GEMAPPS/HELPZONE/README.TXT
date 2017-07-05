@@ -1,6 +1,6 @@
-OpenGEM Release 6, a FreeGEM distribution.
-14th July 2006
-Copyright (C) 2001, 2006  Opendawn
+OpenGEM Release 7, a FreeGEM distribution.
+5th July 2017
+Copyright (C) 2001-2017  Opendawn (Shane Coughlan)
 ======================================================
 This is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -29,15 +29,14 @@ Its features include:
 - HP Deskjet and Postscript printing support
 - DOS international code page support
 
-All of the advanced code for this distribution comes from
+Much of the advanced code for this distribution comes from
 John Elliott.  Thank you for your hard work on FreeGEM!
 
-John Hupp has tested and merged the HP Deskjet support into 
-OpenGEM.  Without John's help this release would not have been
-possible.  Thanks!
+John Hupp tested and merged the HP Deskjet support into 
+OpenGEM.  
 
 Thanks are also due to the entire FreeGEM Team, and all of 
-the users who contribue comments, ideas and report bugs.
+the users who contribute comments, ideas and report bugs.
 
 
 ======================================================
@@ -58,7 +57,7 @@ IMPORTANT: Please see LICENSE.TXT before using this software.
 MINIMUM SYSTEM REQUIREMENTS
 ======================================================
 
-- FreeDOS Beta 9 or DOS 3.3
+- FreeDOS 1.0 or DOS 3.3
 - A 086 or better processor
 - 512kb total memory
 - VGA video card
@@ -71,7 +70,7 @@ MINIMUM SYSTEM REQUIREMENTS
 RECOMMENDED SYSTEM REQUIREMENTS
 ======================================================
 
-- FreeDOS 1.0 or DOS 5.0 or higher
+- FreeDOS 1.1 or DOS 5.0 or higher
 - A 386 or better processor
 - 640kb total memory
 - VGA or better video card
@@ -85,8 +84,7 @@ KNOWN ISSUES
 ======================================================
 
 PLEASE NOTE: It is not recommended to use OpenGEM on systems
-running Windows2000 or XP.  The DOS emulation on these systems 
-causes crashes with the GEM software.
+running Windows2000 or XP.  
 
                  * OpenGEM may hang when running on Win2000
                  * OpenGEM may fail to exit when running on Win2000
@@ -97,20 +95,20 @@ causes crashes with the GEM software.
                  * OpenGEM may freeze if you click the image in the
                    "About" box of the desktop
 
-If you discover an issue with OpenGEM please report it by emailing us at
-info@opendawn.com
+If you discover an issue with OpenGEM please report it 
+on GitHub at:
+https://github.com/shanecoughlan/OpenGEM
 
 
 ======================================================
 VERSION HISTORY
 ======================================================
 
+OpenGEM Release 7 RC 1 - 5th July 2017
+ - Rolled back to FreeGEM stable VDI, Desktop
+ - Updated some documentation
+
 OpenGEM Release 6 - 14th July 2006
- - Support for HP Deskjet printers
- - SUpport for DOS international code pages
- - Revamped update and install system
- - Improved support for DR DOS
- - Updated documentation
 
 OpenGEM Release 6 Development 2 - 13th March 2006
 

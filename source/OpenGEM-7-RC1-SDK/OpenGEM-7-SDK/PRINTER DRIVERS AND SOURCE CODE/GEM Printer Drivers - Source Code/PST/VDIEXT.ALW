@@ -1,0 +1,128 @@
+/*		VDIEXT.ALW	11/17/86 - 3/30/87	J. Grant	*/
+
+#define	FONTMAP		struct font_map
+#define	IMAGEDEF	struct image_def
+
+
+FONTMAP
+{
+	WORD		face;
+	WORD		attr;
+	BYTE		*file;
+	BYTE		*name;
+};
+
+IMAGEDEF
+{
+	WORD		clip_xl;
+	WORD		clip_xr;
+	WORD		clip_yb;
+	WORD		clip_yt;
+	WORD		handle;
+	WORD		pat_bytes;
+	WORD		pix_height;
+	WORD		pix_width;
+	WORD		pos;
+	WORD		remain;
+	WORD		height;
+	WORD		width;
+	WORD		s_planes;
+	WORD		xl;
+	WORD		xr;
+	WORD		yb;
+	WORD		yt;
+	WORD		rotate;   /* Image rotation angle in 1/10's degrees */
+	WORD		srcxsize; /* Image x size after rotation */
+	WORD		srcysize; /* Image y size after rotation */
+	WORD		srcxpix;  /* Image x pixel size after rotation */
+	WORD		srcypix;  /* Image y pixel size after rotation */
+	BYTE		flags;
+	BYTE		buf[IMAGE_SIZE];
+};
+
+
+EXTERN	BOOLEAN		abort;
+EXTERN	BOOLEAN		flip_y;
+EXTERN	BOOLEAN		g_endpre;
+EXTERN	BOOLEAN		g_fontset;
+EXTERN	BOOLEAN		g_fstimg;
+EXTERN	BOOLEAN		g_outeof;
+EXTERN	BOOLEAN		pending;
+
+EXTERN	WORD		dev_color;
+EXTERN	WORD		dev_t_color;
+EXTERN	WORD		dev_t_face;
+EXTERN	WORD		dev_t_h_align;
+EXTERN	WORD		dev_t_rotation;
+EXTERN	WORD		dev_t_xscale;
+EXTERN	WORD		dev_t_yscale;
+EXTERN	WORD		dev_t_under;
+EXTERN	WORD		dev_t_v_align;
+EXTERN	WORD		d_clip;
+EXTERN	WORD		g_copies;
+EXTERN	WORD		g_ffmax;
+EXTERN	WORD		g_fftype;
+EXTERN	WORD		g_maxface;
+EXTERN	WORD		g_mode;
+EXTERN	WORD		g_orient;
+EXTERN	WORD		g_pages;
+EXTERN	WORD		g_squeez;
+EXTERN	WORD		g_tray;
+EXTERN	WORD		g_x1clip;
+EXTERN	WORD		g_x2clip;
+EXTERN	WORD		g_y1clip;
+EXTERN	WORD		g_y2clip;
+EXTERN	WORD		high_x;
+EXTERN	WORD		high_y;
+EXTERN	WORD		io_type;
+EXTERN	WORD		low_x;
+EXTERN	WORD		low_y;
+EXTERN	WORD		marg_xl;
+EXTERN	WORD		marg_xr;
+EXTERN	WORD		marg_yt;
+EXTERN	WORD		marg_yb;
+EXTERN	WORD		y_max;
+
+EXTERN	BYTE		g_devfix;
+EXTERN	BYTE		io_port;
+
+EXTERN	WORD		contrl[];
+EXTERN	WORD		cur_attr[];
+EXTERN	WORD		dev_tab[];
+EXTERN	WORD		inq_pts[];
+EXTERN	WORD		inq_tab[];
+EXTERN	WORD		intin[];
+EXTERN	WORD		intout[];
+EXTERN	WORD		ptsin[];
+EXTERN	WORD		ptsout[];
+EXTERN	WORD		siz_tab[];
+
+EXTERN	BOOLEAN		pat_down[];
+
+EXTERN	BYTE		attr_index[];
+EXTERN	BYTE		filbuf[];
+EXTERN	BYTE		g_dta[];
+EXTERN	BYTE		g_fnames[];
+EXTERN	BYTE		g_psfont[];
+EXTERN	BYTE		init1[];
+EXTERN	BYTE		init2[];
+EXTERN	BYTE		io_fname[];
+EXTERN	BYTE		user_fill[];
+EXTERN	BYTE		user_line[];
+
+EXTERN	WORD		page_tab[][2];
+
+EXTERN	BYTE		*line_types[];
+EXTERN	BYTE		*pat_def[];
+EXTERN	VOID		(*low_table[])();
+EXTERN	VOID		(*high_table[])();
+
+EXTERN	IMAGEDEF	image;
+EXTERN	FONTMAP		font_map[];
+
+EXTERN	WORD		range();
+EXTERN	LONG		f_seek();
+EXTERN	BYTE		*asc2num();
+EXTERN	BYTE		*i_ds();
+EXTERN	BYTE		*i_hs();
+EXTERN	BYTE		*s_scan();

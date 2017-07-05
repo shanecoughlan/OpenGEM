@@ -1,0 +1,28 @@
+;****************************************************************
+;*		HP LaserJet+ 150 x 150 dpi Printer		*
+;****************************************************************
+FALSE		equ	0
+TRUE		equ	not FALSE
+
+CONTRL_SIZE	equ	11
+INTIN_SIZE	equ	128
+PTSIN_SIZE	equ	256
+INTOUT_SIZE	equ	45
+PTSOUT_SIZE	equ	12
+
+RES_XMX		equ	1199			; maximum resolution in x
+RES_YMX		equ	1949			; maximum resolution in y
+XSIZE		equ	169			; x pixel size in microns
+YSIZE		equ	169			; y pixel size in microns
+XDPI		equ	150			; x dots per inch
+YDPI		equ	150			; y dots per inch
+DOTUNITS	equ	2			; extended dot size units
+XTDXSIZE	equ	16933			; 169.33 microns
+XTDYSIZE	equ	16933			; 169.33 microns
+BYTE_SWAP	equ	FALSE			; IBM PC format
+
+G_SL_HGT	equ	1			; graphics slice height
+A_SL_HGT	equ	25			; alpha text slice height
+NUM_PLANES	equ	1			; number of planes
+
+QUART_INCH	equ	37			; # dots in 1/4 inch

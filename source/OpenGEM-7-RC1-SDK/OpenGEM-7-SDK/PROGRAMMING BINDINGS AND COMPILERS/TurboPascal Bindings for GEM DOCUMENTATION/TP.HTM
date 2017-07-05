@@ -1,0 +1,1787 @@
+<title>Programming tips for TP with GEMBIND</title>
+<br>
+<H1 ALIGN="CENTER">Programming tips for Turbo Pascal</H1>
+<H1 ALIGN="CENTER">when using GEMBIND</H1>
+<H5 ALIGN="CENTER">written by Heinz Rath</H1><HR>
+
+<PRE><strong>
+First one information that is missing in the original documentation don't include crt!
+Because when the unit crt is included Turbo Pascal switches to Textmode when starting.
+The informations in this document i have found out threw looking into the source of GEMBIND
+and threw reading the AES and VDI documentation from John Eliott</strong>
+<BR>
+<strong>And dont forget to rename the exe to app!</strong><BR>
+GEMBIND was originaly written by Jan Willamowius.
+Wind_Calc was added by Ben A L Jemmett
+<H4>This document is still under construction</H4>
+<HR>
+<H3>This is a inclomplete list of GEMBIND pascal calls and the original C calls</H3>
+
+</PRE>
+<table border="1" cellspacing="1" cellpadding="2">
+ <tr>
+  <td valign="top"><strong>Turbo Pascal</strong></td>
+  <td valign="top" align="left" nowrap><strong> C </strong></td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Init_Gem</td>
+  <td valign="top" align="left">appl_init</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Exit_Gem</td>
+  <td valign="top" align="left">appl_exit</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Load_Resource</td>
+  <td valign="top" align="left">rsrc_load</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Begin_Update</td>
+  <td valign="top" align="left">wind_update(BEG_UPDATE)</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>End_Update</td>
+  <td valign="top" align="left">wind_update(END_UPDATE)</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Set_WName</td>
+  <td valign="top" align="left">wind_set(handle,WF_NAME,...);</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Set_WInfo</td>
+  <td valign="top" align="left">wind_set(handle,WF_INFO,...);</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Init_Mouse</td>
+  <td valign="top" align="left">v_show_c(handle,0);</td>
+ </tr>
+ <TR>
+  <td valign="top" nowrap>Do_Alert</td>
+  <td valign="top" align="left">show_alert(defbutton,text);</td>
+</tr><TR>
+  <td valign="top" nowrap>Free_Resource</td>
+  <td valign="top" align="left">rsrc_free();</td>
+</tr><TR>
+  <td valign="top" nowrap>Wind_Set</td>
+  <td valign="top" align="left">wind_set(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Wind_Get</td>
+  <td valign="top" align="left">wind_get(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Get_Event</td>
+  <td valign="top" align="left">evnt_multi(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Get_In_File</td>
+  <td valign="top" align="left">fsel_input(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Get_Out_File</td>
+  <td valign="top" align="left">Not exisiting under C is a own Dialog of GEMBIND</td>
+</tr><TR>
+  <td valign="top" nowrap>Open_Window</td>
+  <td valign="top" align="left">wind_open(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>New_Window</td>
+  <td valign="top" align="left">wind_create(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Find_Menu</td>
+  <td valign="top" align="left">rsrc_gaddr(R_TREE,resource number,menuhandle)</td>
+</tr><TR>
+  <td valign="top" nowrap>Draw_Menu</td>
+  <td valign="top" align="left">menu_bar(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Erase_Menu</td>
+  <td valign="top" align="left">menu_bar(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Front_Window</td>
+  <td valign="top" align="left">wind_get(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Set_Window</td>
+  <td valign="top" align="left">wind_set(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>Line_Color</td>
+  <td valign="top" align="left">vsl_color(...);</td>
+</tr><TR>
+  <td valign="top" nowrap>AES_VERSION</td>
+  <td valign="top" align="left">not existing in C</td>
+</tr><TR>
+  <td valign="top" nowrap>GEM_Installed</td>
+  <td valign="top" align="left">aescheck();</td>
+</tr><TR>
+  <td valign="top" nowrap>Set_Mouse</td>
+  <td valign="top" align="left">graf_mouse</td>
+</tr><TR>
+  <td valign="top" nowrap>Get_Ex_In_File</td>
+  <td valign="top" align="left">fsel_ex_input();  <B>Is only included when compiling for ATARI</B></td>
+</tr><TR>
+  <td valign="top" nowrap>Load_Fonts</td>
+  <td valign="top" align="left">vst_load_fonts</td>
+</tr><TR>
+  <td valign="top" nowrap>Unload_Fonts</td>
+  <td valign="top" align="left">vst_unloads_fonts</td>
+</tr><TR>
+  <td valign="top" nowrap>Set_Font</td>
+  <td valign="top" align="left">vst_font</td>
+</TR><TR>
+  <td valign="top" nowrap>Mouse_Position</td>
+  <td valign="top" align="left">Not exisiting C</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Move_To</td>
+  <td valign="top" align="left">Not exisiting C</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Line_To</td>
+  <td valign="top" align="left">Not exisiting C</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Hide_Mouse</td>
+  <td valign="top" align="left">Not exisiting C</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Show_Mouse</td>
+  <td valign="top" align="left">Not exisiting C</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Bring_To_Front</td>
+  <td valign="top" align="left">Not exisiting C</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Alpha_Text</td>
+  <td valign="top" align="left">v_alpha_text</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Form_Advance</td>
+  <td valign="top" align="left">v_form_adv</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Get_Window</td>
+  <td valign="top" align="left">Not exisiting C</td>
+</TR>
+<TR>
+  <td valign="top" nowrap>Draw_Mode</td>
+  <td valign="top" align="left">vswr_mode</td>
+</TR>
+</table><PRE><BR>
+<B>Commands where on the C side stands not existing means not that it is
+impossible to make such things in C. This only means that inside of GEMBIND
+when the command is called there are other commands used to make the effect
+you wanted</B>
+
+<HR><BR>
+<H3>Functions not exisiting in GEMBIND but exisiting in C</H3><HR><I>
+
+appl_init(X_BUF_V2); The advanced version of appl_init that is used in FreeGEM is not
+                     available under GEMBIND.
+fsel_ex_input();     Is implemented but outdefined when not running on Atari
+v_bez_on             Bezier routines are missing because they are not existing
+v_bez_off            on Atari
+v_bezfill
+v_bez_qual
+All XM/GEM commands  
+All EMSLIB commands  At the end of this document there you find the source
+                     to implement this functions to GEMBIND.
+All DOSLIB commands  
+scrp_read            At the end of this document there you find the source
+scrp_write           to implement this functions to GEMBIND.
+scrp_clear
+wind_calc
+shel_write           On the ATARI the equal command has a other name
+All WA_... constants are missing on the end of this file the are documented
+ALL SCRAP_... constants are missing on the end of this file the are documented
+</I><BR>
+<HR><BR>
+<H3>Different named constans</H3>
+
+</PRE>
+<table border="1" cellspacing="1" cellpadding="2">
+ <tr>
+  <td valign="top"><strong>Turbo Pascal</strong></td>
+  <td valign="top" align="left" nowrap><strong> C </strong></td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>E_Keyboard</td>
+  <td valign="top" align="left">MU_KEYBD</td>
+ </tr>
+  <tr>
+  <td valign="top" nowrap>E_Button</TD>
+  <td valign="top" align="left">MU_BUTTON</TD>
+  </tr><tr>
+  <td valign="top" nowrap>E_Mouse1</TD>
+  <td valign="top" align="left">MU_M1</TD>
+  </tr><tr>
+  <td valign="top" nowrap>E_Mouse2</TD>
+  <td valign="top" align="left">MU_M2</TD>
+  </tr><tr>
+  <td valign="top" nowrap>E_Message</TD>
+  <td valign="top" align="left">MU_MESAG</TD>
+  </tr><tr>
+  <td valign="top" nowrap>E_Timer</TD>
+  <td valign="top" align="left">MU_TIMER</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_Name</TD>
+  <td valign="top" align="left">NAME</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_Close</TD>
+  <td valign="top" align="left">CLOSER</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_Full</TD>
+  <td valign="top" align="left">FULLER</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_Move</TD>
+  <td valign="top" align="left">MOVER</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_Info</TD>
+  <td valign="top" align="left">INFO</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_Size</TD>
+  <td valign="top" align="left">SIZER</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_UpArrow</TD>
+  <td valign="top" align="left">UPARROW</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_DnArrow</TD>
+  <td valign="top" align="left">DNARROW</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_VSlide</TD>
+  <td valign="top" align="left">VSLIDE</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_LArrow</TD>
+  <td valign="top" align="left">LFARROW</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_RArrow</TD>
+  <td valign="top" align="left">RTARROW</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_HSlide</TD>
+  <td valign="top" align="left">HSLIDE</TD>
+  </tr><tr>
+  <td valign="top" nowrap>G_All</TD>
+  <td valign="top" align="left">Does not exist in C but you can write 256</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_White</TD>
+  <td valign="top" align="left">DWHITE</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_Black</TD>
+  <td valign="top" align="left">DBLACK</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_Red</TD>
+  <td valign="top" align="left">DRED</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_Green</TD>
+  <td valign="top" align="left">DGREEN</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_Blue</TD>
+  <td valign="top" align="left">DBLUE</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_Cyan</TD>
+  <td valign="top" align="left">DCYAN</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_Yellow</TD>
+  <td valign="top" align="left">DYELLOW</TD>
+  </tr><tr>
+  <td valign="top" nowrap>L_Magenta</TD>
+  <td valign="top" align="left">DMAGENTA</TD>
+  </tr><tr>
+  <td valign="top" nowrap>GEM_Object</TD>
+  <td valign="top" align="left">Object</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Solid</TD>
+  <td valign="top" align="left">SOLID</TD>
+  </tr><tr>
+  <td valign="top" nowrap>LongDash</TD>
+  <td valign="top" align="left">LONGDASH</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Dotted</TD>
+  <td valign="top" align="left">DOT</TD>
+  </tr><tr>
+  <td valign="top" nowrap>DashDot</TD>
+  <td valign="top" align="left">DASHDOT</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Dashed</TD>
+  <td valign="top" align="left">DAST</TD>
+  </tr><tr>
+  <td valign="top" nowrap>DashDotDot</TD>
+  <td valign="top" align="left">DASH2DOT</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Normal</TD>
+  <td valign="top" align="left">TXT_NORMAL</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Thickened</TD>
+  <td valign="top" align="left">TXT_THICKENED</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Lightened</TD>
+  <td valign="top" align="left">TXT_LIGHT</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Slanted</TD>
+  <td valign="top" align="left">TXT_SKEWED</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Underlined</TD>
+  <td valign="top" align="left">TXT_UNDERLINED</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Outlined</TD>
+  <td valign="top" align="left">TXT_OUTLINED</TD>
+  </tr><tr>
+  <td valign="top" nowrap>Shadowed</TD>
+  <td valign="top" align="left">TXT_SHADOWED</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Arrow</TD>
+  <td valign="top" align="left">ARROW</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Text_Curs</TD>
+  <td valign="top" align="left">TEXT_CRSR</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Bee</TD>
+  <td valign="top" align="left">HOURGLASS</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Point_Hand</TD>
+  <td valign="top" align="left">POINT_HAND</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Flat_Hand</TD>
+  <td valign="top" align="left">FLAT_HAND</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Thin_Cross</TD>
+  <td valign="top" align="left">THIN_CROSS</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Thick_Cross</TD>
+  <td valign="top" align="left">THICK_CROSS</TD>
+  </tr><tr>
+  <td valign="top" nowrap>M_Outln_Cross</TD>
+  <td valign="top" align="left">OUTLN_CROSS</TD>
+  </tr>
+</table>
+<PRE>
+<BR>
+
+
+
+<HR><BR>
+<H3>Messages from AES</H3><HR>
+</PRE>
+<table border="1" cellspacing="1" cellpadding="2">
+ <tr>
+  <td valign="top"><strong>Message</strong></td>
+  <td valign="top" align="left" nowrap><strong>Description</strong></td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap><B>WM_REDRAW</B></td>
+  <td valign="top" align="left">Is sent when the window has to be repainted</td>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_TOPPED</B></TD>
+  <td valign="top" align="left">Is sent when the window is the activated one.</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_FULLED</B></TD>
+  <td valign="top" align="left">Is sent when the maximize button is pressed</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_CLOSED</B></TD>
+  <td valign="top" align="left">Is sent when the close button is pressed</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_ARROWED</B></TD>
+  <td valign="top" align="left">Is sent when a scroll arror or the scrollbar is pressed.</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_UNTOPPED</B></TD>
+  <td valign="top" align="left">Is sent when a window is not longer to topmost.</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_MOVED</B></TD>
+  <td valign="top" align="left">Is sent when a window is moved</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_SIZED</B></TD>
+  <td valign="top" align="left">Is sent when a window is resized</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_HSLID</B></TD>
+  <td valign="top" align="left">Is sent when the horizontal scrollbar is used</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>WM_VSLID</B></TD>
+  <td valign="top" align="left">Is sent when the vertical scrollbar is used</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>AC_OPEN</B></TD>
+  <td valign="top" align="left">Is sent when a ACC is activated</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>AC_CLOSE</B></TD>
+  <td valign="top" align="left">Is sent when a ACC is deactivated</TD>
+</TR><TR>
+  <td valign="top" nowrap><B>MN_SELECTED</B></TD>
+  <td valign="top" align="left">Is sent when a menu item is selected</TD>
+</TR>
+</table><PRE>
+
+<HR><BR>
+<H3>Description of Turbo Pascal GEMBIND commands</H3><HR>
+
+<BR>
+<B>Function Init_GEM: Integer;</B>
+If the function fails it returns a number <0 else it contains the application ID
+The application ID is only needed when writing Desktop Accessories (ACC).
+
+<HR>
+<B>Procedure Exit_GEM;</B>
+Frees all AES resources used by the program should be called at the end.
+
+<HR>
+<B>Procedure Init_Mouse;</B>
+Switches the mouse on. This call is normally not needed on PC-GEM
+
+<HR>
+<B>Function Load_Resource(Name: String): Boolean;</B>
+Loads the resource file returns FALSE if it fails otherwise TRUE.
+
+<HR>
+<B>Procedure Free_Resource;</B>
+Gives the loaded resource free.
+
+<HR>
+<B>Function Get_Event(emask, bmask, bstate, n_clicks : Integer;
+                   ticks : LongInt;
+                   m1_flag : Boolean; m1x, m1y, m1w, m1h : Integer;
+                   m2_flag : Boolean; m2x, m2y, m2w, m2h : Integer;
+                   Var message : Message_Buffer;
+                   Var key, brtn, bclick, mx, my, kstate : Integer): Integer;</B>
+
+In emask you set the event flags E_Button,E_Mouse1,E_Keyboard and so ...
+</PRE>
+<table border="1" cellspacing="1" cellpadding="2">
+ <tr>
+  <td valign="top"><strong>Variable</strong></td>
+  <td valign="top" align="left" nowrap><strong>For what </strong></td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>Message</td>
+  <td valign="top" align="left">Message Buffer</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>M1_Flag</td>
+  <td valign="top" align="left">Mouse rectangle 1 flag</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>M2_Flag</td>
+  <td valign="top" align="left">Mouse rectangle 2 flag</td>
+ </tr>
+  <td valign="top" nowrap>m1x</td>
+  <td valign="top" align="left">X Position for mouse rectangle 1</td>
+</tr><TR>
+  <td valign="top" nowrap>m1y</td>
+  <td valign="top" align="left">Y Position for mouse rectangle 1</td>
+</tr><TR>
+  <td valign="top" nowrap>m1w</td>
+  <td valign="top" align="left">Wide for mouse rectangle 1</td>
+</tr><TR>
+  <td valign="top" nowrap>m1h</td>
+  <td valign="top" align="left">Height for mouse rectangle 1</td>
+</tr><TR>
+  <td valign="top" nowrap>m2x</td>
+  <td valign="top" align="left">X Position for mouse rectangle 2</td>
+</tr><TR>
+  <td valign="top" nowrap>m2y</td>
+  <td valign="top" align="left">Y Position for mouse rectangle 2</td>
+</tr><TR>
+  <td valign="top" nowrap>m2w</td>
+  <td valign="top" align="left">Wide for mouse rectangle 2</td>
+</tr><TR>
+  <td valign="top" nowrap>m2h</td>
+  <td valign="top" align="left">Height for mouse rectangle 2</td>
+</tr><TR>
+  <td valign="top" nowrap>mx</td>
+  <td valign="top" align="left">X position of mouse</td>
+</tr><TR>
+  <td valign="top" nowrap>my</td>
+  <td valign="top" align="left">Y position of mouse</td>
+</tr><TR>
+  <td valign="top" nowrap>bclick</td>
+  <td valign="top" align="left">mousebutton</td>
+</table><PRE>
+
+<HR>
+<B>Function Get_In_File(Var Path, Name : Path_Name) : Boolean;</B>
+Displays a File select box
+<IMG SRC="fsel2.jpg">
+Normal GEM file select box
+
+<HR>
+<B>Function Get_Out_File(Prompt: Str255; Var Name: Path_Name): Boolean;</B>
+Displays a File select box for saveing is a self drawed Dialog
+<IMG SRC="fsel.jpg">
+On this screenshot the prompt is TEST.PAS
+
+<HR>
+<B>Procedure Set_WName(Handle : Integer; Var Name : Window_Title);</B>
+Sets the window title of the window specified threw the handle
+
+<HR>
+<B>Procedure Set_Winfo(Handle : Integer; Var info : Window_Title);</B>
+Sets the info line of the window specified threw the handle
+
+<HR>
+<B>Procedure Find_Menu(Index: Integer; Var Menu: Menu_Ptr);</B>
+Sets the Menu pointer to menu inside of the resource specified threw the index.
+
+<HR>
+<B>Procedure Draw_Menu(Menu : Menu_Ptr);</B>
+Shows the menu specified threw menu. First the menu has to be found with
+Find_Menu
+
+<HR>
+<B>Procedure Erase_Menu(Menu : Menu_Ptr);</B>
+Removes the menu bar
+
+<HR>
+<B>Function Do_Alert(Maske: Str255; Btn: Integer): Integer;</B>
+Shows a alert window
+Btn is the default button when showing the window 1-3 of button or 0 for none
+Maske is the message which contains 3 parts
+[n][text][but]
+n - Is the Icon number  0 - none 1 - warning 2 - question 3 - stop
+text - is the text that should appear if you need more than one line make |
+       all after this is written into the next line
+but  - is the text of the button if you want to have more than 1 button
+       write for example [Ok|Cancel] or [Load|Save|Cancel]
+The function returns the number of the button that was pressed
+
+<B>This are the original GEM/3 icons if you use a modified version there maybe other icons</B>
+<I>Warning Icon    Question Icon     Stop Icon</I>
+   <IMG src="i.jpg">            <IMG src="q.jpg">              <IMG src="s.jpg"><BR>
+
+<HR>
+<B>Function New_Window(w_type : Integer; Var Title : Window_Title;
+                       x_max, y_max, w_max, h_max : Integer): Integer;</B>
+Creates a window w_type are the flags, title is the title of the window,...
+Returns a handle to the window
+<B>Possible Flags</B>
+<I>G_Name, G_Close, G_Full, G_Move, G_Info, G_Size, G_UpArrow, G_DnArrow, G_VSlide, G_LArrow,
+G_RArrow, G_HSlide, G_All </I>               
+
+<IMG src="scr.jpg">
+
+<HR>
+<B>procedure Open_window (Handle: Integer;x,y,w,h: Integer);</B>
+Opens the window specified threw handle at x,y with a width of w and height of h.
+Before a window can be opened it must be created with New_Window
+<HR>
+<B>function Front_Window: Integer;</B>
+Returns the handle of the topmost window or 0 if no window is open
+
+<HR>
+<B>procedure Set_Window (Handle: Integer);</B>
+Sets the window specified threw handle to be the topmose one.
+
+<HR>
+<B>procedure Line_Color(color_index: Integer);</B>
+Sets the color for line drawing
+
+<HR>
+<B>Function GEM_Installed : Boolean;</B>
+Checks if the AES is in memory. Returns TRUE when the AES is is memory.
+
+<HR>
+<B>Function AES_Version: Integer;</B>
+Returns the version number of the AES.
+
+<HR>
+<B>Procedure Close_Window(Handle : Integer);</B>
+Closes the Window. The window can be reopened. Handle is not given free.
+
+<HR>
+<B>Procedure Delete_Window(Handle : Integer);</B>
+Window is destroyed the handle is given free.
+
+<HR>
+<B>Procedure Plot(x, y: Integer);</B>
+Sets a  pixel at position x,y. Color is the actual line drawing color.
+
+<HR>
+<B>Procedure Pline(x1, y1, x2, y2: Integer);</B>
+Draws a line from X1,Y1 to X2,Y2
+
+<HR>
+<B>Procedure Menu_Check(Menu : Menu_Ptr; Item : Tree_Index; Checked : Boolean);</B>
+Marks menu item as checked or unchecked.
+
+<HR>
+<B>Procedure Set_Mouse(M_Type : Mouse_Type);</B>
+Sets the Mouse cursor type<BR>
+<B>This are the original GEM/3 icons if you use a modified version there maybe other icons
+On the Atari GEM there is no hourglass there it is a Bee instead.</B>
+
+<I>M_Arrow         M_Text_Curs          M_Bee                M_Point_Hand       </I>
+<IMG src="m1.jpg">              <img src="m2.jpg">                   <img src="m3.jpg">                   <img src="m4.jpg">
+
+<I>M_Flat_Hand     M_Thin_Cross         M_Thick_Cross        M_Outln_Cross</I>
+<IMG src="m5.jpg">              <img src="m6.jpg">                   <img src="m7.jpg">                  <img src="m8.jpg">
+
+<HR>
+<B>Procedure Set_MForm(Var Form : Mouse_Form);</B>
+Sets the mouse cursor to a user defined form.
+
+<HR>
+<B>Function Load_Fonts: Integer;</B>
+Returns the number of loaded fonts
+
+<HR>
+<B>Procedure Unload_Fonts;</B>
+? Unloads fonts ?
+
+<HR>
+<B>Procedure Clear_Screen;</B>
+Clears the complete screen with Color White
+
+<HR>
+<B>Procedure Begin_Update;</B>
+Locks the screen so the AES can't draw on the screen.
+
+<HR>
+<B>Procedure End_Update;</B>
+UnLocks the screen so the AES can draw on the screen.
+
+<HR>
+<B>Procedure Set_Font(Font : Integer);</B>
+Selects the font to use.
+Font can be Small_Font or System_Font.
+Small_Font is the 6x6 sized font
+System_Font is the normal font (on VGA 8x16)
+
+<HR>
+<B>Procedure Mouse_Position(x, y: Integer);</B>
+Sets the mouse to position x,y
+
+<HR>
+<B>Procedure Wind_Get(Handle, request : Integer; Var v1, v2, v3, v4 : Integer);</B>
+
+Handle - Handle of window
+request - one of the following flags
+v1,v2,v3,v4 - Results
+</PRE>
+<table border="1" cellspacing="1" cellpadding="2">
+ <tr>
+  <td valign="top"><strong>Flag</strong></td>
+  <td valign="top" align="left" nowrap><strong>For what </strong></td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_WorkXYWH</td>
+  <td valign="top" align="left">The area that can be drawen</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_CurrXYWH</td>
+  <td valign="top" align="left">The current size of the window</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_PrevXYWH</td>
+  <td valign="top" align="left">Previous size or position of window</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_FullXYWH</td>
+  <td valign="top" align="left">Full window size or position</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_NextXYWH</td>
+  <td valign="top" align="left">Next region that must be redrawn</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_HSlide</td>
+  <td valign="top" align="left">Position of horizontal slider</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_VSlide</td>
+  <td valign="top" align="left">Position of vertical slider</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_HSlsize</td>
+  <td valign="top" align="left">Size of horizontal thumb</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_VSlsize</td>
+  <td valign="top" align="left">Size of vertical thumb</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_Top</td>
+  <td valign="top" align="left">Handle of topmost window</td>
+ </tr>
+</table>
+
+<PRE>
+<HR>
+<B>Procedure Wind_Calc(CalcType, WinType : Integer; Var x, y, w, h : Integer);</B>
+{ BALJ - 20000604 - Wind_Calc routine seemed to be missing }
+
+
+<HR>
+<B>Procedure Wind_Set(Handle, Request : Integer; v1, v2, v3, v4 : Integer);</B>
+request - one of the following flags 
+v1,v2,v3,v4 - Parameters to be set
+</PRE>
+<table border="1" cellspacing="1" cellpadding="2">
+ <tr>
+  <td valign="top"><strong>Flag</strong></td>
+  <td valign="top" align="left" nowrap><strong>For what </strong></td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_CurrXYWH</td>
+  <td valign="top" align="left">Sets the size of the window</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_Name</td>
+  <td valign="top" align="left">Sets the title of a window</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_Info</td>
+  <td valign="top" align="left">Sets the status text of a window</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_HSlide</td>
+  <td valign="top" align="left">Sets position of horizontal slider</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_VSlide</td>
+  <td valign="top" align="left">Sets position of vertical slider</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_HSlsize</td>
+  <td valign="top" align="left">Sets size of horizontal thumb</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_VSlsize</td>
+  <td valign="top" align="left">Sets size of vertical thumb</td>
+ </tr>
+ <tr>
+  <td valign="top" nowrap>WF_Top</td>
+  <td valign="top" align="left">Handle of window to be topmost</td>
+ </tr>
+</table>
+<PRE>
+
+<HR>
+<B>Function Open_Workstation(Id, Mode, Size: Integer): Integer;</B>
+Opens a Workstation and returns a handle to it.
+Id - specifies the driver type and can be one of the following
+<I>   1 -  9 Screen
+   11 - 19 Plotter
+   21 - 29 Printer
+   32 - 39 GKS metafile</I>
+Mode - Is Mode
+<I>     1 - NDC
+     2 - Pixel</I>
+
+<HR>
+<B>Procedure Close_Workstation;</B>
+Closes the workstation
+
+<HR>
+<B>Procedure Clear_Workstation;</B>
+Clears the current picture in the buffer
+
+<HR>
+<B>Procedure Update_Workstation;</B>
+Reprints everything to be sure evenrything is shown.
+
+<HR>
+<B>Procedure Form_Advance;</B>
+Throws a page on a printer device
+
+<HR>
+<B>Procedure Alpha_Text(t: Str255);</B>
+Sends the text t to the printer
+
+
+<HR>
+<B>Procedure Hide_Mouse;</B>
+Turns Mouse Pointer off
+
+<HR>
+<B>Procedure Show_Mouse;</B>
+Turns Mouse Pointer on
+
+<HR>
+<B>Procedure Find_Dialog(Index: Integer; Var Dial: Dialog_Ptr);</B>
+Sets the Dialog_Ptr Dial to the Dialog with index Index
+
+<HR>
+<B>Procedure Find_Alert(Index: Integer; Var Alert: Str255);</B>
+
+<HR>
+<B>Function Find_Resource(R_Type, R_Index: Integer): Tree_Ptr;</B>
+Returns a Tree_Ptr to the rescoure from type R_Type with index R_Index.
+R_Type can be one of the following
+<I>
+R_Tree
+R_Object       
+R_Tedinfo      
+R_Iconblock    
+R_Bitblk       
+R_String       
+</I>
+
+<HR>
+<B>Procedure Form_Dial(flag,litx,lity,litw,lith,bigx,bigy,bigw,bigh: Integer);</B>
+
+<HR>
+<B>Function Form_Do(Dialog: Dialog_Ptr; Ed_Start: Integer): Integer;</B>
+
+<HR>
+<B>Procedure Obj_Draw(Dialog: Dialog_Ptr; Start, Tiefe, x,y,w,h: Integer);</B>
+
+<HR>
+<B>Function Do_Dialog(Dialog: Dialog_Ptr; Ed_Start: Integer): Integer;</B>
+Shows a dialog on screen
+Dialog.....Pointer to dialog
+Ed_Start...?
+Returns the index of the object that cause the dialog to end
+
+<HR>
+<B>Function Redo_Dialog(Dial: Dialog_Ptr; Ed_Start: Integer): Integer;</B>
+
+<HR>
+<B>Procedure Show_Dialog(Dialog: Dialog_Ptr);</B>
+Shows the Dialog
+
+<HR>
+<B>Procedure Center_Dialog(Dial: Dialog_Ptr);</B>
+Centers the dialog on screen.
+
+<HR>
+<B>Procedure End_Dialog(Dialog: Dialog_Ptr);            </B>
+Closes Dialog
+
+<HR>
+<B>Procedure Set_DText(Dial: Dialog_Ptr; Item: Tree_Index; s: Str255;
+                    Font: Integer; Just: TE_Just);      </B>
+Sets a text string in a Dialog
+Dial.........Pointer to dialog
+Tree_Index...Index number returned from Add_Ditem
+s............Text to output
+Font.........Font to use
+Just.........Can be TE_LEFT,TE_RIGHT,TE_CENTER
+
+<HR>
+<B>Procedure Set_DEdit(Dial: Dialog_Ptr; Item: Tree_Index;
+                    Template, Valid, Initial: Str255;
+                    Font: Integer; Just: TE_Just);      </B>
+Sets a text into e edito box of a dialog
+Dial......Pointer to dialog
+Item......Index number of edit box
+Template..
+Valid.....
+Initial...
+Font......Font to use (normally System_Font)
+Just......Justification of text (normally TE_LEFT)
+
+<HR>
+<B>Procedure Obj_SetState(Dial: Dialog_Ptr; Index: Tree_Index;
+                       State: Integer; Redraw: Boolean);</B>
+Sets the stale of dialog item (for example to set a button back to normal after pressing).
+Dial....Pointer to dialog
+Index...Index of Item (for example button)
+State...State of item
+Redraw..If the the item should be redrawn (Normally set to true)
+
+<HR>
+<B>Function Obj_State(Dial: Dialog_Ptr; Index: Integer): Integer;</B>
+
+<HR>
+<B>Procedure Obj_SetFlags(Dial: Dialog_Ptr; Index: Tree_Index;
+                       Flags: Integer);</B>
+
+<HR>
+<B>Function Obj_Flags(Dial : Dialog_Ptr; Index : Integer) : Integer;</B>
+
+<HR>
+<B>Procedure Get_DEdit(Dial : Dialog_Ptr; Item : Tree_Index; Var s : Str255);</B>
+Returns the content of a Edit box from a dialog.
+Dial......Pointer to dialog
+Item......Item number of editbox
+Name......Content of edit box
+
+<HR>
+<B>Procedure Menu_Hilight(Menu : Menu_Ptr; Title : Tree_Index);</B>
+Sets the menu as selected
+
+<HR>
+<B>Procedure Menu_Normal(Menu : Menu_Ptr; Title : Tree_Index);</B>
+Sets the menu as not selected
+
+<HR>
+<B>Procedure Menu_Enable(Menu : Menu_Ptr; Item : Tree_Index); </B>
+Marks menu item Item as enabled
+
+<HR>
+<B>Procedure Menu_Disable(Menu : Menu_Ptr; Item : Tree_Index);</B>
+Marks menu item Item as disabled
+
+<HR>
+<B>Procedure Menu_Text(Menu: Menu_Ptr; Item: Tree_Index; MText: Str255);</B>
+
+<HR>
+<B>Function Menu_Register(Id : Integer; Var Name : Str255) : Integer;</B>
+Adds the name of ACC to the Desk menu.
+Id = Id of the acc
+Name = Name to show in the menu
+Returns the id number of the menu item or -1 for error
+
+<HR>
+<B>Procedure Menu_Unregister(Id: Integer);</B>
+Removes a ACC from the Desk menu.
+Id is the number returned by Menu_register
+
+<HR>
+<B>Function Menu_Click(Click, Setit: Integer): Integer;</B>
+
+<HR>
+<B>Procedure Work_Rect(Handle : Integer; Var x, y, w, h : Integer);</B>
+Returns the area of the window on which it can be drawn.
+Handle......Handle of window
+X...........X position of drawing rectangle
+Y...........Y position of drawing rectangle
+W...........W Wide
+H...........H height
+
+<HR>
+<B>Procedure Bring_To_Front(Handle : Integer);</B>
+Sets the window specified threw handle to be the topmost.
+
+<HR>
+<B>Function Get_Window: Integer;</B>
+Returns the active Window
+
+<HR>
+<B>Procedure Rubberbox(x, y, w1, h1 : Integer; Var w2, h2 : Integer);</B>
+
+<HR>
+<B>Procedure Movebox(x1, y1, w, h, x2, y2 : Integer);</B>
+
+<HR>
+<B>Procedure Dragbox(x1,y1,w1,h1,x2,y2,w2,h2 : Integer; Var Endx, Endy : Integer);</B>
+
+<HR>
+<B>Procedure Growbox(stx, sty, stw, sth, fix, fiy, fiw, fih : Integer);</B>
+Draws a growing Box from stx,sty,stw,sth to fix,fiy,fiw,fih.
+If a GEM Version < 2 is used this routine calls the Original routine
+In GEM Version 2 and higher this call is simulated threw 2 other calls.
+The Original functions can be reitgerated to newer GEM versions to the
+GROWBOX.ACC. But GEMBIND will not notice that and still simulate it.
+
+<HR>
+<B>Procedure Shrinkbox(stx, sty, stw, sth, fix, fiy, fiw, fih : Integer);</B>
+Draws a shrinking Box from stx,sty,stw,sth to fix,fiy,fiw,fih
+This is the revers function of GrowBox
+If a GEM Version < 2 is used this routine calls the Original routine
+In GEM Version 2 and higher this call is simulated threw 2 other calls.
+The Original functions can be reitgerated to newer GEM versions to the
+GROWBOX.ACC. But GEMBIND will not notice that and still simulate it.
+
+<HR>
+<B>Function Slidebox(Dialog : Dialog_Ptr; Vater,Sohn,Modus:Integer):Integer;</B>
+
+<HR>
+<B>Procedure Xgrf_Stepcalc(stw, sth, xc, yc, w, h : Integer;
+                        Var cx, cy, cnt, xstep, ystep : Integer);</B>
+
+<HR>
+<B>Procedure Xgrf_2Box(xc, yc, w, h : Integer; corners : Boolean;
+                    cnt, xstep, ystep : Integer; doubled : Boolean);</B>
+
+<HR>
+<B>Procedure Set_Clip(x, y, w, h: Integer);</B>
+
+<HR>
+<B>Procedure Draw_String(x, y :Integer; s: Str255);</B>
+Writes the string s at position x,y
+
+<HR>
+<B>Procedure Justified_Text(x, y, len, wrd, Chr :Integer; s: Str255);</B>
+
+<HR>
+<B>Procedure Text_Alignment(h, v : Integer);</B>
+
+<HR>
+<B>Procedure Set_Color(Color : Integer; Red, Green, Blue : Integer);</B>
+Sets the Red, Green, Blue value of the color index threw Color.
+
+<HR>
+<B>Procedure Line_Width(width: Integer);</B>
+
+<HR>
+<B>Procedure Draw_Mode(Mode: Integer);</B>
+Sets the drawing mode. Can be set to the following modes
+REPLACE_MODE
+TRANS_MODE
+
+<HR>
+<B>Procedure Paint_Color(Color_Index: Integer);</B>
+Sets the fill color
+
+<HR>
+<B>Procedure Paint_Style(Style_Index: Integer);</B>
+Sets the fill style
+<I>
+Solid
+LongDash
+Dotted
+DashDot
+Dashed
+DashDotDot
+</I>
+
+<HR>
+<B>Procedure Paint_Outline(On : Boolean);</B>
+
+<HR>
+<B>Procedure Paint_Rect(x, y, w, h: Integer);</B>
+Fills the rectangle from x,y to x+w,y+h.
+With the paint style set with Paint_Style and the color set with
+Paint_Color
+
+<HR>
+<B>Procedure Line_Endstyle(beg_Style, End_Style: Integer);</B>
+
+<HR>
+<B>Procedure Line_Style(Style: Integer);</B>
+Selects a style to draw a line.
+
+<HR>
+<B>Procedure Move_To(x, y : Integer);</B>
+(For turtle graphics)
+Sets the Drawposition to x,y without drawing
+
+<HR>
+<B>Procedure Line_To(x, y : Integer);</B>
+(For turtle graphics)
+Draws a line from the last position to x,y
+
+<HR>
+<B>Procedure Frame_Rect(x, y, w, h: Integer);</B>
+Draws a rectangle from x,y with wide w and height h
+
+<HR>
+<B>Procedure Text_Heigth(Height: Integer);</B>
+
+<HR>
+<B>Function Text_Point(Height: Integer): Integer;</B>
+Sets the height of the text output.
+Height is entered in pixels.
+Normal sizes are
+8x16 Font = 14 Pixels (With 16 it looks not ok why ? ) (VGA)
+8x14 Font = 11 Pixels (With 14 it looks not ok why ? ) (EGA)
+8x8  Font = 7  Pixels (With 8 it looks not ok why ? ) (CGA,Hercules)
+
+<HR>
+<B>Procedure Text_Color(Color : Integer);</B>
+Sets the colors for text output
+
+<HR>
+<B>Procedure Text_Style(Style: Integer);</B>
+Sets a text style also more than one at a time can be used via or.
+<IMG SRC="fonts.jpg">
+
+<HR>
+<B>Procedure Text_Rotation(Angle: Integer);</B>
+Angle is the degree to turn textoutput.
+0 = Normal
+
+<HR>
+<B>Procedure First_Rect(Hand: Integer; VAR x, y, w, h: Integer);</B>
+
+<HR>
+<B>Procedure Next_Rect(Hand: Integer; VAR x, y, w, h: Integer);</B>
+
+<HR>
+<B>Function Rect_Intersect(x1, y1, w1, h1: Integer;
+                        VAR x2, y2, w2, h2: Integer): Boolean;</B>
+
+<HR>
+<B>Procedure Set_WSize(hand, x, y, w, h: Integer);</B>
+Sets the window specified threw hand to the new size x,y,w,h
+
+<HR>
+<B>Procedure Sys_Font_Size(VAR wchar, hchar, wbox, hbox: Integer);</B>
+Gets the sizes of the font that is used at the moment
+wchar...X-Size of a char
+hchar...Y-Size of a char
+
+
+<HR>
+<B>Procedure Begin_Mouse;</B>
+Takes full control over mouse like Modal Dialog
+
+<HR>
+<B>Procedure End_Mouse;</B>
+Releases the mouse again
+
+<HR>
+<B>Procedure Paint_Oval(x, y, x_rad, y_rad: Integer);</B>
+Paints a ellipse or circle that is filled.
+If you want to draw a circle simple set the x_rad=y_rad
+
+
+<HR>
+<B>Procedure Frame_Oval(x, y, x_rad, y_rad: Integer);</B>
+Paints a ellipse or circle.
+If you want to draw a circle simple set the x_rad=y_rad
+
+<HR>
+<B>Procedure Paint_Round_Rect(x, y, w, h : Integer);</B>
+Draws a filled rectangle with rounded corners
+
+<HR>
+<B>Procedure Frame_Round_Rect(x, y, w, h : Integer);</B>
+Draws a rectangle with round corners
+
+<HR>
+<B>Procedure Paint_Arc(x, y, x_rad, y_rad, beg_ang, end_ang : Integer);</B>
+Draws a filled arc
+
+<HR>
+<B>Procedure Frame_Arc(x, y, x_rad, y_rad, beg_ang, end_ang : Integer);</B>
+Draws a arc
+
+<HR>
+<B>Procedure Border_Rect(Handle: Integer; Var x, y, w, h: Integer);</B>
+
+<HR>
+<B>Function Obj_Find(Dial: Dialog_Ptr; Start, Depth, x, y : Integer): Integer;</B>
+
+<HR>
+<B>Procedure Obj_Offset(Dial: Dialog_Ptr; Index: Integer; VAR x, y: Integer);</B>
+
+<HR>
+<B>Procedure Obj_Size(Dial: Dialog_Ptr; Index: Integer; Var x, y, w, h: Integer);</B>
+
+<HR>
+<B>Procedure Obj_Redraw(Dial: Dialog_Ptr; Item: Tree_Index);</B>
+
+<HR>
+<B>Function Find_Window(x, y: Integer): Integer;</B>
+
+<HR>
+<B>Procedure Obj_Add(Dial: Tree_Ptr; Parent, Child: Integer);</B>
+
+<HR>
+<B>Procedure Rsrc_Obfix(Dial: Tree_Ptr; Obj: Integer);</B>
+
+<HR>
+<B>Function D_Color(Border, Text: Integer; Mode: Boolean;
+                 Pattern, Inside: Integer): Integer;</B>
+
+<HR>
+<B>Function New_Dialog(N_Items, x, y, w, h: Integer): Dialog_Ptr;</B>
+N_Items....Number of items in dialog (simply set here a number thats hight enough if you don't know)
+x,y........X,Y position of Dialog
+w,h........Wide and Height of the dialog
+The function returns Dialog_ptr to the dialog
+
+<HR>
+<B>Function Add_DItem(Dial: Dialog_Ptr; Obj_Type, Flags: Integer;
+                   x, y, w, h: Integer; Border, Color: Integer): Tree_Index;</B>
+Adds a item to the dialog.
+Dial.......Pointer to dialog
+Obj_Type...Can be one of the following
+           <I>G_Box,G_Text,G_BoxText,G_Image,G_ProgDef,G_UserDef,
+           G_IBox,G_Button,G_Boxchar,G_String,G_FText,G_FBoxText,
+           G_Icon,G_Title</I>
+Flags......Attributs (used by style G_Button for example) can be one of the
+           following
+           <I>None,Selectable,Default,Exit_Btn,Editable,Radio_Btn,Last_Ob,
+           Touch_Exit,Hide_Tree,Indirect</I>
+x,y........Position of dialog item
+w,h........Wide and height of the item
+Border.....0 - No border 1 - Border
+Color......?
+Returns the tree index number
+
+<HR>
+<B>Procedure Delete_Dialog(Dial: Dialog_Ptr);</B>
+Removes Dialog (dial) from memory.
+
+<HR>
+<B>Function New_Menu(N_Items: Integer; About: Str255): Menu_Ptr;</B>
+
+I don't know for what N_items is good it is not used inside of the function.
+
+<HR>
+<B>Function Add_MTitle(Menu: Menu_Ptr; Item: Str255): Integer;</B>
+
+<HR>
+<B>Function Add_MItem(Menu: Menu_Ptr; Title: Tree_Index; Item: Str255): Integer;</B>
+
+<HR>
+<B>Procedure Delete_Menu(Menu: Menu_Ptr);</B>
+
+<HR>
+<B>Function Ex_Load_Fonts(Font_Max, Font_Free: Integer): Integer;</B>
+
+<HR>
+<B>Function Font_Name(Font: Integer; Var Name: String): Integer;</B>
+Returns the name of the Font.
+Font is the index number of the Font 1=First,2=...,3=...
+Name is 32 Characters Big
+Return the FONT ID.
+
+<HR>
+<B>Function Get_Keyboard: Integer;</B>
+Wait until a keyboard event happens
+If the Lo byte of the returned number is 0 then the Hi byte is a scancode
+else the Lo byte is the ASCII Char of the key pressed.
+
+
+<HR>
+<B>Function Get_Button(bclicks, bmask, bstate: Integer;
+                    Var bmx, bmy, bbutton, bkstate: Integer): Integer;</B>
+
+<HR>
+<B>Function Get_Mouse(moflags, mox, moy, mowidth, moheight: Integer;
+                   Var momx, momy, mobutton, mokstate: Integer): Integer;</B>
+
+<HR>
+<B>Function Get_Message(Var msg: Message_Buffer): Integer;</B>
+
+<HR>
+<B>Function Get_Timer(ticks: Longint): Integer;</B>
+Waits until the value given in ticks is over
+Example:
+foo:=Get_Timer(50);                                         
+
+<HR>
+<B>Procedure TLine(Winkel, Laenge: Integer);</B>
+(For turtle graphics)
+Winkel is the degree and Laenge is the length of the line which is
+drawed from the position at the moment.
+
+<HR>
+<B>Procedure Font_Info(Var MinADE, MaxADE, dist0, dist1, dist2, dist3, dist4,
+                    MaxWidth, eff0, eff1, eff2: Integer);</B>
+
+<HR>
+<B>Function Shel_write(doex,isgem,isover:integer;pcmd,ptail:string):boolean;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+For executing DOS and GEM Programs.
+doex.....0 - Exit gem after running program,
+         1 - Return to Desktop
+isgem....0 - Textmode (Dos),
+         1 - Graphics mode (GEM)
+isover...0 - To keep current program in memory
+         1 - Load program instead of current
+         2 - Unload AES and restard it after runing the program
+pcmd.....Program to execute
+ptail....Parameters ?
+
+<HR>
+<B>Function Scrp_Read:string;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included.</I></B>
+Returns the path to the clipboard directory.
+
+<HR>
+<B>Function Scrp_write(name:string):integer;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Sets the path to the clipboard directory
+
+<HR>
+<B>Procedure Scrp_Clear;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Clears the clipboard directory.
+
+<HR>
+<B>Function Ems_Inst:Boolean;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Function checks if EMS memory is installed returns TRUE or FALSE
+
+<HR>
+<B>Function ems_errcode:integer;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Returns the errorcode of the last EMS function
+
+<HR>
+<B>Function ems_num_page:integer;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Returns the number of EMS pages available
+
+<HR>
+<B>Function ems_free_page:Integer;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Returns the number of free EMS pages available
+
+<HR>
+<B>Function ems_frame_seg:Word;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Returns the SEGMENT in which the EMS pages are mirrored in.
+Acces to EMS memory if Segment is $E000
+mem[$E000:0000]:=3; { To set a number}
+a:=mem[$E000:0000]; { To read a number}
+Every page has a size of 16384 bytes and goes from 0000 to 16383
+
+<HR>
+<B>Function ems_alloc(Pages:word):Word;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Allocates EMS pages returns a handle to the pages
+
+<HR>
+<B>Function ems_map(Handle,logp,physp:word):Boolean;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Pages in a EMS page.
+Handle is the handle of the pages
+logp is the page to page in.
+Physp you can set to 0
+Returns True if everything went okay
+
+<HR>
+<B>Function ems_free(Handle:word):Boolean;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Frees EMS pages.
+Returns true if everything worked okay.
+You must do this at the end of a program or the EMS memory will not given free!
+
+<HR>
+<B>Function ems_version:Integer;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Returns the version number of your EMS manager
+
+<HR>
+<B>Function ems_save_map(Handle:Word):boolean;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Saves the mapping of the 4 Physical Pages
+
+<HR>
+<B>Function ems_restore_map(Handle:word):boolean;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Restores the mapping of the 4 Physical Pages
+
+<HR>
+<B>Procedure Volume(vol:word);</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+This command only works with driver v0.2 and higher
+Sets the volume of the sound card. (0-255)
+0   - Nothing to hear
+255 - Loudest
+
+<HR>
+<B>Procedure SpeakerOn;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Turns the loud speakers on.
+
+<HR>
+<B>Procedure StereoON;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+This command only works with driver v0.2 and higher
+Switches from Mono mode to Stereo mode. After loading the
+sound driver the driver is in Mono mode.
+
+<HR>
+<B>Procedure StereoOff;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+This command only works with driver v0.2 and higher
+Switches from Stereo mode to Mono mode. After loading the
+sound driver the driver is in Mono mode.
+
+<HR>
+<B>Procedure SpeakerOff;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Turns the speaker off
+
+<HR>
+<B>Procedure WaitForDma;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Waits until the DMA is ready.
+This commands is needed if you play sound with the playsample command.
+
+<HR>
+<B>Procedure DMAStop;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Switches the DMA off
+
+<HR>
+<B>Procedure PlaySample(a,b,c,d:Word);</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Plays a sample.
+A...Segment of sample
+B...Offset of sample
+C...Size
+D...Kilo herz
+
+<HR>
+<B>Function PlayWAV(af:string):Boolean;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Plays a wave file. 
+Af...Filename of wave file.
+Returns TRUE if everything goes okay else it returns false.
+
+<HR>
+<B>Procedure SD_Info;</B>
+<B><I>Doesn't exist in original GEMBIND.
+Only in versions existing where it is extra included</I></B>
+Fills the following global variables with infos.
+
+<I>SD_Version</I>....Version number of driver
+                     Version number system for example
+                     $0001  = 00.01
+                     $0002  = 00.02
+                     $0100  = 01.00
+                     $0200  = 02.00
+                     $0205  = 02.05
+<I>SD_Type</I>.......Type of driver
+<I>SD_Base</I>.......Base adress of soundcard
+<I>SD_Dma</I>........Dma channel of soundcard
+<B> This parameter exists only in sound drivers v0.2 and higher</B>
+<I>SD_Options</I>....Options of soundcard
+                     Bit 0 ... Stereo
+                     Bit 1 ... 16 Bit output (Sound Blaster 16)
+                     Bit 2 ... Not used
+                     Bit 3 ... Not used
+                     Bit 4 ... Not used
+                     Bit 5 ... Not used
+                     Bit 6 ... Not used
+                     Bit 7 ... Not used
+<HR>
+<H3>1. Source Examples (Programs are written with TP 6.0)</H3><HR>
+<!-- <A HREF="example.zip">Download all examples</A><BR> -->
+<H4>1. Normal APP ground program</H4><BR>
+Program APP;
+{$M 16384,0,10000}
+uses gembind;
+begin
+ if init_Gem>=0 then
+  begin
+   { Here is the program source }
+   Exit_Gem;
+  end;
+end.
+
+<H4>2. Simple hello world program</H4><BR>
+Program Hello_World;
+{$M 16384,0,10000}
+uses gembind;
+var apid:integer;
+    btn:integer;
+begin
+apid:=Init_Gem;
+ if apid &LT 0 then {Should not happen normally}
+  begin
+   Exit_Gem;
+   halt(1);
+  end;
+  btn:=Do_Alert('[0][Hello World!][Continue]',1);
+Exit_Gem;
+end.
+
+<H4>3. Alert Box example</H4><BR>
+program alert_boxes;
+{$M 1024, 1024, 1024}
+uses gembind;
+var out : str255;
+    foo : integer;
+
+begin
+  if init_gem >= 0 then
+  begin
+    foo:=do_alert('[1][ Alert Box Nr. 1 ][ Continue ]',1);
+    foo:=do_alert('[2][ Alert Box Nr. 2 ][ Continue ]',1);
+    foo:=do_alert('[3][ Alert Box Nr. 3 ][ Continue ]',1);
+    foo:=do_alert('[3][ Alert Box Nr. 4 | 2 Lines ][ Continue ]',1);
+    foo:=do_alert('[3][ Alert Box Nr. 5 | 2 Switches ][ Continue | Cont ]',1);
+    foo:=do_alert('[3][ Alert Box Nr. 5 | 2 Switches ][ Continue | Cont ]',2);
+    exit_gem;
+  end;
+end.
+
+<H4>4. Icon example</H4><BR>
+<B>This example program is only tested with DESKHI.ICN!!<BR>
+It is a little bit complicate method of showing Icons but the only one that
+i got to work under pascal out of source. A other method is a dialog in a
+RSC file that has icons.</B>
+
+{$M 1024,1024,1024}
+Program Icon_Example;
+uses gembind;
+var handle:Integer;
+    x,y,w,h:Integer;
+    foo:Integer;
+    wname:Window_title;
+Procedure Show_ICN(filename:string;x,y,nr:integer);
+{ Filename...Filename of Icn file
+  x,y........Position where to paint Icon
+  nr.........Number of icon in file to load
+}
+var dummy:Word;
+    data:string[32];
+    B:array [1..5] of byte;
+    fIcon:File;
+    k,j,i,wek,eve,ok:Integer;
+begin
+assign(fIcon,filename);
+reset(fIcon,1);
+{ Format of ICN files
+  WORD  start of icon titles table
+  WORD  address of begining of the file
+  72 ICONBLK ( A iconblk has a size 34 Bytes)
+  Then came the bitmaps of the icons.
+  Every line is 4 Bytes. And Every Icon has 32 Lines.
+  The bytes in a line are slight wrong. When showing
+  the order of the 4 loaded bytes must be 2,1,4,3
+}
+
+ seek(ficon,2452+(128*nr));
+ j:=0;
+ for i:=1 to 32 do
+  begin
+  data:='0000000000000000000000000000000';
+  k:=0;
+  blockread(ficon,B,4,dummy);
+  b[5]:=b[1]; { Swaping of bytes}
+  b[1]:=b[2]; 
+  b[2]:=b[5];
+  b[5]:=b[3];
+  b[3]:=b[4];
+  b[4]:=b[5];
+  for j:=1 to 4 do
+   begin
+    wek:=b[j];
+    eve:=128;
+    for ok:=0 to 7 do
+     begin
+      if wek div eve=1 then Plot(x+k,y+i-1);
+      inc(k);
+      if wek div eve=1 then wek:=wek-eve;
+      eve:=eve div 2;
+     end;
+   end;
+ end;
+close(fIcon);
+end;
+
+begin
+if init_gem >=0 then
+ begin
+  Set_Mouse(M_Arrow); { Is needed because sometimes mouse is no arrow when starting}
+  wname:='Icon Example';
+  handle:=New_Window(G_ALL,wname,0,0,0,0);
+  Open_Window(handle, 20, 20, 200, 100);
+  Paint_Style(Solid);
+  Paint_Color(White);
+  Work_Rect(handle,x,y,w,h);
+  Paint_Rect(x,y,w,h);
+  Show_Icn('DESKHI.ICN',x+10,y+10,1);
+  foo:=do_alert('[1][ Press the exit button or RETURN ][ EXIT ]',1);
+  Close_window(handle);
+  Delete_window(handle);
+  Exit_Gem;
+  halt(1);
+ end;
+end.
+
+<HR><H3>2. Clipboard functions (can be included into GEMBIND)</H3><BR>
+Function Scrp_Read:string;
+var tmp2,tmp:string;
+begin
+int_in[0]:=0;
+tmp:=#0#0#0#0;
+Tmp[Length(Tmp)+1] := Chr(0);
+Addr_In[0]:=Addr(Tmp);
+AES(80);
+If Int_Out[1] &LT &GT 0 Then C_To_Pas(String_Ptr(Addr(Tmp[1]))^, tmp2);
+scrp_read:=tmp2;
+end;
+
+Function Scrp_write(name:string):integer;
+begin
+int_in[0]:=0;
+Name[Length(name)+1]:=chr(0);
+Addr_in[0]:=Addr(name);
+AES(81);
+Scrp_write:=int_out[0];
+end;
+
+Procedure Scrp_Clear;
+begin
+AES(82);
+end;
+
+<HR><H3>3. EMS functions (can be included into GEMBIND)</H3><BR>
+Function Ems_Inst:Boolean;
+var emm_Name:string;
+    i:word;
+    found:Boolean;
+begin
+ emm_Name:='EMMXXXX0';
+ re.ax:=$3567;
+ msdos(re);
+ found:=True;
+ for i:=10 to 17 do
+  begin
+   if chr(mem[re.es:i]) &LT &GT emm_name[i-9] then Found:=false;
+  end;
+ems_inst:=Found;
+end;
+Function ems_errcode:word;
+begin
+ ems_errcode:=emm_error;
+end;
+Function ems_num_page:integer;
+begin
+ Emm_error:=0;
+ Re.ah := $42;
+ Intr($67,Re);
+ if Re.ah<>0 then
+  begin
+   Emm_Error:= Re.ah;
+   Ems_Num_Page:=0;
+  end
+ else
+  Ems_Num_Page:=Re.dx;
+end;
+Function ems_free_page:Integer;
+begin
+ Emm_error:=0;
+ Re.ah:=$42;
+ Intr($67,Re);
+ if Re.ah<>0 then
+  begin
+   Emm_error:=Re.ah;
+   Ems_Free_Page:=0;
+  end
+ else                 
+  Ems_Free_Page:=Re.bx;
+end;
+Function ems_frame_seg:Word;
+begin
+ Emm_error:=0;
+ Re.ah:=$41;
+ Intr($67,Re);
+ if Re.ah<>0 then
+  begin
+   Emm_error:=Re.ah;
+   Ems_Frame_Seg:=0;
+  end
+ else                       
+  Ems_Frame_Seg:=Re.bx;
+end;
+Function ems_alloc(Pages:word):Word;
+begin
+ emm_error:=0;
+ Re.ah:=$43;
+ Re.bx:=Pages;
+ Intr($67,Re);
+ if Re.ah <>0 then
+  begin              
+   Emm_error:=Re.ah; 
+   Ems_Alloc:=0;     
+  end
+ else         
+  Ems_Alloc:=Re.dx;
+end;
+Function ems_map(Handle,logp,physp:word):Boolean;
+begin
+ Re.ah:=$44;
+ Re.al:=PhysP;
+ Re.bx:=LogP;
+ Re.dx:=Handle;
+ Intr($67,Re);
+ Emm_error:=Re.ah;
+ if re.ah=0 then Ems_Map:=True
+  else Ems_map:=False;
+end;
+Function ems_free(Handle:word):Boolean;
+begin
+ Re.ah:=$45;
+ Re.dx:=handle;
+ Intr($67,Re);
+ Emm_error:=Re.ah;
+ if re.ah=0 then Ems_Free:=True
+  else Ems_Free:=False;
+end;
+Function ems_version:Integer;
+begin
+ Emm_error:=0;
+ Re.ah:=$46;     
+ Intr($67,Re);   
+ if Re.ah<>0 then
+  begin          
+   Emm_error:=Re.ah;
+   Ems_Version:=0;
+  end
+ else          
+  Ems_Version:=(Re.al and 15)+(Re.al shr 4)*10;
+end;
+Function ems_save_map(Handle:Word):boolean;
+begin
+ Re.ah:=$47;
+ Re.dx:=handle; 
+ Intr($67,Re);  
+ Emm_error:=Re.ah;
+ if re.ah=0 then Ems_Save_Map:=True
+  else Ems_Save_Map:=False;
+end;
+Function ems_restore_map(Handle:word):boolean;
+begin
+ Re.ah:=$48;   
+ Re.dx:=handle;
+ Intr($67,Re);
+ Emm_error:=Re.ah;
+ if re.ah=0 then Ems_restore_Map:=True
+  else Ems_restore_Map:=False;
+end;
+<HR><H3>4. Execute function (can be included into GEMBIND)</H3><BR>
+Function Shel_write(doex,isgem,isover:integer;pcmd,ptail:string):boolean;
+begin
+int_in[0]:=doex;
+int_in[1]:=isgem;
+int_in[2]:=isover;
+pcmd[Length(pcmd)+1]:=chr(0);
+Addr_in[0]:=Addr(pcmd[1]);
+ptail[Length(ptail)+1]:=chr(0);
+Addr_in[1]:=Addr(ptail[1]);
+AES(121);
+if int_out[0]=0 then Shel_write:=False
+ else Shel_Write:=true;
+end;
+
+<HR><H3>5. Missing constants</H3><BR>
+This messages are sent when the scoll arrows of a window are pressed.
+WA_UPPAGE=1
+WA_DNPAGE=2
+WA_UPLINE=3
+WA_DNLINE=4
+WA_LFPAGE=5
+WA_RTPAGE=6
+WA_LFLINE=7
+WA_RTLINE=8
+
+SCRAP_CSV=$1
+SCRAP_TXT=$2
+SCRAP_GEM=$4
+SCRAP_IMG=$8
+SCRAP_DCA=$10
+SCRAP_USR=$8000
+
+<HR><H3>5. Missing command</H3><BR>
+Procedure Wind_Calc(CalcType, WinType : Integer; Var x, y, w, h : Integer);
+Begin                   { BALJ - WIND_CALC missing from original bindings }
+  Int_In[0] := CalcType;
+  Int_In[1] := WinType;
+  Int_In[2] := x;
+  Int_In[3] := y;
+  Int_In[4] := w;
+  Int_In[5] := h;
+  AES(108);
+  x := Int_Out[1];
+  y := Int_Out[2];
+  w := Int_Out[3];
+  h := Int_Out[4];
+End;
+</PRE>
+</html>

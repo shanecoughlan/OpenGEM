@@ -1,0 +1,1965 @@
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        * 
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;************************************************************************
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+THICKEN		equ	1h
+LIGHT		equ	2h
+SKEW    	equ	4h
+UNDER		equ	8h
+OUTLINE		equ	10h
+SHADOW		equ	20h
+
+
+include externs.a86
+include fhinc.a86
+
+DGROUP	GROUP	DATA
+		dseg
+
+	extrn	WRT_MODE:word
+	extrn	TEXT_BP:word
+	extrn	plane_loop_count:byte
+	extrn	SOURCEX:word, SOURCEY:word	;source pixel address
+	extrn	DESTX:word, DESTY:word		;destination pixel address
+	extrn	DELX:word, DELY:word		;size of area to use
+	extrn	FOFF:word			;offset of source form
+	extrn	FWIDTH:word			;form width of source form
+	extrn	STYLE:word			;style flags
+	extrn	R_OFF:word, L_OFF:word		;skew factors
+	extrn	WEIGHT:word			;thickening factor
+	extrn	LITEMASK:word			;and with this for light
+	extrn	SKEWMASK:word			;shift for 1's in mask
+	extrn	DOUBLE:word			;replication flag
+	extrn	CHUP:word			;rotation tenths of degrees
+	extrn	XMN_CLIP:WORD, XMX_CLIP:WORD	;clipping region
+	extrn	YMN_CLIP:WORD, YMX_CLIP:WORD	;
+	extrn	graph_plane:word
+	extrn	plane_sz:word			;size of a single plane
+	extrn	act_font:dword
+
+	public	txbuf1, txbuf2, buff_seg
+	public	off_fmgr, seg_fmgr;
+	public	tmp_fg_bp
+
+txbuf1		rw	1		; small buffer
+txbuf2		rw	1		; big buffer for doubling
+addr_fmgr	rd	0		; NEXT TWO LINES MUST FOLLOW
+off_fmgr	rw	1
+seg_fmgr	rw	1
+addr_hmgr	rd	1
+
+;logical names for buffers
+buffa		rw	1			;for thicken with delx > 17	blt
+buffb		rw	1			;for clip and prerotate	blt
+buffc		rw	1			;for rotate
+buffd		rw	1			;for replicate
+buff_seg	rw	1
+
+sdad		dw	0      			;source dot address
+ddad		dw	0      			;destination dot address
+
+optable		dw	offset op0, offset op1, offset op2, offset op3
+		dw	offset op4, offset op5, offset op6, offset op7
+		dw	offset op8, offset op9, offset opa, offset opb
+		dw	offset opc, offset opd, offset ope, offset opf
+
+woptable	dw	offset wop0, offset wop1, offset wop2, offset wop3
+		dw	offset wop4, offset wop5, offset wop6, offset wop7
+		dw	offset wop8, offset wop9, offset wopa, offset wopb
+		dw	offset wopc, offset wopd, offset wope, offset wopf
+
+; text mode translation table from WRT_MODE to blit modes
+TXT_MODE	dw	4	;replace / fore = index 0
+		dw	4	;or      / fore = index 0
+		dw	6	;xor     / fore = index 0
+		dw	13      ;invtran / fore = index 0 
+		dw	7	;replace / fore = index 1
+		dw	7	;or      / fore = index 1
+		dw	6	;xor	 / fore = index 1
+		dw	1	;invtran / fore = index 1
+tmp_fg_bp	dw	0
+buffer_blt	dw	FALSE
+
+if byte_swap
+word_mask_table	dw	0ffffh
+		dw	0ff7fh
+		dw	0ff3fh
+		dw	0ff1fh
+		dw	0ff0fh
+		dw	0ff07h
+		dw	0ff03h
+		dw	0ff01h
+		dw	0ff00h
+		dw	07f00h
+		dw	03f00h
+		dw	01f00h
+		dw	00f00h
+		dw	00700h
+		dw	00300h
+		dw	00100h
+		dw	0
+else
+word_mask_table	dw	0ffffh
+		dw	07fffh
+		dw	03fffh
+		dw	01fffh
+		dw	00fffh
+		dw	007ffh
+		dw	003ffh
+		dw	001ffh
+		dw	000ffh
+		dw	0007fh
+		dw	0003fh
+		dw	0001fh
+		dw	0000fh
+		dw	00007h
+		dw	00003h
+		dw	00001h
+		dw	0
+endif
+
+CGROUP	GROUP	CODE
+		cseg
+
+		public	text_blt
+		public	chk_fnt
+		public	chk_hdr
+		public	hdr_addr
+		public	inc_lfu
+		public	check_clip
+
+		extrn	concat:near
+		extrn	ln_next:word
+
+s_off		dw	0	;start of source form
+s_seg		dw	0	;seg of source form
+source_next	dw	0	;width of source form
+d_off		dw	0	;start of dest form
+d_seg		dw	0	;seg of dest form
+dest_next	dw	0	;add this to get to next line in buffer
+
+width		dw	0	;width of area in pixels
+height		dw	0	;height of area in pixels
+loc_style	rw	1	; local copy of styles
+
+dest_words	dw	0	;number of words in the middle
+right_mask	dw	0	;
+left_mask	dw	0	;fringes of destination to be affected
+rotate_mask	dw	0	;overlap between words in inner loop
+
+rotate		dw	offset rol_call	;where to jump to align source
+tlogicop	dw	offset op1	;pixel operation address
+special		dw	offset op1	;a logic op or maybe special effects
+specialw	dw	offset wop1	;word special effects
+specialwf	dw	offset wop1	;word special effects - fringe case
+blttype		dw	single_loop	;how big an area are we affecting
+
+thickenjmp	dw	offset op1	;after thicken do this
+lightjmp	dw	offset op1	;after light do this
+skewjmp		dw	offset op1	;after skew do this
+
+thickenjmpwf	dw	offset op1	;after thicken do this
+lightjmpwf	dw	offset op1	;after light do this
+skewjmpwf	dw	offset op1	;after skew do this
+
+thickenjmpw	dw	offset op1	;after thicken do this
+lightjmpw	dw	offset op1	;after light do this
+skewjmpw	dw	offset op1	;after skew do this
+
+smear		dw	0		;amount to increase width
+light_mask	dw	5555h		;and with this to get a light effect
+skew_mask	dw	5555h		;rotate this to check shift
+thickenover	dw	0		;overflow for word thicken
+
+;*****************************************************************************
+;*  VOID text_blt()							     *
+;*  Inputs: SOURCEX, SOURCEY - X,Y coordinate of character relative to       *
+;*				        UL corner of font  		     *
+;*	    DESTX, DESTY - UL corner of screen area to operate on	     *
+;*	    DELX, DELY - size of area to operate on			     *
+;*          FOFF, FSEG, FWIDTH - offset, segment and form width of font      *
+;*****************************************************************************
+text_blt:	
+	push	bp
+	push	ds
+	push	es
+	push	STYLE			;we may be changing some of these
+
+	mov	ax, DESTX
+	mov	bx, DELX
+	mov	cx, DESTY
+	mov	dx, DELY
+
+	push	ax
+	push	bx
+	push	cx
+	push	dx
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; buffer management
+;	buffers are used for rotation, doubling, clipping or rotating skewed
+;	or thickened characters and for thickened characters with delx > 17
+;	logical buffer names are assigned to 2 buffers, one large enough
+;	for the largest thickened skewed character, one for that char doubled
+;	buffa is for thicken delx > 17
+;	buffb is for clipping or rotating skewed or thickened characters
+;	buffc is rotating
+;	buffd is doubling
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+	mov	si, txbuf1
+	mov	buffc, si		;use the small buffer for rotate
+	mov	si, txbuf2		
+	mov	buffd, si 		;use the big buffer for double
+
+	mov	si, txbuf1		;use small buffer for buffa
+	mov	di, txbuf2		;use big buffer for buffb
+
+address_nodouble:
+	mov	buffa, si	
+	mov	buffb, di	
+	test	STYLE, THICKEN
+	jz	address_nothick
+	add	bx, WEIGHT		;we'll smear this amount
+address_nothick:
+	test	STYLE, SKEW
+	jz	check_address
+	add	bx, L_OFF
+	add	bx, R_OFF		;width increases
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; check_address
+;	recalculates address of upper left corner of blt area
+;	90 address passed is for lower left (move up by delx)
+;	180 address passed is for upper right (move right by delx)
+;	270 address passed is for upper left
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+check_address:
+	cmp	CHUP, 0
+	jne	add90
+	jmps	check_clip
+add90:	cmp	CHUP, 900
+	jne	add180
+	sub	cx, bx			;move up by DELX
+	mov	DESTY, cx
+	xchg	bx, dx			;swap x and y to check clipping
+	jmps	check_clip
+add180:	cmp	CHUP, 1800
+	jne	add270
+	sub	ax, bx 			;move right by DELX
+	mov	DESTX, ax
+	jmps	check_clip
+add270:	xchg	bx, dx			;swap x and y
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; check_clip
+;	trivial accept and reject and set up buffer
+;	blt if char must be clipped
+;	buffer blt if clip in x or y and skew
+;	buffer blt if clip in x and thicken
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+check_clip:
+	xor	bp, bp			;clear clip flag
+	xor	si, si			;clear clip flag
+;check_clip_0:
+	cmp	cx, YMN_CLIP
+	jge	check_ymax
+	add	cx, dx
+	not	bp			;must clip in y
+	cmp	cx, YMN_CLIP
+	jg	check_xmin		;we know we clip in y
+	jmp	update_dest
+check_ymax:
+	cmp	cx, YMX_CLIP
+	jle	ymax_plus
+	jmp	update_dest
+ymax_plus:
+	add	cx, dx			;DESTX + DELX
+	dec	cx			;DELX 0 based
+	cmp	cx, YMX_CLIP
+	jle	check_xmin
+	not	bp			;must clip in y
+check_xmin:
+	cmp	ax, XMN_CLIP
+	jge	check_xmax
+	add	ax, bx
+	not	si			;must clip in x
+	cmp	ax, XMN_CLIP
+	jg	clip_done
+	jmp	update_dest
+check_xmax:
+	cmp	ax, XMX_CLIP
+	jle	xmax_plus
+	jmp	update_dest
+xmax_plus:
+	add	ax, bx
+	dec	ax
+	cmp	ax, XMX_CLIP
+	jle	clip_done
+	not	si			;clip we must
+
+clip_done:
+	mov	ax, FWIDTH
+	mov	source_next, ax		;add this to go down one line
+	mov	ax, FOFF
+	mov	s_off, ax		;start of font
+	mov	ax, FOFF+2
+	mov	s_seg, ax		; font start segment
+	mov	ax, buff_seg
+	mov	d_seg, ax		; buffer segment
+
+	test	STYLE, THICKEN
+	jnz	check_delx
+	jmp	check_skew
+check_delx:
+	mov	ax, DELX
+	add	ax, WEIGHT
+	cmp	ax, 17
+	jge	thick_blt		;may be in three words
+	jmp	check_skew
+
+thick_blt:				;have to strip off bits at end of char
+	mov	bx, SOURCEX		;compute source address
+	mov	si, bx
+	and	bx, 0fh
+	mov	SOURCEX, bx		;use only low bits of source
+	shr	si, 1
+	shr	si, 1
+	shr	si, 1			;make a byte address
+	and	si, 0fffeh		;make it even byte address
+
+	xor	ax, ax
+	xchg	ax, SOURCEY		;set up address for next blt
+	mov	cx, source_next
+	mul	cx			;get mem address of start corner
+	add	si, ax
+	add	si, s_off		;add in base address
+
+	add	bx, DELX
+	mov	ax, bx
+	and	bx, 0fh
+	shl	bx, 1
+	mov	dx, word_mask_table[bx]
+
+	xchg	dh, dl
+
+	not	dx			;1's mean we have valid data
+	mov	bp, dx
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	inc	ax			;this is dest width in bytes
+	inc	ax			;this is dest width in bytes
+	and	ax, 0fffeh		;make it even byte address
+	inc	ax			
+	inc	ax			;put a word of space at the end
+	mov	dest_next, ax		;set up for next blt
+	mov	dx, ax			;bytes per line
+	shr	dx, 1			;words per line
+	dec	dx			;this word is fringe
+	dec	dx			;this word is space for thicken
+
+	mov	cx, DELY
+
+	mov	es, buff_seg		;set up destination segment
+	mov	di, buffa		;use this logical buffer
+	push	ds
+	mov	ds, s_seg
+
+thick_loop:
+	push	si
+	mov	bx, cx			;save height
+	mov	cx, dx			;words per line - 2
+	rep	movsw			;move all except fringe
+	lodsw				;get fringe
+	and	ax, bp
+	stosw
+	xor	ax, ax			;put a word of space
+	stosw
+	pop	si
+	add	si, source_next
+	mov	cx, bx
+	loop	thick_loop
+	pop	ds
+
+	mov	ax, dest_next
+	mov	source_next, ax
+	mov	ax, buffa
+	mov	s_off, ax
+	mov	ax, buff_seg
+	mov	s_seg, ax
+
+check_skew:
+	test	STYLE, SKEW OR THICKEN	;special effects?
+	jnz	check_chup
+	jmp	check_rotate
+check_chup:				;we may have to preblt into buffer
+	cmp	CHUP, 0
+	jnz	preblt
+	or	si, si			;do we clip in x?
+	jnz	preblt
+	test	STYLE, SKEW
+	jnz	preskew
+	jmp	check_double		;no preblt
+preskew:
+	or	bp, bp			;clip in y for skewed chars
+	jnz	preblt
+	jmp	check_double		;no preblt
+preblt:					;we have to blt into buffer
+	mov	ax, SOURCEX		;compute source address
+	mov	si, ax
+	and	ax, 0fh
+	mov	sdad, ax
+	shr	si, 1
+	shr	si, 1
+	shr	si, 1			;make a byte address
+	and	si, 0fffeh		;make it even byte address
+
+	mov	ax, SOURCEY		;compute addressing
+	mov	bx, DELY
+	mov	height, bx
+	mov	cx, source_next
+	neg	source_next		;go up one line
+	dec	bx
+	add	ax, bx			;start at bottom
+	mul	cx			;get mem address of start corner
+	add	si, ax
+	add	si, s_off		;add in base address
+
+	mov	ax, DELX
+	mov	bx, WEIGHT
+	mov	cx, R_OFF
+	add	cx, L_OFF
+
+full_weight:
+	test	STYLE, THICKEN
+	jz	no_smear
+	add	ax, bx
+	mov	smear, bx
+no_smear:
+	mov	width, ax
+	add	ax, cx			;add in skew factor
+	mov	DELX, ax			;now the char is bigger
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	inc	ax			;this is dest width in bytes
+	inc	ax
+	and	ax, 0fffeh		;make it even byte address
+
+	neg	ax
+	mov	dest_next, ax		;move up in buffer
+	neg	ax
+	mov	bx, DELY
+	dec	bx			;start of bottom line
+	mul	bx
+	mov	di, buff_seg
+	mov	d_seg, di
+	mov	es, di			;set up destination segment
+	mov	di, buffb		;use this logical buffer
+	test	STYLE, SKEW
+	jz	no_clear
+
+	push	ax
+	mov	cx, ax
+	sub	cx, dest_next		;count the bottom line
+	shr	cx, 1			;bytes to words	
+	xor	ax, ax
+	rep	stosw			;clear out buffer for skew
+	pop	ax
+	mov	di, buffb		;use this logical buffer
+
+no_clear:
+	add	di, ax			;start at the bottom
+	mov	ddad, 0
+
+	mov	buffer_blt, TRUE		;source only and no color
+	push	STYLE
+	and	STYLE, SKEW OR THICKEN	;only do thicken and skew
+	call	normal_blt		;blt source into buffer
+	pop	STYLE
+	mov	buffer_blt, FALSE
+
+no_delx_change:				;reset the source to the buffer
+	mov	ax, dest_next
+	neg	ax
+	mov	source_next, ax
+	mov	ax, buffb
+	mov	s_off, ax
+	mov	ax, buff_seg
+	mov	s_seg, ax
+	mov	SOURCEX, 0
+	mov	SOURCEY, 0
+	and	STYLE, not ( SKEW OR THICKEN )	;cancel effects
+check_rotate:
+	cmp	CHUP, 0
+	je	check_double
+
+	call	rotation
+
+check_double:
+do_clip:
+	test	STYLE, THICKEN
+	jz	no_thick
+	mov	ax, WEIGHT
+	add	DELX, ax
+	mov	smear, ax
+no_thick:
+	mov	ax, DESTY
+	cmp	ax, YMN_CLIP
+	jge	ymn_fine
+	add	ax, DELY
+	cmp	ax, YMN_CLIP
+	jg	mn_clipy
+	jmp	update_dest
+mn_clipy:
+	sub	ax, YMN_CLIP
+	mov	bx, DELY
+	mov	DELY, ax
+	sub	bx, ax
+	add	SOURCEY, bx
+	mov	ax, YMN_CLIP
+	mov	DESTY, ax
+ymn_fine:
+	cmp	ax, YMX_CLIP
+	jle	mx_clipy
+	jmp	update_dest
+mx_clipy:
+	add	ax, DELY
+	dec	ax			;make 0 relative
+	cmp	ax, YMX_CLIP
+	jle	ymx_fine
+;clipy
+	sub	ax, YMX_CLIP
+	sub	DELY, ax
+ymx_fine:
+	mov	ax, DESTX
+	cmp	ax, XMN_CLIP
+	jge	xmn_fine
+	add	ax, DELX
+	cmp	ax, XMN_CLIP
+	jg	mn_clipx
+	jmp	update_dest
+;clipx
+mn_clipx:
+	sub	ax, XMN_CLIP
+	mov	bx, DELX
+	mov	DELX, ax
+	sub	bx, ax
+	add	SOURCEX, bx
+	mov	ax, XMN_CLIP
+	mov	DESTX, ax
+xmn_fine:
+	cmp	ax, XMX_CLIP
+	jle	mx_clipx
+	jmp	update_dest
+mx_clipx:
+	add	ax, DELX
+	dec	ax			;make 0 relative
+	cmp	ax, XMX_CLIP
+	jle	xmx_fine
+;clipx
+	sub	ax, XMX_CLIP
+	sub	DELX, ax
+xmx_fine:
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; screen blt
+;	put block defined by s_off, s_seg, SOURCEX, SOURCEY, DELX, DELY
+;	out to screen
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+screen_blt:
+	mov	ax, SOURCEX 		;compute source address
+	mov	si, ax
+	and	ax, 0fh
+	mov	sdad, ax
+	shr	si, 1
+	shr	si, 1
+	shr	si, 1			;make a byte address
+	and	si, 0fffeh		;make it even byte address
+
+	mov	ax, SOURCEY
+	mov	bx, DELY
+	mov	height, bx
+	mov	cx, source_next
+	neg	source_next		;go up one line
+	dec	bx
+	add	ax, bx			;else start at bottom
+	mul	cx			;get mem address of start corner
+	add	si, ax
+	add	si, s_off		;add in base address
+	mov	bx, DELX
+	mov	width, bx
+
+	mov	ax, DESTY		;compute destination address
+	add	ax, DELY
+	dec	ax			;we draw from bottom up
+	mov	bx, DESTX
+	call	concat			; get mem address and dot address
+	xor	bh, bh			;concat sets bl only
+	test	di, 1			
+if not byte_swap
+	jz	lowbyte
+	or	bx, 08h			;expand dot address to word size
+else
+	jnz	lowbyte
+	or	bx, 08h
+endif
+lowbyte:
+	mov	ddad, bx		; dest. rect. dot position
+	and	di, 0fffeh 		; make it even byte address
+
+	mov	ax, ln_next
+	neg	ax
+	mov	dest_next, ax
+
+	mov	ax, graph_plane		; dest. segment address
+	mov	d_seg, ax
+
+	call	normal_blt
+
+update_dest:
+	pop	DELY
+	pop	DESTY
+	pop	DELX
+	pop	DESTX			;may have changed these for clipping
+	mov	ax, DELX			;set up dest address
+	mov	bx, DELY
+
+update_nodouble:
+	pop	STYLE
+	test	STYLE, THICKEN
+	jz	update_nothick
+	add	ax, WEIGHT		;we smeared this amount
+update_nothick:
+	cmp	CHUP, 0
+	jne	ck90
+	add	DESTX, ax		;move left by DELX
+	jmps	blt_done
+ck90:	cmp	CHUP, 900
+	jne	ck180
+	sub	DESTY, ax		;move up by DELX
+	jmps	blt_done
+ck180:	cmp	CHUP, 1800
+	jne	ck270
+	sub	DESTX, ax		;move right by DELX
+	jmps	blt_done
+ck270:	add	DESTY, ax		;move down by DELX
+
+blt_done:
+	pop	es
+	pop	ds
+	pop	bp
+	ret
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;	do a normal blt from (ds:si) to (es:di)
+;	    uses ds:si		source
+;		 es:di		destination
+;		 sdad, ddad	address within word
+;		 STYLE		special effects mask
+;		 width, height	width and length of area to copy
+;		 source_next	add this to get to next line in source
+;		 dest_next	add this to get to next line in destination
+;		
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+normal_blt:
+	mov	ax, offset ror_call      ;assume rotate right to align
+	mov	cx, ddad
+	sub	cx, sdad	
+	mov	bx, cx
+	jns	do_ror			;if sdad>ddad we rotate left
+	neg	cx
+	mov	ax, offset rol_call
+	add	bx, 16			;make positive
+do_ror:
+	shl	bx, 1
+	mov	bx, word_mask_table[bx]
+if byte_swap
+	xchg	bh, bl
+endif	
+	not	bx
+	mov	rotate_mask, bx		;get the overlap for middle words
+	neg	cx
+	add	cx, 0fh			;smaller cx is longer shift
+	shl	cx, 1
+	shl	cx, 1			;4 bytes for a 32 bit shift
+	add	ax, cx
+	mov	rotate, ax		;address to jump to to do cl shifts
+
+get_masks:
+	mov	bx, ddad
+	shl	bx, 1
+	mov	ax, word_mask_table[bx]	;get mask for destination dot address
+if byte_swap
+	xchg	ah, al
+endif	
+	mov	left_mask, ax		;1's are where we have good data
+
+	shr	bx, 1			;set it back to ddad
+	add	bx, width
+	cmp	bx, 10h
+	ja	double_dest		;if bx<10 then it fits in one word
+	shl	bx, 1
+	mov	ax, word_mask_table[bx]	;get mask for right side of BLT
+if byte_swap
+	xchg	ah, al
+endif	
+	not	ax
+	and	left_mask, ax 		;put the two masks together
+	mov	right_mask, 0h		;we'll use this mask for skews
+	mov	blttype, offset single_loop
+	jmps	masks_done
+
+double_dest:				;otherwise there are two masks
+	mov	blttype, offset double_loop
+	mov	ax, bx			;get ddad+width
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	dec	ax
+	mov	dest_words, ax		;number of words to write for middle
+	and	ax, ax
+	jnz	multi_dest
+	mov	ax, sdad
+	add	ax, width
+	cmp	ax, 20h
+	jb	do_rightmask		;source fits in two words too
+multi_dest:
+	mov	blttype, offset multi_right
+	cmp	rotate, offset rol_call
+	jb	do_rightmask
+	mov	blttype, offset multi_left
+
+do_rightmask:
+	and	bx, 0fh
+	jnz	not_null
+	dec	dest_words		;last word is full so its a fringe
+	mov	bx, 10h
+not_null:
+	shl	bx, 1
+	mov	ax, word_mask_table[bx]
+if byte_swap
+	xchg	ah, al
+endif	
+	not	ax			;1's mean we have valid data
+	mov	right_mask, ax
+masks_done:
+	cmp	buffer_blt, FALSE
+	je	do_color
+	mov	bx, 3			;source only blt
+	jmp	plane_out
+do_color:
+	mov	plane_loop_count, num_planes	; load up the plane count
+	mov	ax, TEXT_BP
+	shl	ax, 1
+	shl	ax, 1			; mov it up 2 bits
+	mov	tmp_fg_bp, ax
+plane_loop:
+	mov	bx, tmp_fg_bp		; get the
+	and	bx, 4			; mask off color bit
+	or	bx, WRT_MODE
+	shl	bx, 1
+	mov	bx, TXT_MODE[bx]		; get the correct writing mode
+if (num_planes gt 1)
+	shr	tmp_fg_bp, 1		; put the next plane bit into place
+	push	dest_words
+	push	left_mask
+	push	right_mask
+	push	blttype
+	push	rotate
+	push	rotate_mask
+ 	push	si
+	push	di
+	call	plane_out
+	pop	di
+	pop	si
+	pop	rotate_mask
+	pop	rotate
+	pop	blttype
+	pop	right_mask
+	pop	left_mask
+	pop	dest_words
+; Bump to the next plane and do it again, if necessary.
+	add	di, plane_sz
+	dec	plane_loop_count
+	jnz	plane_loop
+	ret
+endif
+;
+plane_out:				;bx has logic op to perform
+	shl	bx, 1
+	mov	ax, optable[bx]
+	mov	tlogicop, ax		;call this address to do tlogicop
+	mov	special, ax		;logicop or special effects
+	mov	specialwf, ax		;word fringe special effects
+	mov	ax, woptable[bx]
+	mov	specialw, ax		;logicop or special effects for words
+;do special effects
+	mov	ax, STYLE		;special effects mask
+	test	ax, 0ffh
+	jnz	do_special
+	jmp	no_special
+do_special:
+	test	ax, LIGHT
+	jz	no_light
+	mov	bx, LITEMASK  			;reload the mask for this char
+	mov	light_mask, bx
+	mov	bx, special
+	mov	lightjmp, bx			;endpoint of light routine
+	mov	special, offset lightop		;insert this in the loop
+	mov	bx, specialwf
+	mov	lightjmpwf, bx			;endpoint of light routine
+	mov	specialwf, offset lightopwf	;insert this in the loop
+	mov	bx, specialw
+	mov	lightjmpw, bx			;endpoint of light routine
+	mov	specialw, offset lightopw	;insert this in the loop
+no_light:
+	test	ax, THICKEN
+	jz	no_thicken
+	mov	bx, special
+	mov	thickenjmp, bx			;endpoint of thicken routine
+	mov	special, offset thickenop	;insert routine into the loop
+	mov	bx, specialwf
+	mov	thickenjmpwf, bx			;endpoint of light routine
+	mov	specialwf, offset thickenopwf	;insert routine into the loop
+	mov	bx, specialw
+	mov	thickenjmpw, bx			;endpoint of light routine
+	mov	specialw, offset thickenopw	;insert routine into the loop
+no_thicken:	
+	test	ax, SKEW
+	jz	no_skew
+	mov	bx, SKEWMASK 			;reload the mask for this char
+	mov	skew_mask, bx
+	mov	bx, special
+	mov	skewjmp, bx
+	mov	special, offset skewop
+	cmp	blttype, offset single_loop
+	jne	not_single
+	mov	blttype, offset double_loop
+	jmps	no_skew				;single becomes double
+not_single:
+	cmp	blttype, offset double_loop
+	jne	no_skew
+	cmp	width, 10h
+	jbe	no_skew				;source is at most two words
+	mov	blttype, offset multi_right
+	cmp	rotate, offset rol_call
+	jb	no_skew
+	mov	blttype, offset multi_left	;double becomes multiword
+no_skew:
+no_special:
+	mov	cx, STYLE
+	mov	loc_style, cx		; local (cseg) copy of style
+	mov	bp, left_mask		;get the first mask
+	mov	cx, height
+
+	mov	es, d_seg
+	push	ds
+	mov	ds, s_seg		;set up segments
+	jmp	blttype			;do the fastest one
+
+single_loop:				;destination is a single word
+	lodsw
+	mov	dx, [si]			;get two words (may only use one)
+	mov	bx, es:[di]		;get dest
+
+if not byte_swap
+	xchg	ah, al
+	xchg	dh, dl
+	xchg	bh, bl			;is this a 16 bit machine?
+endif
+
+	call	rotate			;align source and destination
+	and	ax, bp			;strip off garbage
+	call	special			;do special effect or just logicop
+if not byte_swap
+	xchg	ah, al
+endif
+	mov	es:[di], ax		;store the result
+	dec	si			;reset source address
+	dec	si
+	add	si, source_next		;get to next line
+	add	di, dest_next
+snowrap:
+	loop	single_loop
+
+	pop	ds
+	ret
+
+double_loop:				;do a line (two fringes)
+	lodsw
+	mov	dx, [si]			;get two words (may only use one)
+	mov	bx, es:[di]		;get dest
+
+if not byte_swap
+	xchg	ah, al
+	xchg	dh, dl
+	xchg	bh, bl			;is this a 16 bit machine?
+endif
+
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the first one back
+	and	ax, bp			;strip off garbage
+	call	special			;do special effect or just logicop
+if not byte_swap
+	xchg	ah, al
+endif
+	stosw				;store the result
+	mov	ax, dx			;get the other half (it got shifted in)
+	mov	bx, es:[di]		;get the next word
+
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	bp, right_mask
+	and	ax, bp			;strip off unused bits
+	call	tlogicop	     	
+if not byte_swap
+	xchg	ah, al
+endif
+	mov	es:[di], ax		;save the result
+	dec	di
+	dec	di			;reset dest address
+	dec	si
+	dec	si			;reset source address
+	add	si, source_next		;get to next line
+	add	di, dest_next
+dnowrap:
+	loop	double_loop
+
+	pop	ds
+	ret
+
+multi_left:
+	push	cx
+	mov	cx, dest_words
+	push	si
+	push	di
+	lodsw
+	mov	dx, [si]			;get two words
+	inc	si
+	inc	si			;point at next word
+	mov	bx, es:[di]		;get dest
+
+if not byte_swap
+	xchg	ah, al
+	xchg	dh, dl
+	xchg	bh, bl			;is this a 16 bit machine?
+endif
+
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the mask for left fringe
+	and	ax, bp
+	call	specialwf		;do special effect or just logicop
+if not byte_swap
+	xchg	ah, al
+endif
+	stosw				;store the result
+
+	mov	bp, rotate_mask
+words_left:
+	mov	bx, dx			;save what's  left of this word
+	and	bx, bp			;clear out garbage at end of word
+	mov	dx, [si]			;get next_word
+	inc	si
+	inc	si
+if not byte_swap
+	xchg	dh, dl
+endif
+	call	rotate			;rotate good bits into ax
+	not	bp
+	and	ax, bp			;strip off garbage
+	not	bp
+	xor	ax, bx			;put leftovers in front of word
+	jcxz	left_done		;we have to mask the last word
+	call	specialw
+if not byte_swap
+	xchg	ah, al
+endif
+	stosw
+	dec	cx
+	jmp	words_left
+
+left_done:
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	bp, right_mask		;load the mask we need
+	and	ax, bp
+	call	specialwf		;feature - this clears thickenover
+if not byte_swap
+	xchg	ah, al
+endif
+	mov	es:[di], ax		;save the result
+	pop	di
+	pop	si
+	add	si, source_next		;get to next line
+	add	di, dest_next
+lnowrap:
+	pop	cx
+	dec	cx
+	jcxz	ldone
+	rol	light_mask, 1
+	test	loc_style, 4
+	jnz	ldo_ital
+	jmp	multi_left
+
+ldone:
+	pop	ds
+	ret
+
+ldo_ital:
+	jmp	skewopw		;need a bigger jump
+
+multi_right:
+	push	cx
+	mov	cx, dest_words
+	push	si
+	push	di
+	lodsw
+	mov	bx, es:[di]		;get dest
+
+if not byte_swap
+	xchg	ah, al
+	xchg	bh, bl			;is this a 16 bit machine?
+endif
+
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the mask for left fringe
+	and	ax, bp
+	call	specialwf		;do special effect or just logicop
+if not byte_swap
+	xchg	ah, al
+endif
+	stosw				;store the result
+
+	mov	bp, rotate_mask
+words_right:
+	mov	bx, dx			;get bits left over from last shift
+	and	bx, bp			;save the high bits of the word
+	lodsw
+if not byte_swap
+	xchg	ah, al
+endif
+	call	rotate			;rotate it down toward dx
+	not	bp
+	and	ax, bp			;strip off garbage at high bits
+	not	bp
+	xor	ax, bx	       		;put leftovers in front of word
+	jcxz	right_done     		;is this the right fringe word?
+	call	specialw
+if not byte_swap
+	xchg	ah, al
+endif
+	stosw
+	dec	cx
+	jmps	words_right
+
+right_done:
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	bp, right_mask		;load the mask we need
+	and	ax, bp
+	call	specialwf		;this clears thickenover too
+if not byte_swap
+	xchg	ah, al
+endif
+	mov	es:[di], ax		;save the result
+	pop	di
+	pop	si
+	add	si, source_next		;get to next line
+	add	di, dest_next
+rnowrap:
+	pop	cx
+	dec	cx
+	jcxz	rdone
+	rol	light_mask, 1
+	test	loc_style, 4
+	jnz	rdo_ital
+	jmp	multi_right
+
+rdone:
+	pop	ds
+	ret
+
+rdo_ital:
+	jmp	skewopw	
+
+ror_call:				;call in here someplace to do
+	rcr	ax, 1			;a 32 bit shift right
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+	rcr	ax, 1
+	rcr	dx, 1
+ror_one:
+	rcr	ax, 1
+	rcr	dx, 1
+ror_none:
+	ret
+
+rol_call:				;this is a 32 bit left shift
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+	rcl	dx, 1
+	rcl	ax, 1
+rol_none:
+	ret
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	writing mode operations
+;	on Entry: ax = Source word
+;	          bx = Dest word
+;		  bp = mask (1's represent useable bits)
+;	on Exit:  ax = new destination word [D']
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+op0:	not	bp  			; mode 0  D'= 0
+	and	bx, bp
+	not	bp
+	mov	ax, bx
+	ret
+
+op1:	not	bp			; mode 1  D'= S and D
+	or	ax, bp
+	not	bp
+	and	ax, bx
+	ret
+
+op2:	not	bx			; mode 2  D'= S and [not D]
+	and	ax, bx
+	not	bx
+	and	ax, bp
+	not	bp
+	and	bx, bp
+	not	bp
+	xor	ax, bx
+	ret
+
+op3:	not	bp			; mode 3  D'= S (replace mode)	
+	and	bx, bp
+	not	bp
+	xor	ax, bx
+	ret	
+
+op4:	not	ax			; mode 4  D'= [not S] and D (erase)
+	and	ax, bx
+	ret
+
+op5:	mov	ax, bx			; mode 5  D'= D
+	ret
+
+op6:	xor	ax, bx			; mode 6  D'= S xor D (xor mode)
+	ret	
+
+op7:	or	ax, bx			; mode 7  D'= S or D  (or mode)
+	ret	
+
+op8:	or	ax, bx			; mode 8  D'= not [S or D]
+	not	ax
+	and	ax, bp
+	not	bp
+	and	bx, bp
+	not	bp
+	xor	ax, bx
+	ret	  
+
+op9:	xor	ax, bx			; mode 9 D'= not [S xor D]
+	not	ax
+	and	ax, bp
+	not	bp
+	and	bx, bp
+	not	bp
+	xor	ax, bx
+	ret
+
+opa:	mov	ax, bx			; mode 10 D'= not D
+	not	ax
+	and	ax, bp
+	not	bp
+	and	bx, bp
+	not	bp
+	xor	ax, bx	
+ 	ret
+
+opb:	not	bx			; mode 11 D'= S or [not D]
+	or	ax, bx
+	not	bx
+	and	ax, bp
+	not	bp
+	and	bx, bp
+	not	bp
+	xor	ax, bx
+	ret
+
+opc:	not	ax			; mode 12 D'= not S
+	and	ax, bp
+	not	bp
+	and	bx, bp
+	not	bp
+	xor	ax, bx
+	ret	
+
+opd:	not	ax			; mode 13 D'= [not S] or D
+	and	ax, bp
+	or	ax, bx
+	ret
+
+ope:	and	ax, bx			; mode 14 D'= not [S and D]
+	not	ax
+	and	ax, bp
+	not	bp
+	and	bx, bp
+	not	bp
+	xor	ax, bx
+	ret
+
+opf:	or	bx, bp			; mode 15 D'= 1
+	mov	ax, bx
+	ret
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	word writing mode operations
+;	on Entry: ax = Source word
+;	          bx = Dest word
+;	on Exit:  ax = new destination word [D']
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+wop0:	xor	ax, ax  			; mode 1  D'= 0
+	ret
+
+wop1:					; mode 2 D'= S and D
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	and	ax, bx
+	ret
+
+wop2:					; mode 3  D'= S and [not D]
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	not	bx
+	and	ax, bx
+	ret
+
+wop3:					; mode 4  D'= S (replace mode)	
+	ret	
+
+wop4:					; mode 5  D'= [not S] and D (erase)
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	not	ax
+	and	ax, bx
+	ret
+
+wop5:					; mode 6  D'= D
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	ax, bx	
+	ret
+
+wop6:					; mode 7  D'= S xor D (xor mode)
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	xor	ax, bx
+	ret	
+
+wop7:					; mode 8  D'= S or D  (or mode)
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	or	ax, bx
+	ret	
+
+wop8:					; mode 9  D'= not [S or D]
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	or	ax, bx
+	not	ax
+	ret	  
+
+wop9:					; mode 10 D'= not [S xor D]
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	xor	ax, bx
+	not	ax
+	ret
+
+wopa:					; mode 11 D'= not D
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	ax, bx	
+	not	ax
+ 	ret
+
+wopb:					; mode 12 D'= S or [not D]
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	not	bx
+	or	ax, bx
+	ret
+wopc:					; mode 13 D'= not S
+	not	ax
+	ret	
+
+wopd:					; mode 14 D'= [not S] or D
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	not	ax
+	or	ax, bx
+	ret
+
+wope:					; mode 15 D'= not [S and D]
+	mov	bx, es:[di]		;get destination
+if not byte_swap
+	xchg	bh, bl
+endif
+	and	ax, bx
+	not	ax
+	ret
+wopf:
+	xor	ax, ax			; mode 16 D'= 1
+	not	ax
+	ret
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect THICKEN
+;	on Entry: ax, dx = Source words
+;	on Exit:  ax, dx = thickened source words 
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+thickenop:
+	push	bx
+	push	cx
+	push	bp
+
+	mov	cx, smear
+
+	mov	bx, right_mask
+thickclear:				;need to strip bits off source
+	clc				;since its width includes thickening
+	rcl	bx, 1
+	rcl	bp, 1
+	loop	thickclear
+	and	ax, bp
+	and	dx, bx
+	pop	bp
+
+	mov	cx, smear
+thickenoploop:
+	mov	bx, ax
+	clc				;ax is already masked
+	rcr	bx, 1 			;thicken it
+	pushf				;save carry flag
+	or	ax, bx			;cause this clears it
+	popf	
+	mov	bx, dx			;get second word
+	rcr	bx, 1			;thicken it
+	or	dx, bx
+	loop	thickenoploop
+	pop	cx
+	pop	bx
+	jmp	thickenjmp
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect THICKEN
+;	on Entry: ax = Source word
+;	on Exit:  ax = thickened source word 
+;	 	  thickenover = bits that spill out	
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+thickenopw:
+	push	bx
+	push	dx
+	push	cx
+	push	bp
+	mov	cx, smear
+	mov	bx, ax
+	xor	dx, dx
+	xor	bp, bp
+
+	clc		       		;dont shift in a 1
+thickenopwloop:
+	rcr	bx, 1	       		;thicken it
+	rcr	dx, 1	       		;the slop goes in here
+	sar	bp, 1
+	or	bp, dx
+	or	ax, bx	       		;thicken this word
+	loop	thickenopwloop
+	or	ax, thickenover    		;or in the stuff from the last word
+	mov	thickenover, bp    		;save the new slop
+	pop	bp
+	pop	cx
+	pop	dx
+	pop	bx
+	jmp	thickenjmpw
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect THICKEN
+;	on Entry: ax = Source word
+;	on Exit:  ax = thickened source word 
+;	 	  thickenover = bits that spill out	
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+thickenopwf:
+	push	bx
+	push	dx
+	push	cx
+	push	bp
+	mov	cx, smear
+	mov	bx, ax
+	xor	dx, dx
+	xor	bp, bp
+
+	clc		       		;dont shift in a 1
+thickenopwfloop:
+	rcr	bx, 1	       		;thicken it
+	rcr	dx, 1	       		;the slop goes in here
+	sar	bp, 1
+	or	bp, dx
+	or	ax, bx	       		;thicken this word
+	loop	thickenopwfloop
+	or	ax, thickenover    		;or in the stuff from the last word
+	mov	thickenover,bp    		;save the new slop
+	pop	bp
+	and	ax, bp			;strip off the trash
+	pop	cx
+	pop	dx
+	pop	bx
+	jmp	thickenjmpwf
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect LIGHT
+;	on Entry: ax, dx = Source words
+;	on Exit:  ax, dx = light source words 
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+lightop:
+	and	ax, light_mask
+	and	dx, light_mask
+	rol	light_mask, 1
+	jmp	lightjmp
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect LIGHT
+;	on Entry: ax, dx = Source words
+;	on Exit:  ax, dx = light source words 
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+lightopw:
+	and	ax,light_mask
+	jmp	lightjmpw
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect LIGHT
+;	on Entry: ax, dx = Source words
+;	on Exit:  ax, dx = light source words 
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+lightopwf:
+	and	ax, light_mask
+	jmp	lightjmpwf
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect SKEW
+;	on Entry: ax, dx = Source words
+;	on Exit:  ax, dx = skewized source words 
+;	 	  leftmask, rightmask = rotated masks
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+skewop:
+	rol	skew_mask, 1
+	jc	no_shift
+	rcr	ax, 1			;carry clear at this point
+	rcr	dx, 1			;do a rotate on the source
+
+	push	dx
+	mov	dx, right_mask
+	clc				;rotate in a 0
+	rcr	bp, 1
+	rcr	dx, 1			;rotate the masks
+	mov	right_mask, dx
+	mov	left_mask, bp		;save rotated masks
+	mov	dx, rotate
+	cmp	dx, offset rol_call
+	jb	dec_ror			;do another right shift
+	cmp	dx, offset rol_none
+	je	begin_ror		;we werent rotating
+	add	dx, 4			;do one less rol
+	mov	rotate, dx
+	pop	dx
+no_shift:
+	jmp	skewjmp
+
+dec_ror:
+	cmp	bp, 0h			;if mask is inoperative
+	je	next_word		;we're done with this word
+
+	sub	dx, 4
+	mov	rotate, dx		;do another one
+	pop	dx
+	jmp	skewjmp
+
+begin_ror:
+	mov	rotate, offset ror_one
+	pop	dx
+	jmp	skewjmp
+
+next_word:				;we crossed a word boundary
+	xchg	bp, right_mask  		;0h in mask and get mask
+	mov	left_mask, bp		;mov right_mask to left_mask
+	inc	di
+	inc	di			;next word destination
+	mov	bx, es:[di]		;get the word we're really doing
+if not byte_swap
+	xchg	bh, bl
+endif
+
+	mov	dx, rotate		;we know we're rotating right
+	sub	dx, offset ror_call	;get the count
+	neg	dx
+	add	dx, 15 * 4		;
+	add	dx, offset rol_call  	;subtract 16 ror's
+	mov	rotate, dx		;now were rotating left
+
+	pop	dx
+	mov	ax, dx			;set the new source word
+	and	ax, bp
+	jmp	skewjmp
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	special effect SKEW for words
+;	recomputes rotation and jumps to proper routine to finish char
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+skewopw:
+	rol	skew_mask, 1
+	jnc	do_shift
+	cmp	rotate, offset rol_call
+	jb	go_right
+	jmp	multi_left
+go_right:
+	jmp	multi_right
+
+do_shift:
+	stc
+ 	rcr	rotate_mask, 1		;one more bit into next word
+
+	mov	dx, right_mask
+	cmp	dx, 0ffffh		;if mask is full on
+	je	inc_right
+	stc
+	rcr	dx, 1			;rotate in a 1
+	mov	right_mask, dx
+
+do_left:
+	mov	ax, left_mask
+	clc				;rotate in a 0
+	rcr	ax, 1
+	cmp	ax, 0	     		;if mask is inoperative
+	je	wnext_word		;then we have to increment address
+	mov	left_mask, ax 
+
+	mov	dx, rotate
+	cmp	dx, offset rol_call
+	jb	wdec_ror		;do another right shift
+	cmp	dx, offset rol_none
+	je	wbegin_ror		;we werent rotating
+	add	dx, 4			;do one less rol
+	mov	rotate, dx
+	jmp	multi_left
+
+inc_right:				;spilled out of a word to get here
+	inc	dest_words
+	mov	right_mask, 8000h	;use the first bit
+	jmps	do_left			;go back and finish up
+
+wdec_ror:
+	sub	dx, 4
+	mov	rotate, dx		;do another one
+	jmp	multi_right
+
+wbegin_ror:
+	mov	rotate, offset ror_one
+	mov	rotate_mask, 8000h	;these are the bits that are good
+	jmp	multi_right
+
+wnext_word:
+	mov	left_mask, 0ffffh	;ran out of word
+	dec	dest_words		;so more is in the fringe
+	inc	di
+	inc	di			;next word destination
+
+	mov	dx, rotate		
+	cmp	dx, offset rol_none
+	jne	wror 			
+	mov	dx, offset ror_none	;we werent rotating so set it to right
+	mov	rotate_mask, 8000h	;these are the bits that are good
+wror:	sub	dx, offset ror_call	;we know we're rotating right
+	neg	dx			;get the count
+	add	dx, 15 * 4		;
+	add	dx, offset rol_call  	;subtract 16 ror's
+	mov	rotate, dx		;now were rotating left
+
+	jmp	multi_left
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	rotation in 90 degree increments
+;	Entry:   ds:si		source
+;		 es:di		destination
+;		 dx		address within source word
+;		 width, height	width and height of area to copy
+;		 source_next	source form width
+;		 dest_next	add to get to next line in buffer
+;
+; 	Exit:	ax = source word
+; 		bx = dest word
+; 		cx = width count
+; 		dx = source mask
+; 		bp = dest mask
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+rotation:
+	mov	ax, SOURCEX
+	mov	si, ax
+	and	ax, 0fh
+	mov	sdad, ax
+	shr	si, 1
+	shr	si, 1
+	shr	si, 1			;make a byte address
+	and	si, 0fffeh		;make it even byte address
+
+	mov	ax, DELX
+	mov	width, ax
+	mov	ax, SOURCEY
+	mov	bx, DELY
+	mov	height, bx
+	mov	cx, source_next
+	add	si, s_off		;set up base address
+	cmp	CHUP, 1800
+	jne	rot90
+	jmp	upside_down
+rot90:	cmp	CHUP, 900
+	je	top_source
+	neg	source_next		;go up one line
+	dec	bx
+	add	ax, bx			;start at bottom
+	mul	cx			;get mem address of start corner
+	add	si, ax
+top_source:
+	mov	ax, DELY
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1		
+	inc	ax			;form width is height / 8 + 1
+	inc	ax
+	and	ax, 0fffeh		;make it even byte address
+	mov	dest_next, ax
+	mov	di, buffc
+
+	cmp	CHUP, 2700
+	je	top_dest
+	neg	dest_next		;bottom working up
+	mov	bx, DELX			;DELX is the height
+	dec	bx
+	mul	bx 	
+	add	di, ax
+top_dest:
+	mov	cx, sdad
+	mov	dx, 8000h
+	shr	dx, cl
+
+	mov	es, d_seg
+	push	ds
+	mov	ds, s_seg
+
+if not byte_swap
+	xchg	dh, dl
+endif
+	mov	bp, 8000h		;first bit of scratch area
+	xor	bx, bx
+	mov	cx, width		;pixels in source row
+rot_yloop:
+	push	cx
+	mov	cx, height
+	push	dx
+	push	bp
+	push	si
+	push	di
+rot_xloop:
+	test	[si], dx			;is pixel set?
+	jz	rot_nor
+	or	bx, bp
+rot_nor:
+	ror	bp, 1
+	jc	rot_nextdest		;next bit is in next word
+rot_incsource:
+	dec	cx			;pixels per row
+	jcxz	rot_xdone
+	add	si, source_next		;next line down
+	jmps	rot_xloop
+rot_nextdest:
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	es:[di], bx 		;store what we did
+	inc	di
+	inc	di
+	xor	bx, bx			;start from scratch
+	jmps	rot_incsource
+
+rot_xdone:				;one pass of source done
+if not byte_swap
+	xchg	bh, bl
+endif
+	mov	es:[di], bx		;store the word we were working on
+	xor	bx, bx
+	pop	di
+	add	di, dest_next		;down a line in buffer
+	pop	si
+	pop	bp
+	pop	dx
+if not byte_swap
+	xchg	dh, dl
+endif
+	ror	dx, 1
+if not byte_swap
+	xchg	dh, dl
+endif
+	jc	rot_nextsource
+	pop	cx
+	loop	rot_yloop
+	jmps	rot_done
+
+rot_nextsource:
+	inc	si
+	inc	si
+	pop	cx
+	loop	rot_yloop
+
+rot_done:
+	pop	ds
+
+	mov	ax, DELX
+	mov	bx, DELY
+	mov	width, bx
+	mov	DELX, bx
+	mov	height, ax
+	mov	DELY, ax
+	mov	ax, dest_next
+	cmp	CHUP, 900
+	jne	rot_noneg
+	neg	ax
+rot_noneg:
+	mov	source_next, ax
+	mov	ax, buffc
+	mov	s_off, ax
+	mov	s_seg, es
+	mov	SOURCEX, 0
+	mov	SOURCEY, 0
+	ret
+
+upside_down:				;si points to top of source
+	mov	ax, DELX
+	add	ax, sdad
+	dec	ax			;make width instead of address
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1		
+	inc	ax			;form width is DELX / 8 + 1
+	inc	ax
+	and	ax, 0fffeh		;make it even byte address
+	mov	dest_next, ax
+	mov	cx, ax
+	shr	cx, 1			;number of words to move per line
+	mov	bx, DELY
+	mul	bx			;ax points to bottom of new form
+	dec	ax
+	dec	ax
+	mov	di, buffc
+	add	di, ax			;last word in form
+	mov	es, d_seg		; set extra segment to destination
+	push	ds			; save current data segment
+	mov	ds, s_seg		; set data segment to source
+upside_loop:
+	push	si
+	push	cx			;save words per line
+line_loop:
+	push	cx			;save words per line
+	lodsw				;get a source to flip
+	mov	cx, 16
+	xor	bp, bp
+flip_loop:
+	rcr	ax, 1
+	rcl	bp, 1
+	loop	flip_loop
+	mov	ax, bp
+	std
+	stosw				;store word autodec	
+	cld				;autoinc for source
+	pop	cx
+	loop	line_loop
+	pop	cx
+	pop	si
+	add	si, source_next		;di is already updated
+	dec	bx
+	jnz	upside_loop	
+	pop	ds			; restore data segment
+	mov	ax, dest_next
+	mov	source_next, ax
+	mov	ax, buffc
+	mov	s_off, ax
+	mov	s_seg, es
+	mov	ax, SOURCEX
+	add	ax, DELX
+	and	ax, 0fh
+	neg	ax
+	add	ax, 10h			;location of last bit in original
+	and	ax, 0fh
+	mov	SOURCEX, ax
+	mov	SOURCEY, 0
+	ret
+
+;************************************************************************
+;*	chk_fnt()							*
+;************************************************************************
+chk_fnt:
+		push	es
+		push	di
+		les	di, act_font
+		test	es:word ptr FH_FLAGS_WORD[di], 10h
+		jz	end_chk_fnt		; skip if already available
+		push	ax
+		push	bx
+		mov	ax, di
+		mov	bx, es			; bx:ax -> font header
+		callf	addr_fmgr		; invoke font manager
+		mov	ax, es:word ptr 78[di]
+		mov	FOFF + 2, ax
+		pop	bx
+		pop	ax
+end_chk_fnt:
+		pop	di
+		pop	es
+		ret
+
+
+;************************************************************************
+;*	hdr_addr()							*
+;************************************************************************
+hdr_addr:
+		push	bp
+		xor	ax, ax
+		xor	bx, bx
+		callf	addr_fmgr
+		mov	word ptr addr_hmgr, bx
+		mov	word ptr addr_hmgr + 2, ax
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	VOID chk_hdr(opcode, parameter)					*
+;*	WORD opcode (0 = set font, 1 = set point, 2 = set height)	*
+;*	WORD parameter (font/point/height requested)			*
+;*	Calls gdos to ensure that whole header is in memory.  This	*
+;*	is a no-op if a v_loadfonts() call hasn't been made (bitmaps).	*
+;************************************************************************
+chk_hdr:
+		push	bp
+		mov	bp, sp
+		mov	ax, 4[bp]	
+		mov	dx, 6[bp]
+		cmp	word ptr addr_hmgr + 2, 0
+		je	end_chk_hdr
+		callf	addr_hmgr
+end_chk_hdr:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	inc_lfu()							*
+;************************************************************************
+inc_lfu:
+		les	di, act_font
+		inc 	es: word ptr FH_USE_COUNT_LO[di]
+		jnc	inc_lfu_done
+		inc	es: word ptr FH_USE_COUNT_HI[di]
+inc_lfu_done:
+		ret
+
+		end

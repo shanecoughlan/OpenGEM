@@ -1,0 +1,91 @@
+This is the NEWS file for CHOICE
+Jim Hall <jhall@freedos.org>
+
+
+1.0 - part of utils10, my original command set for FreeDOS, from 1994
+
+2.0 - re-written to be easier to maintain
+
+2.1 - fixed a bug where counting for the exit code started at zero,
+      instead of one.
+
+3.0 - added program internationalization using the "Cats" library.
+      "Cats" is distributed under the GNU GPL, and is available from
+      http://www.freedos.org/jhall/cats
+
+3.1 - added choice.ru, contributed by Ilya Vasilyev <arvi@online.ru>
+
+3.3 - added choice.lv, contributed by Neons
+
+3.4 - added /T support.  Thanks to Raphaël <r.crochet@free.fr>.
+
+3.5 - added choice.sv, contributed by Martin Stromberg <ams@ludd.luth.se>
+
+3.5a - added help\choice.en, a help file for CHOICE contributed by
+      Daniel F. Dickinson <danielfdickinson@yahoo.ca>.  This Help file
+      replaces the original choice.hlp
+
+3.5b - added nls\choice.de, a catalog file in German contributed by
+      achim_sondermann.
+
+3.6 - Added /B and /A - Sound an alert at prompt.  Not sure if I
+  prefer /A or /B, so I'll keep both for now.  If anyone has a
+  preference for either, let me know!  Contribution by Zhong Jacky.
+
+3.6a - Based on user feedback, I've decided to use /B.  I have dropped
+  support for /A.
+
+3.6b - updated choice.sv by Martin Stromberg
+
+3.6c - updated choice.de (added 0.8) by Achim Sondermann
+
+3.6d - added choice.nl by Bernd Blaauw
+
+3.6e - updated choice.de (some errors, fixed 0.6) by Achim
+  Sondermann.  Added choice.hu by Nagy Daniel.
+
+3.7 - Fixed bug #1476 (CHOICE /T timeout bug), thanks to Eric Auer.
+  Updated choice.lv (missing messages added), contributed by Neons.
+  Updated help\choice.en, contributed by Neons.
+  Fixed bug #1475 (CHOICE /T error checking bug).
+
+4.0 tom 
+	fixed CtrlBreak hang #1609
+	fixed /C  (without choices)
+	fixed delay after typing a key
+	fixed missing idle call
+	reduced size from 19K to 8K (5,6 compressed)
+    fixes bug #1625
+    fixes bug #1620
+    fixes bug #1599
+
+4.1 tom
+    errors in ProcessEscCharacters(), which isn't used much
+    in existing helpfiles, fixed
+    replaced malloc()/free() by own implementation TALLOC.C
+    size 7.7/5.2 K
+    
+    now you have the choice to choose between
+    
+      CHOICE.EXE  (with CATS, 5.2K)
+    and           
+      _CHOICE.EXE (without CATS, 4K)  
+    
+    
+4.2a jhall
+    Cleaned up the files, re-indented the sources.
+    Re-released as FreeDOS CHOICE.
+
+4.2b jhall
+    Looks like we lost the 0.6 message from NLS\CHOICE.DE, so I replaced it
+    based on CHOICE 3.8b.
+
+4.2c tom ehlert
+	fixed bugs 1659, 1662, 1663, 1666
+
+4.3 Tom Ehlert
+        fixed bug 1620
+
+4.4 Tom Ehlert
+        corrected Dutch language file, solved a KITTEN bug.
+        updated documentation and messages.

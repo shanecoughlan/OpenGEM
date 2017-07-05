@@ -1,0 +1,26 @@
+OBJECTS = djaes.o djdbind.o djgbind.o djgutils.o djmfdb.o djmuldiv.o \
+	  djtree.o djudef.o djutils.o djvbind.o djvdi.o dosalloc.o \
+          ev_event.o formdo.o main.o oblib.o rclib.o trimage.o xfmlib.o \
+	  #debug.o
+
+AR     = ar
+RANLIB = ranlib
+CP     = copy
+RM     = xdel /n
+
+all:	libgem.a
+	
+
+libgem.a:	$(OBJECTS)
+	ar rc $@ $(OBJECTS)
+	ranlib $@
+	$(CP) $@ ..\..\lib
+
+tidy:	
+	-$(RM) *.o
+	-$(RM) *.bak
+
+clean:	tidy
+	-$(RM) libgem.a
+
+	

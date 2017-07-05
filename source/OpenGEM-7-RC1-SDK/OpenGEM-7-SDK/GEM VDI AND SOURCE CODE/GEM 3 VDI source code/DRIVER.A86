@@ -1,0 +1,318 @@
+;/*		DRIVER.A86	1/29/87 - 1/30/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	check_and_load
+		public	driver
+		public	mouse_patch
+		public	perform_relocation
+		public	save_ext
+		public	transform_ptsout
+
+; External entry points.
+		extrn	access_file:near
+		extrn	close_file:near
+		extrn	handle_zero:near
+		extrn	load_file:near
+
+; External data.
+include externs.a86
+
+
+;************************************************************************
+;* check_and_load							*
+;************************************************************************
+check_and_load:
+; Find the workstation identifier in the assignment table.  If it is not
+; there, return a handle of zero.
+		mov	ds, assign_seg
+		xor	si, si			; ds:si -> assignment table
+		mov	dx, work_identifier	; dx = workstation identifier
+assign_table_loop:
+		cmp	dx, [si]		; found the driver?
+		je	found_driver		; yes:  loop done
+		add	si, ASS_LENGTH		; no:  try next
+		cmp	word ptr ASS_WORK_ID[si], 0	; done?
+		jnz	assign_table_loop
+		jmp	handle_zero		; no such driver:  return zero
+
+; Open the driver file.  If the file isn't found, return a handle of zero.
+found_driver:
+		mov	dx, si
+		add	dx, ASS_FILE_NAME	; ds:dx -> file name
+		call	save_ext		; get driver extension
+		call	access_file
+		cmp	bx, 0
+		jne	file_found
+		jmp	handle_zero		; no file:  return zero
+file_found:
+		mov	file_handle, bx
+		mov	driver_size, dx
+
+; Allocate memory for the driver.  If memory cannot be allocated, close the
+; file and return a handle of zero.
+		mov	bx, dx
+		mov	ah, ALLOCATE
+		int	PCDOS
+		jnc	allocate_successful
+		mov	bx, file_handle
+		call	close_file
+		jmp	handle_zero		; return handle of zero
+
+; Load the driver and perform segment relocation.
+allocate_successful:
+		mov	bx, ax			; bx -> driver segment
+		mov	driver_head, ax		; save driver header segment
+		push	ds
+		mov	ds, bx
+		xor	dx, dx			; ds:dx = driver load address
+		call	load_file
+		pop	ds
+		cmp	load_successful, 0	; did it really load?
+		jz	end_check_and_load	; no load
+		call	perform_relocation
+
+; If this is a screen driver and a mouse patch is specified,
+; perform the patch.
+		cmp	work_identifier, 9	; screen driver?
+		ja	end_check_and_load
+		cmp	mouse_valid, 0
+		je	end_check_and_load
+		call	mouse_patch
+
+end_check_and_load:
+		ret
+
+
+;************************************************************************
+;* driver								*
+;************************************************************************
+driver:
+; If the transformation mode is set for RC or if there are no points to
+; transform, skip over the transformation code.
+		mov	bx, ws_index		; bx = table index
+		cmp	ws_xform[bx], 2		; RC?
+		je	no_ptsin		; RC:  skip transformation
+
+		lds	si, contrl		; ds:si = control array
+		mov	cx, 2[si]		; cx = number of vertices
+		jcxz	no_ptsin		; no vertices:  skip xform
+
+; Transform the ptsin array onto the stack.  Save the old stack pointer.
+		mov	bp, sp			; save current stack pointer
+		mov	ax, cx
+		shl	ax, 1
+		shl	ax, 1			; ax = number of ptsin bytes
+		sub	sp, ax			; reserve space on stack
+
+		lds	si, ptsin		; ds:si = old ptsin
+		mov	cs:word ptr ptsin, sp	; point to new ptsin
+		mov	cs:word ptr ptsin + 2, ss
+		mov	ax, ss
+		mov	es, ax
+		mov	di, sp			; es:di = transformed ptsin
+		push	bp			; save old stack pointer
+		mov	bp, ws_yres[bx]		; bp = y resolution
+		mov	bx, ws_xres[bx]		; bx = x resolution
+
+transform_ptsin:
+		lodsw				; ax = NDC x
+		shl	ax, 1			; transform NDC -> 64k
+		mul	bx			; transform 64k -> RC
+		mov	ax, dx			; high order is in RC
+		stosw
+
+		lodsw				; ax = NDC y
+		shl	ax, 1			; transform NDC -> 64k
+		mul	bp			; transform 64k -> RC
+		mov	ax, bp
+		dec	ax
+		sub	ax, dx			; flip y
+		stosw
+		loop	transform_ptsin
+		jmp	call_driver
+
+; Save the current stack environment.
+no_ptsin:
+		mov	bp, sp
+		push	bp
+
+; Point to the parameter block and pass control to the driver.
+call_driver:
+		mov	dx, offset contrl
+		mov	ax, cs
+		mov	ds, ax			; ds:dx = parameter block
+
+		mov	bx, ws_index		; bx = table index
+		mov	ax, ws_coff[bx]		; get transfer offset
+		mov	cs:word ptr driver_offset, ax
+		mov	ax, ws_cseg[bx]		; get transfer segment
+		mov	cs:word ptr driver_offset + 2, ax
+		mov	ax, ws_dseg[bx]		; pass driver data segment
+		mov	bx, offset gdos_drive
+		mov	cx, seg gdos_drive
+		callf	driver_offset
+
+; Restore.
+		pop	bp
+		mov	sp, bp
+		ret
+
+
+;************************************************************************
+;* transform_ptsout							*
+;************************************************************************
+transform_ptsout:
+; Don't perform a transformation if the transformation mode is RC or if
+; there are no points to transform.
+		mov	bx, ws_index		; bx = table index
+		cmp	ws_xform[bx], 2		; RC?
+		je	no_ptsout		; RC:  skip transformation
+
+		les	si, contrl		; es:si = control array
+		mov	cx, es:4[si]		; cx = vertex count
+		jcxz	no_ptsout		; no vertices:  skip xform
+
+; Transform the vertices.
+		mov	flip, ax		; ax = flip/no flip
+		mov	bp, ws_xres[bx]		; bp = x resolution
+		mov	bx, ws_yres[bx]		; bx = y resolution
+		les	di, ptsout		; es:di = ptsout array
+		lds	si, ptsout		; ds:si = ptsout array
+		cld
+
+transform_loop:
+		lodsw				; ax = RC x
+		mov	dx, ax
+		lea	ax, -1[bp]
+		add	ax, bp
+		adc	dx, 0
+		div	bp			; transform RC -> 64k
+		shr	ax, 1			; transform 64k -> NDC
+		stosw
+
+		lodsw				; ax = RC y
+		mov	dx, ax
+		cmp	flip, 0			; should y be flipped?
+		jne	no_flip
+		mov	dx, bx
+		dec	dx
+		sub	dx, ax			; flip y
+no_flip:
+		lea	ax, -1[bx]
+		add	ax, bx
+		adc	dx, 0
+		div	bx			; transform RC -> 64k
+		shr	ax, 1			; transform 64k -> NDC
+		stosw
+		loop	transform_loop
+
+no_ptsout:
+		ret
+
+
+;************************************************************************
+;* perform_relocation							*
+;************************************************************************
+perform_relocation:
+; Get the relocation information from the task header.  Prepare for the
+; relocation loop.
+		mov	ds, driver_head
+		mov	cx, .06h		; cx = number of reloc items
+		jcxz	reloc_done		; skip if no reloc required
+		mov	bx, ds			; bx = driver header segment
+		add	bx, .08h		; load start = header + size
+		mov	si, .18h		; si = offset to 1st rel. item
+; Perform the relocation.  Loop over the number of relocation items.
+relocation:
+		mov	di, [si]		; di = fixup offset
+		mov	ax, 2[si]		; ax = fixup base
+		add	ax, bx			; add in relocation factor
+		mov	es, ax			; es = fixup segment
+		add	es:[di], bx		; perform the relocation
+		add	si, 4			; point to next reloc item
+		loop	relocation
+
+reloc_done:
+		ret
+
+
+;************************************************************************
+;* mouse_patch								*
+;************************************************************************
+mouse_patch:
+		mov	es, driver_seg
+		xor	di, di			; es:di -> driver code
+		mov	cx, driver_size
+		shl	cx, 1
+		shl	cx, 1
+		shl	cx, 1
+		shl	cx, 1			; cx = driver code size
+		mov	al, 'z'			; al = search character
+
+; Look for the patch string and perform the patch.
+mp_loop:
+	repne	scasb
+		jcxz	end_mouse_patch
+		cmp	es:byte ptr [di], 'y'
+		jne	mp_loop
+		cmp	es:byte ptr 1[di], 'x'
+		jne	mp_loop
+		cmp	es:byte ptr 2[di], 'g'
+		jne	mp_loop
+		add	di, 3
+		mov	al, mouse_1
+		stosb
+		mov	al, mouse_2
+		stosb
+
+; That's all!
+end_mouse_patch:
+		ret
+
+
+;************************************************************************
+;* save_ext								*
+;*	ds:dx -> file name.						*
+;************************************************************************
+save_ext:
+		push	dx
+		push	si
+		cld
+
+; Determine the string to patch (printer or screen).
+		mov	ax, cs
+		mov	es, ax
+		mov	di, 2			; offset into patch name
+		cmp	work_identifier, 9
+		ja	se_printer
+		add	di, offset sd_font	; screen font extension
+		jmps	se_get_source
+se_printer:
+		add	di, offset pd_font	; printer font extension
+
+; Adjust the source pointer to point to the extension.
+se_get_source:
+		mov	cx, 13			; cx = maximum search count
+se_get_source_loop:
+		lodsb
+		cmp	al, '.'
+		je	se_patch
+		loop	se_get_source_loop
+		jmps	end_save_ext		; not found
+
+; Update the extension.
+se_patch:
+		mov	cx, 4			; cx = bytes to copy
+	rep	movsb				; copy the extension
+
+; That's all!
+end_save_ext:
+		pop	si
+		pop	dx
+		ret
+
+		end

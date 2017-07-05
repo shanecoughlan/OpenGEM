@@ -1,0 +1,136 @@
+/*******************************************************************************
+*	XFORM.DOC - GEM/3 Programmer's Toolkit - Digital Research, Inc.
+******************************************************************************/   
+	WITH RESPECT TO ANY DATA, INFORMATION, OR PROGRAMMING SUGGESTION 
+	PROVIDED BY DIGITAL RESEARCH INC. (DRI) IN THIS FILE,  DRI MAKES 
+	NO WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO 
+	THE IMPLIED WARRANTIES OR FITNESS FOR A PARTICULAR PURPOSE AND 
+	MERCHANTABILITY.
+
+TRANSFORMATIONS		
+===============
+The sample program XFORM.C demonstrates transformations from user to 
+device space and device to user space. XFORM.C located in the \SAMPLES 
+subdirectory.
+
+Moving images from one device to another is an important part of device
+independence.  Image data should be stored using a coordinate space that 
+is device independent.  This coordinate space should be at a higher 
+resolution than any device, so there is always more information in an 
+image than can be displayed.  Image data with less resolution than the 
+device will cause increased aliasing (jaggies).  Storing images as 
+floating point offers the best resolution, but takes a toll in 
+computation time and storage space. Integer space can hold enough 
+resolution for most devices. 
+
+For example, images might be stored at a resolution of 1000 pixels/inch.  
+Only a few phototypesetters have better resolution.  A one-inch circle 
+centered on an 8 1/2 x 11 inch page would have its center at (4250, 6500) 
+and a radius length of 500.
+
+Image coordinates are often referred to as "user" or "world" coordinates.
+
+"Transformation" is the process of converting image coordinates to 
+coordinates for a specific device. For example, we can define the image 
+space as having (0,0) at the upper-left corner and (8500, 11000) at the 
+lower-left corner. If a device has 72 dots per inch, the corners would 
+be (0,0) and (576,792) in device coordinates.
+
+We use transformation equations to map any point from image coordinate
+space to device space:
+
+	dev_x = x_xscale * user_x + x_xtrans ;
+	dev_y = x_yscale * user_y + x_ytrans ;
+
+Since we are working in an integer space, the scaling values will round 
+off, so we expand the scaling values into an integer numerator and 
+denominator, and do a multiply and a divide to get the effect of a single 
+floating point multiply:
+
+	dev_x = (x_xmul * user_x) / x_xdiv + x_xtrans ;
+	dev_y = (x_ymul * user_y) / x_ydiv + x_ytrans ;
+
+We use a function SMUL_DIV that holds the result of the multiply in a 
+long value (to avoid overflow and keep resolution) and then divides back 
+to an integer.
+
+    dev_x = SMUL_DIV( user_x, x_xmul, x_xdiv ) + x_xtrans ;
+    dev_y = SMUL_DIV( user_y, x_ymul, x_ydiv ) + x_ytrans ;
+
+	(functions x_udx_xform, x_udy_xform, x_udx_scale, x_udy_scale)
+
+To calculate the coefficients needed for the equations above, we need
+the upper-left corner and size of the user space and device space 
+rectangles:
+
+    x_xmul = dev_w ;
+    x_xdiv = user_w ;
+    x_ymul = dev_h ;
+    x_ydiv = user_h ;
+    x_xtrans = dev_x - SMUL_DIV( user_x, x_xmul, x_xdiv ) ;
+    x_ytrans = dev_y - SMUL_DIV( user_y, x_ymul, x_ydiv ) ;
+
+	(function x_sxform)
+
+We can use these coefficients to go from device coordinates to
+user coordinates:
+
+    user_x = SMUL_DIV( x - x_xtrans, x_xdiv, x_xmul ) ;
+    user_y = SMUL_DIV( y - x_ytrans, x_ydiv, x_ymul ) ;
+
+	(functions x_dux_xform, x_duy_xform, x_dux_scale, x_duy_scale)
+
+Another element that affects these equations is the aspect ratio of the 
+pixels on the device. For example, the IBM color monitor in monochrome 
+mode has pixels that are more than twice as tall as they are wide. 
+To make a square in image coordinates appear square on the screen, 
+calculate what rectangle in device space fits a rectangle in image 
+coordinate space. 
+
+The equation starts as:
+
+	device area height		user area height
+if	------------------	<	----------------
+	device area width		user area width
+
+then 	the device area is wider than the user area and the device 
+	width must be reduced.
+else	the device height must be reduced.
+
+We must take the pixel size into account, so the equation expands to:
+
+	device area height in pixels * pixel height   user area height
+	------------------------------------------- < ----------------	
+	device area width  in pixels * pixel width    user area width 
+
+or
+	dev_h * dev_attr[ 4 ]			user_h
+	----------------------		<	------
+	dev_w * dev_attr[ 3 ]			user_w
+
+To avoid roundoff problems when working with integers, equation 
+resolves to
+
+	dev_h * dev_attr[ 4 ] * user_w < dev_w * dev_attr[ 3 ] * user_h
+
+We use LONGS to avoid overflow. To calculate new width or height the
+equation above is turned into an equality and solved for one or the 
+other of dev_h or dev_w. For example, to find a new dev_h:
+
+	dev_h = dev_w * dev_attr[ 3 ] * user_h / (dev_attr[ 4 ] * user_w)
+
+To avoid roundoff and overflow, turn this into a series of 
+multiplications and divisions: 
+
+	dev_h = dev_w * (dev_attr[ 3 ] / dev_attr[ 4 ]) * (user_h / user_w)
+
+and turned into a series of SMUL_DIVs.
+
+	(function x_saspect)
+
+The sample program XFORM.C demonstrates transformations from user to 
+device space and device to user space. You can zoom in, draw a sketch, 
+zoom out, view the sketch, and zoom back in without losing any 
+resolution in the sketch data.
+
+	====End of XFORM.DOC====

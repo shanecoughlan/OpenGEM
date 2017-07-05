@@ -1,0 +1,12 @@
+This is the readme for CHOICE
+
+
+CHOICE is distributed under the terms of the GNU GPL.  See the file
+'COPYING' for details.
+
+Read the 'INSTALL' file to learn how to compile this program.
+
+CHOICE supports program internationalization using the "Cats" library
+for DOS.  ("Cats" is a UNIX catgets-like implementation.)  "Cats" is
+distributed under the GNU LGPL and is available from
+http://www.freedos.org/jhall/cats/

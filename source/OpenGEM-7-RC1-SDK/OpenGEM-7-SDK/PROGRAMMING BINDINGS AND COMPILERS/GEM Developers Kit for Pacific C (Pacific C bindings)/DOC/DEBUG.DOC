@@ -1,0 +1,198 @@
+/*******************************************************************************
+*	DEBUG.DOC - GEM/3 Programmer's Toolkit - Digital Research, Inc.        *
+*                                                                              *
+*                FIVE METHODS OF DEBUGGING GEM APPLICATIONS                    *	                                                          
+*******************************************************************************/                 
+
+  Debugging Overview
+  ==================
+  The ideal Debugger would be absolutely transparent to the target 
+  application.    It would not slow the pace of the program, instigate 
+  a redraw, nor read or alter memory.  In "Protected Mode," this
+  is particularly difficult as the application's memory is locked 
+  away safe from tampering.  Perhaps a hardware debugger will someday
+  be able to fulfill all debugging requirements,  but currently, all
+  Debuggers will interfere to varying degrees with the operation of 
+  the application being debugged. Therefore, debugging is not absolute 
+  in quality answers,  but outstanding for pointing to problem areas.  
+  Graphics pose additional problems for the debugger, primarily  
+  memory restrictions.  It is entirely conceivable, that you might
+  some day need to try all of these debugging methods to solve some
+  problem.   Here then, is a selection of tools and methodologies 
+  that might help to reduce your development time.
+
+  Listings
+  ========
+  GEMSID(R) from Digital Research, Inc.
+  TD(R), TD386(R), TDREMOTE(R) from Borland International
+  MAGIC CODE VIEW(R) from Nu-Mega Technology - 603-888-7607
+  SOFT ICE(R) from Nu-Mega Technology
+  CODE VIEW(R) from Microsoft
+  MONO from Guy McIlroy, Norseman Systems, Australia
+
+  Other debuggers may work as well, we will add them to this list if 
+  their functionality can be proven in debugging GEM applications.
+
+  Considerations   (MAP2SYM.EXE will convert .MAP files for GEMSID)
+  ==============
+  The GEM Programmers Toolkit supplies a streamlined little debugger 
+  known as GEMSID.  This debugger was designed to use minimal amounts
+  of memory, but to do that, there had to be trade-offs:
+   
+  1. To avoid allocating memory, GEMSID does not save your symbols.
+  This inconvenience does not adversely affect the debugging process.
+
+  2. GEMSID keeps ERROR CHECKING to a minimum to save memory.  The 
+  hazard here is, if you are not certain how large your program is, 
+  and you are only using one monitor, it is possible to overwrite 
+  your code memory with GEMSID, (see item #3).
+
+  3. A single monitor can be used, but should only be used on small 
+  applications.  The reason is, a debugger must hold in memory, the
+  display image each time it flips back and forth between the graphics 
+  application screen and the debugging data screen.
+
+  4. GEMSID will only output ASSEMBLY code listings, it is not a source 
+  level debugger,  but there are times when it is the only thing that 
+  will solve a problem.
+
+  Large debuggers (Code View) that cannot be relocated to some other 
+  memory area are therefore more difficult to use successfully.
+
+  Five Methods  (Add the DEBUGGING parameter when compiling and 
+  ============   linking, for Turbo C it is:  TCC -v  &  TLINK /v)
+
+  1. FORM_ALERT can be used to identify problem areas.  Place them
+     at various points along your program and change the text to reflect 
+     where that particular ALERT is in your code.  This will slow the 
+     program timing down which can affect the bug your seeking.
+
+  2. On the IBM PC line, you can have a monochrome card/monitor and 
+     a color card/monitor attached to your machine at the same time
+     Unfortunately, due to a limitation in the hardware video display
+     design, the monochrome screen is the one that will be the
+     graphics display and the color will be source code. The hardware 
+     can be forced to allow graphics on the color screen and debugging 
+     information on the monochrome, but it adds another element of 
+     program interference. Use GEMSETUP to install a MONOCHROME DRIVER.
+
+  3. By using "MONO," (a public domain utility from NORSMEN), it is 
+     possible to redirect the graphics to the color monitor on a two 
+     monitor system, and keep the debugging information on the mono-
+     -chrome monitor.  Needless to say, this limits the reliability 
+     of the debugging information, however it is yet another important 
+     tool. Mono is available on Compuserve(R), DRFORUM section 5. In 
+     this case you can keep a COLOR SCREEN DRIVER setup for GEM.
+
+  4. You can also use a serial terminal for debugging.  Type the command
+     "CTTY COM1" to redirect all text mode output and keyboard input to 
+     a serial terminal on COM1.  Load GEMSID and type YME to disable the 
+     screen buffer management.  The "less intelligent" debuggers work best
+     in this environment unless a debugger is designed for serial output.
+
+  5. Remote Debugging is probably the best method.  It's advantages 
+     are:    a)      less memory required
+             b)      graphics can be run on color monitor
+
+     The Turbo remote debugger, and most other debuggers, can work with
+     with GEM when renamed or configured as a "GEM" application. The Turbo
+     Debugger can be used on GEM with a single screen or with two monitors
+     as mentioned above.   Configure the Turbo Debugger as a GEM APPLICATION
+     from the GEM DESKTOP.  This will leave the GEM "run time" in memory so 
+     you can test your program with the Debugger. Refer to "Examples" (below)for more details.
+   
+  Examples
+  ========
+  1. Place FORM_ALERT's throughout your code.  
+     form_alert(1,"[1][This is a test][OK]");
+
+  2. After compiling with the debug parameters, and converting them with
+     MAP2SYM, run GEMSETUP to install a MONOCHROME SCREEN DRIVER, load 
+     GEMSID from the DESKTOP and call the GEMSID.APP command:   
+     #YME
+     Load your application and begin debugging.
+
+  3. MONO is available on Compuserve(R) on DRFORUM, Section 5.
+     In addition, look for an in depth debugging article by 
+     Doug Hodson of SOFTALENTS, which describes using the Turbo
+     Debugger with MONO.
+
+  4. SERIAL TERMINAL: Cabling and setups for a serial terminal are 
+     highly variable, so check that your terminal works first.
+                 Type:     CTTY COM1
+                 Load:     GEM
+                 Launch:   GEMSID
+                 Type:     YME
+                 Load:     eHELLO.APP
+
+  5. MAGIC CODE VIEW: Two monitors -           monochrome @ B000 (GEM)
+     (Requires a 386 machine, MCV and Soft-Ice)       EGA @ B800 (BUG)
+     (GEM must be setup with a MONOCHROME DRIVER)
+
+          a)  Follow the MCV & Soft Ice installations     
+          b)  Edit CONFIG.SYS to include: 
+                  DEVICE = NUMEGA.SYS /si /mcv /emm 256
+          c)  Rename the file to be debugged from .APP to .EXE
+          d)  Rename MAGIC CODE VIEW (MCV.EXE) to MCV.APP
+          e)  Edit GEM.BAT to include an extra parameter (%4):
+                  CD \GEMAPPS\GEMSYS
+                  GEMVDI %1 %2 %3 %4
+          f)  From the root, type:        
+                  GEM MCV.APP /2 /E FILE.EXE
+              GEM launches the Debugger in two monitor mode and 
+              loads FILE.EXE which is the file to be debugged.
+
+  6. TURBO DEBUGGERS must be configured with TDINST, which is also from 
+  Borland, to work successfully with GEM.  The options below can be 
+  used as a rough guideline for a single machine in two monitor mode:
+
+  File:TDINST.EXE
+  ===============
+       Beginning display             Source
+       User screen updating          Swap
+       Display swapping              None
+       Integer format                Decimal
+       Log list length...            50
+       Tab column width...           3
+       Maximum titled watch...       6
+       Screen lines                  25
+       Fast screen update            No
+       Permit 43/50 line mode        No
+       Complete graphics save        No
+
+  Under TDINST OPTIONS:
+       Editor...
+       Source directories...         C:\TC\HELLO
+       Turbo directory...            C:\TD
+       Keys
+       Prompting
+       Remote debugging
+       OS Shell Swap Size...         Ok
+       Language                      Source
+       Ignore case                   No
+       Change process ID             Yes
+       Use expanded memory           Yes
+       NMI intercept                 No
+
+  TDREMOTE:  Message #43130 by Tony Kennedy in section 5 of DRFORUM
+  on Compuserve(R), reported success with remote debugging using these
+  steps:
+          a)  Rename TDREMOTE.EXE to TDREMOTE.APP
+          b)  Bring up GEM on the "TDREMOTE" machine
+          c)  Double click on TDREMOTE
+          d)  Copy all of your source and executable files from the 
+              "TDREMOTE" machine to the "TD.EXE" machines with the
+              TDRF "COPYFROM" command
+          e)  Rename the file to be debugged from .APP to .EXE
+  NOTE
+  ====
+  With the exception of GEMSID, which works on .APP files, you must rename 
+  your applications to .EXE so all the other debuggers will be able to accept 
+  it.  For example, rename HELLO.APP to HELLO.EXE.
+
+  It is important that GEMVDI be kept in memory to provide the basic graphics
+  functions for your application.  To do this, from the GEM DESKTOP, 
+  configure the DEBUGGER to be a "GEM" application or rename DEBUGGER.EXE to 
+  DEBUGGER.APP. For example, rename TDREMOTE.EXE to TDREMOTE.APP).
+
+	====End of DEBUG.DOC====

@@ -1,0 +1,75 @@
+%!Copyright 1985,1986 Adobe Systems Inc.  All Rights Reserved.
+% timepages.ps
+
+% Sending this at the beginning of any PostScript job will cause the execution
+% time (exclusive of printing time) of each page to be printed at the top 
+% of all pages as follows:
+
+% <productname> <version#> execution time = <x> + <y> = <total> seconds
+
+% where <x> is execution time up to "showpage" (including waiting for i/o) 
+% and <y> is execution time (if any) for low level graphics operators executed
+% after "showpage".
+
+/origshowpage /showpage load def
+
+/showpage
+   {userdict begin
+    /startdump usertime def
+    dumpdisplaylist
+    /enddump usertime def
+    /starttime decodetime def
+    /exectime startdump starttime sub 1000 div def
+    /dumptime enddump startdump sub dumpoverhead sub 1000 div def
+    dumptime .004 lt {/dumptime 0.0 def} if
+    gsave
+    initgraphics
+    72 10.55 72 mul moveto 0 16 rlineto 6.5 72 mul 0 rlineto 0 -16 rlineto
+    closepath 1 setgray fill
+    0 setgray
+    /Times-Roman findfont 12 scalefont setfont
+    100 10.6 72 mul moveto
+    statusdict begin product end show (  ) show version show
+    (  execution time = ) show
+    exectime =string cvs show ( + ) show
+    dumptime =string cvs show ( = ) show
+    exectime dumptime add =string cvs show ( seconds) show
+    grestore
+    origshowpage
+    statusdict /redclose known {statusdict /redclose get exec} if
+    statusdict /printerclose known {statusdict /printerclose get exec} if
+    statusdict /scoutclose known {statusdict /scoutclose get exec} if
+    statusdict /atlasclose known {statusdict /atlasclose get exec} if
+    usertime encodetime
+    end
+   } def
+
+/dumpdisplaylist
+   {gsave initgraphics
+    100 500 translate
+    1 1 8 [1 0 0 1 0 0]	{(\377)} image
+    grestore
+   } def
+
+/dumpoverhead usertime dumpdisplaylist usertime exch sub def
+
+/encodetime
+   {3 -1 0
+       {startstr exch 2 index 16#FF and put
+	-8 bitshift
+       } for
+    pop
+   } def
+
+/decodetime
+   {0 startstr {exch 8 bitshift add} forall} def
+
+/startstr 4 string def
+usertime encodetime
+
+gsave
+/Times-Roman findfont 12 scalefont setfont
+100 10 72 mul moveto
+(This page inserted by timepages.ps) show
+grestore
+showpage

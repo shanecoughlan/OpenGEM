@@ -1,0 +1,6 @@
+batch
+verbose
+output pmap2sym.exe
+map = pmap2sym.map m
+library lcs.lib
+file cs, pmap2sym

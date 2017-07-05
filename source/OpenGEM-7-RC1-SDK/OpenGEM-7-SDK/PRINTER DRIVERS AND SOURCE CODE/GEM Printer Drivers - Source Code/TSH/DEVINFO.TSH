@@ -1,0 +1,10 @@
+; Short name must be 13 chars long, long name 81 chars, both NULL terminated
+
+		db	'zyxg'
+vp_port		db	0
+		db	'TOSHIBA 321'
+		db	0,0
+		db	'Toshiba 321/351 Printers (180 x 180 dots/inch)'
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		end

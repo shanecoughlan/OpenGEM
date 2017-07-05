@@ -1,0 +1,125 @@
+Accessing 16-bit memory using the Portability Macros
+====================================================
+
+- Note: This is one method of accessing GEM from 32-bit code. The other one
+ is to use DJ wrapper functions, which are easier to use but slightly slower
+ - see DJFARPTR.DOC.
+
+  GEM is a 16-bit program and runs in the 1Mb real-mode address space.
+Special measures have to be taken to allow it to communicate with a 32-bit
+protected-mode program.
+
+  Fortunately, the GEM bindings were written to support small-model compilers
+with no far pointers. Special functions (the "portability macros") were
+supplied to access memory outside the program's address space. These map
+fairly well to the DJGPP functions _farpokeb, _farpeekw etc.
+  GEM stores real-mode addresses as segment:offset. DJGPP prefers to use
+linear offsets from 0000:0000. In this library, the convention is used
+that values stored in GEM's address space are in segment:offset form, while
+values in the program's address space are in linear form. The LSSET / LSGET
+macros are normally used to do conversion between the two.
+
+  The following macros and functions are provided. Note that all addresses
+are linear offsets unless otherwise stated.
+
+WORD LSTRLEN(LONG addr)
+
+    Find the length of a string in GEM's address space.
+
+VOID LWCOPY(LONG src, LONG dest, WORD n)
+VOID LBCOPY(LONG src, LONG dest, WORD n)
+
+    Copy <n> words/bytes from one real-mode address to another.
+    To copy between GEM's address space and the program's, use dosmemput() or
+  dosmemget().
+
+WORD LP_SEG(LONG x)
+WORD LP_OFF(LONG x)
+
+    Return the 16-bit segment and offset from a linear address.
+
+LONG LINEAR(LONG x)
+
+    Converts a segment/offset pointer to a linear address.
+
+LONG SEGOFF(LONG x)
+
+    Converts a linear address to a segment/offset pointer.
+
+  There is no unique mapping of linear addresses to segment/offset pairs.
+LP_SEG, LP_OFF and SEGOFF do it by keeping the offset in the range 0-15.
+
+BYTE LBGET(LONG p)         Read a byte from real-mode memory.
+VOID LBSET(LONG p, BYTE b) Write a byte to real-mode memory.
+WORD LWGET(LONG p)         Read a word from real-mode memory.
+VOID LWSET(LONG p, WORD w) Write a word to real-mode memory.
+LONG LDGET(LONG p)         Read a double word from real-mode memory.
+VOID LDSET(LONG p, LONG w) Write a double word to real-mode memory.
+LONG LSGET(LONG p)         Read a real-mode address from real-mode memory,
+                           returning it as a linear address.
+VOID LSSET(LONG p, LONG w) Write a real-mode address to real-mode memory,
+                           storing it as a segment:offset pair.
+
+  LSGET and LSSET are used to ensure that GEM gets segment:offset pointers,
+while the application can use linear pointers.
+
+The following macros in the original GEM PTK are not supported:
+
+ADDR  - was used to give GEM a pointer to an address within the program. This
+       is not possible for a 32-bit program - see the dos_alloc() section
+       below.
+LLCS  - returned the code segment of the current program.
+LLDS  - returned the data segment of the current program.
+       These two have no meaning for a protected-mode program. They
+       were mainly used to support callbacks - see DJUDEF.DOC.
+LLGET - Read a double word from real-mode memory.
+LLSET - Wrote a double word to real-mode memory.
+       These have been replaced by LSSET/LSGET (for addresses) and LDGET/LDSET
+      (for long integers). Usually LSSET will be the one to use.
+
+The following typedefs are equivalent to LONG, and are used to show what
+a linear offset is pointing at:
+
+LPVOID        - linear offset of unknown type.
+LPLPTR        - linear offset of a far void pointer.
+LPBYTE        - linear offset of a byte.
+LPWORD        - linear offset of a 16-bit signed word.
+LPLONG        - linear offset of a 32-bit signed long.
+LPUWORD       - linear offset of a 16-bit unsigned word.
+
+LPOBJ, LPTREE - linear offset of an OBJECT structure or tree.
+LPORECT       - linear offset of an ORECT structure.
+LPGRECT       - linear offset of a  GRECT structure.
+LPTEDI        - linear offset of a  TEDINFO structure.
+LPICON        - linear offset of an ICONBLK structure.
+LPBIT         - linear offset of a  BITBLK structure.
+LPPARM        - linear offset of a  PARMBLK structure.
+LPMFDB        - linear offset of an MFDB structure.
+LPFILL        - linear offset of a  FILLPAT structure.
+
+  Replacing ADDR: dos_alloc()
+  ---------------------------
+
+  In the original GEM PTK, ADDR was used to get a pointer which could then
+be passed to GEM. This is not possible in 32-bit; instead, objects have to
+be copied into the real-mode address space for GEM to access them.
+
+  LPVOID dos_alloc(LONG count) allocates space in the real-mode address space.
+It should be used sparingly; if at all possible, try to merge allocation
+requests into one block. If the allocation failed, it returns 0.
+
+  VOID dos_free(LPVOID ptr) frees space allocated by dos_alloc().
+
+  For example, DEMO.APP contains three bitmaps, which in the 16-bit version
+were passed to GEM using ADDR(). In the 32-bit version, one dos_alloc() call
+is used to allocate space for all of them, and then they are copied in with
+dosmemput(). The real-mode address returned by dos_alloc() is then passed to
+GEM.
+  All dos_alloc()s are freed when the program terminates.
+
+  The function dj_string_addr() calls dos_alloc to allocate space for an
+ASCII string. It returns the real-mode address of the string.
+
+  The function dj_form_alert() performs a form_alert() call using a string
+in the program's address space (form_alert() uses GEM's address space).
+

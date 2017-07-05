@@ -1,0 +1,9 @@
+;/*		STACK.A86	1/29/87 - 1/29/87	J. Grant	*/
+
+include equates.a86
+
+stack		sseg	para
+        	rb	STACK_SIZE
+		rb	0
+
+		end

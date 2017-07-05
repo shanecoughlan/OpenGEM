@@ -1,0 +1,164 @@
+Sounddriver v0.4
+----------------
+written by Heinz Rath and Peter Sieg.
+Please send bug reports and comments to heinz.rath@gmx.at
+
+The drivers were developed with the following cards.
+Soundblaster 16 PCI
+CS4235 (Soundblaster PRO compatible)
+
+BDSB.........Driver for Soundblaster cards and compatible
+BDSBPRO......Driver for Soundblaster Pro and compatible
+BDSB16.......Driver for Soundblaster 16 and compatible
+BDCS4235.....Driver with PNP Init code for CS4235 cards.
+
+Error solutions
+---------------
+1. If you have no BLASTER environment variable defined define one.
+   Example: SET BLASTER=A220 I5 D1 H3
+   A= Base Adress (Hex Number)
+   I= Irq of Card
+   D= 8 Bit DMA
+   H= 16 Bit DMA (Only SB16 and higher)
+
+2. If you have a CS4235 and the card is not found under DOS try one of this
+   programs then it should work. You could also try if the CS4235 driver
+   would work.
+   CWDINIT.EXE or ISAPNP.EXE
+   ISAPNP is free under the GPL and you find it in the internet.
+   CWDINIT.EXE i have found on a driver CD. 
+
+3. If you have a SB16 PCI and the card is not found under DOS start the
+   SBINIT.COM file. This tool should be on your SB16 driver disk. 
+
+Additional Infos for CS4235 driver
+----------------------------------
+The CS4235 driver needs a config file in the same directory called CS4235.INI.
+This is the format of the INI file.
+;BDCS4235 Config file
+; Soundblaster base port (A)
+A220
+; Soundblaster IRQ (B)
+B7
+; Dma 8-Bit (C)
+C1
+; Dma 16-Bit (WSS Capture DMA) (D)
+D4
+; Wss Base (E)
+E534
+; MPU Base (F)
+F330
+; MPU Irq (G)
+G9
+
+Simply change the adresse for your own card.
+
+Release Infos
+-------------
+v0.1           -  First Public release. Didn't found SB cards.
+v0.2           -  Error in Initroutine corrected. New commands added.
+v0.3 (Beta)    -  Only binaries released with GDScript v1.0. Bug in WAVPLAY
+                  corrected.
+v0.4           -  This release. Interrupt playing of sounds possible.
+                  Error in DMA code corrected.PNP code for CS4235 added.
+
+
+Interface of sound driver
+-------------------------
+In the file is a zyxg area
+zyxg
+1  Byte Reserved ( Any Idears ? )
+1  Byte Reserved ( Any Idears ? )
+80 Byte Info string for driver
+
+For programmers which don't know pascal $ means Hex number.
+
+Interrupt $E1
+AX=$2208 (Magic Bytes)
+BX=Command Byte
+
+Commands
+1 -  Driver Info
+     Gives infos about the driver
+     Returns:
+     CX=$0002;   Version of driver
+                 Version number system for example
+                 $0001  = 00.01
+                 $0002  = 00.02
+                 $0100  = 01.00
+                 $0200  = 02.00
+                 $0205  = 02.05
+     DX=$1;      Type of driver
+                 If a other driver use different commands or so please
+                 set a other type. If the driver only has additonal new
+                 commands simply set a new version number.
+
+     AX=basead;  Soundblaster port ( Or a dummy number )
+     SI=Dma;     Dma Channel       ( Or a dummy number )
+     ; This parameter only exist in version $0002 and higher
+     DI=...
+     Bit 0 ... Stereo
+     Bit 1 ... 16 Bit output (Sound Blaster 16)
+     Bit 2 ... High Memory version with 2 buffers for playing.
+     Bit 3 ... Not Used
+     Bit 4 ... Not used
+     Bit 5 ... Not used
+     Bit 6 ... Not used
+     Bit 7 ... Not used
+2  - Unload Driver
+     Removes driver from memory
+     Returns:
+     Nothing
+3  - Speaker On
+     Turns the speaker on.
+     Returns:
+     Nothing
+4  - Speaker Off
+     Turns the speaker off.
+     Returns:
+     Nothing
+5  - PlayWAV
+     Plays a WAV file.Gets a pointer to the filename in es:cx.
+     The filename must be ended with a 0 like in C.
+     Returns:
+     CX=0 if everything goes okay.
+    If a error occurs cx=1
+6  - PlaySample
+     Plays a sample.
+     ES:SI points to the memory of the sample.
+     CX size of sample
+     DX Khz
+7  - WaitForDMA
+     Waits until playing ready (DMA ends)
+     Returns:
+     Nothing
+8  - DMAStop
+     Stops DMA
+     Returns:
+     Nothing
+; This Functions only exist in version $0002 and higher
+9  - Stereo
+     Turns Stereo On or Off
+     CX = 1 Stereo On
+     CX = 0 Stereo Off (Mono)
+     Dx = 1 (Ask Status)
+     Returns Noting
+     If Dx=1 then the function returns the mode that is set and
+     no change is made
+     CX = 1 Stereo On
+     CX = 0 Stereo Off (Mono)
+10 - Volume
+     Sets the volume
+     CX=Volume (0-255) 0 - Minimum, 255 - loudest
+     Returns Nothing
+; This Functions only exist in version $0003 and higher
+; Functions 11,12 are integrated in some v0.3 drivers but are not correct working.
+11 - Reserved (For sound recording).
+12 - Reserved (For sound recording). 
+; This Functions only exist in version $0004 and higher
+13 - Play File in Interrupt
+     Gets a pointer to the filename in es:cx.
+14 - Stop Interrupt Playing
+15 - Is Playing ?
+     CX=1 still playing
+     CX=0 stoped

@@ -1,13 +1,11 @@
 ---------------------------------------------------------------------------
- OpenGEM FAQ                               Release 4 -- 14th July 2006
+ OpenGEM FAQ                               Release 7 RC 1 -- 5th July 2017
 ---------------------------------------------------------------------------
 
 This is the FAQ for OpenGEM.
 
-It is currently maintained by Opendawn.com <info@opendawn.com> 
+It is currently maintained by Opendawn.com <shane@opendawn.com> 
 and any comments, suggestions or error reports are welcome.
-
-This document can be found on the Internet at <http://gem.opendawn.com/>
 
 DISCLAIMER: Information presented here is believed to be accurate but no 
 liability for errors or damage caused by use or misuse of such information 
@@ -34,29 +32,15 @@ powerful file manipulation tools like drag and drop.
 
 
 ---------------------------------------------------------------------------
-Which version of OpenGEM should I choose?
----------------------------------------------------------------------------
-
-There are two types of OpenGEM. 
-
-OpenGEM is a small but powerful file manager with full support for DR GEM
-and FreeGEM applications.
-
-OpenGEM/XM is a multi-tasking version of OpenGEM.
-
-You can download these from from <http://gem.opendawn.com/>
-
-
----------------------------------------------------------------------------
 Can I upgrade from an old version of OpenGEM?
 ---------------------------------------------------------------------------
 
 Yes, if you download a new version of OpenGEM just run the installation
 program, and when prompted tell it to overwrite all existing files.
 
-If you have OpenGEM Release 4 Update 1 or above you don't need to 
+If you have OpenGEM Release 4 or above you don't need to 
 download a complete OpenGEM distribution to update the system.
-Simply download an update package from the Shane Land OpenGEM site.
+Simply download an update package from the OpenGEM site.
 
 You can download a new version of OpenGEM, or an update package, from 
 <http://gem.opendawn.com/>.
@@ -66,8 +50,7 @@ You can download a new version of OpenGEM, or an update package, from
 Does OpenGEM have skins?
 ---------------------------------------------------------------------------
 
-No, OpenGEM does not have skins.  Nor will it have skins.  It is intended
-to be easy to use, not to provide eye candy.
+No, OpenGEM does not have skins.
 
 
 ---------------------------------------------------------------------------
@@ -86,25 +69,22 @@ How can I help develop OpenGEM?
 ---------------------------------------------------------------------------
 
 There is an OpenGEM SDK with all the GEM binaries, source code and 
-things like bindings.  You can download that from the Shane Land
-OpenGEM website <http://gem.opendawn.com/> and make something.
+things like bindings.  You can download it from the OpenGEM website:
+<http://gem.opendawn.com/>.
 
 Alternatively, you can review the existing OpenGEM distributions and
 make comments or suggested changes, and email them to the OpenGEM
-support email address <info@opendawn.com>
+support email address <shane@opendawn.com>
 
-You could also just download the OpenGEM SDK, and go make your own
-GEM distribution.  Sharing is caring, and bringing an old computer
-back to life for a kid who wants to fiddle with it is a great thing.
+You could also just download the OpenGEM SDK, and make your own
+GEM distribution.
 
 
 ---------------------------------------------------------------------------
 Where can I find GEM-based alternatives to OpenGEM?
 ---------------------------------------------------------------------------
 
-There are alternatives to OpenGEM.  Owen Rudge's FreeGEM distribution 
-is one such alternative, and you can download it for free from his
-website <http://www.owenrudge.net/GEM/>.  You can also try other graphical
+There are alternatives to OpenGEM. You can try other graphical
 user interfaces for DOS.  If you go to the FreeDOS website you can
 find some links <http://www.freedos.org/>.
 
@@ -121,4 +101,4 @@ Where can I get support for OpenGEM?
 ---------------------------------------------------------------------------
 
 The OpenGEM website <http://gem.opendawn.com/> and 
-the OpenGEM support email address <info@opendawn.com>.
+the OpenGEM support email address <shane@opendawn.com>.

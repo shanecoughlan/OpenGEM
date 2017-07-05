@@ -1,0 +1,11 @@
+; Short name must be 13 chars long, long name 81 chars, both NULL terminated
+
+		db	'zyxg'
+vp_port		db	0
+		db	'EPS GQ-3500'
+		db	0,0
+		db	'Epson GQ-3500 Printer (300 x 300 dots/inch)'
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+		end

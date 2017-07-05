@@ -1,0 +1,91 @@
+/************************************************************
+ * Device dependent constants for Epson LQ Series printers. *
+ ************************************************************/
+#define cdo_text	FALSE		/* device text support */
+#define cdo_rule	FALSE		/* device ruled-lines support */
+#define no_tintrule	FALSE
+#define autocopy	FALSE		/* automatic multicopy support */
+
+#define MIN_L_WIDTH	1
+#define MAX_L_WIDTH	150
+#define MAX_COLOR	2
+#define MAX_LINE_STYLE	7
+#define MAX_MARK_INDEX	6
+#define MX_FIL_STYLE	4
+#define MX_FIL_INDEX	24
+#define MAX_WRITE_MODE	3
+#define MAX_ARC_CT	70
+
+/********************************************************
+ *  Epson LQ Series Printers:				*
+ *  NOTE:  X must be an even multiple of 8 (-1)		*
+ *	   Y must be EXACT here, and will be translated	*
+ *	    to an even multiple of G_SL_HGT (-1) at	*
+ *	    v_opnwk() time.				*
+ *	Letter size paper - 8.5 x 11 inches		*
+ *	    print area - 8 x 11 inches			*
+ *		180 dpi -> 1440 horizontal dots		*
+ *		180 dpi -> 1980 vertical dots 		*
+ *	Half size paper - 8.5 x 5.5 inches		*
+ *	    print area - 8 x 5.5 inches			*
+ *		180 dpi -> 1440 horizontal dots		*
+ *		180 dpi -> 990 vertical dots 		*
+ *	B5 size paper - 17.6 x 25 cm. (6.93" x 9.84")   *
+ *	    print area - 6.43 x 9.84 inches		*
+ *		180 dpi -> 1157.4 horizontal dots**	*
+ *				**(144 x 8 = 1152)	*
+ *		180 dpi -> 1771.2 vertical dots 	*
+ *	A4 size paper - 21 x 29.7 cm. (8.27" x 11.69")  *
+ *	    print area - 7.77 x 11.69 inches		*
+ *		180 dpi -> 1398.6 horizontal dots**	*
+ *				**(174 x 8 = 1392)	*
+ *		180 dpi -> 2104.2 vertical dots 	*
+ *	Legal size paper - 8.5 x 14 inches		*
+ *	    print area - 8 x 14 inches			*
+ *		180 dpi -> 1440 horizontal dots		*
+ *		180 dpi -> 2520 vertical dots		*
+ *	Double size paper - 11 x 17 inches		*
+ *	    print area - 11 x 17 inches			*
+ *		180 dpi -> 1980 horizontal dots**	*
+ *				**(8 x 247 = 1976)	*
+ *		180 dpi	-> 3060 vertical dots		*
+ *	Broad sheet paper - 18 x 24 inches		*
+ *	    print area - 13.5 x 24 inches		*
+ *		180 dpi -> 2430 horizontal dots **	*
+ *			     ** (8 x 303) = 2424	*
+ *		180 dpi	-> 4320 vertical dots		*
+ ********************************************************/
+/* These constants are one less than the number of pixels because they	*/
+/*    are used to reference array values (i.e. 0 -> 959 = 960) 		*/
+#define	X_LETTER	1439
+#define	Y_LETTER	1980
+#define	X_HALF		1439
+#define	Y_HALF		990
+#define	X_B5		1151
+#define	Y_B5		1771
+#define	X_A4		1391
+#define	Y_A4		2104
+#define	X_LEGAL		1439			
+#define	Y_LEGAL		2520
+#define	X_DOUBLE	1975
+#define	Y_DOUBLE	3060
+#define	X_BROAD		2423
+#define	Y_BROAD		4320
+
+#define TOP_MARGIN	0
+#define BOT_MARGIN	0
+#define LEFT_MARGIN	45	/* quarter inch */
+#define RIGHT_MARGIN	45	/* quarter inch */
+
+/* Duplicates of assembly constants for C code - used in v_opnwk() */
+#define	C_GSLHGT	24		/* G_SL_HGT */
+#define C_ASLHGT	30		/* A_SL_HGT */
+#define C_RESXMX	2423		/* RES_XMX */
+#define C_RESYMX	32759		/* RES_YMX */
+#define	C_XDPI		180		/* XDPI */
+#define	C_YDPI		180		/* YDPI */
+#define X_ASPECT        141		/* XSIZE */
+#define Y_ASPECT        141		/* YSIZE */
+
+/* Used in alphtext.c to build alpha map table file name */
+#define DEVICE_ABBREVIATION "elq"
