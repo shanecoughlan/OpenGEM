@@ -1,0 +1,115 @@
+;**
+;
+; This macro library defines the operating environment for the 8086 large
+; model, which allows 1Mbyte for program and 1 Mbyte for data.
+;
+;**
+MSDOS	EQU	2
+
+;**
+;
+; The following symbols define the 8086 memory mode being used.  Set LPROG
+; to 1 for a large program segment (greater than 64K-bytes), and set LDATA
+; to 1 for a large data segment.
+;
+;**
+LPROG	EQU	1
+LDATA	EQU	1
+
+;**
+;
+; The following symbols are established via LPROG and LDATA as follows:
+;
+;	S8086	set for small model (small prog, small data)
+;	D8086	set for model with large data, small prog
+;	P8086	set for model with large prog, small data
+;	L8086	set for large model
+;
+;**
+	IF	(LPROG EQ 0) AND (LDATA EQ 0)
+S8086	EQU	1
+D8086	EQU 	0
+P8086	EQU	0
+L8086	EQU	0
+	ENDIF
+
+	IF	(LPROG EQ 0) AND (LDATA NE 0)
+S8086	EQU	0
+D8086	EQU	1
+P8086	EQU	0
+L8086	EQU	0
+	ENDIF
+
+	IF	(LPROG NE 0) AND (LDATA EQ 0)
+S8086	EQU	0
+D8086	EQU	0
+P8086	EQU	1
+L8086	EQU	0
+	ENDIF
+
+	IF	(LPROG NE 0) AND (LDATA NE 0)
+S8086	EQU	0
+D8086	EQU	0
+P8086	EQU	0
+L8086	EQU	1
+	ENDIF
+
+
+;**
+;
+; The DSEG and PSEG macros are defined to generate the appropriate GROUP
+; and SEGMENT statements for the memory model being used.  The ENDDS and
+; ENDPS macros are then used to end the segments.
+;
+;**
+DSEG	MACRO	
+DGROUP	GROUP	DATA
+DATA	SEGMENT	WORD PUBLIC 'DATA'
+	ASSUME	DS:DATA
+	ENDM
+ENDDS	MACRO
+DATA	ENDS
+	ENDM
+
+	IF	S8086
+PSEG	MACRO
+PGROUP	GROUP	PROG
+PROG	SEGMENT	BYTE PUBLIC 'PROG'
+	ASSUME	CS:PROG
+	ENDM
+ENDPS	MACRO
+PROG	ENDS
+	ENDM
+	ENDIF
+
+	IF	D8086
+PSEG	MACRO
+CGROUP	GROUP	CODE
+CODE	SEGMENT	BYTE PUBLIC 'CODE'
+	ASSUME	CS:CODE
+	ENDM
+ENDPS	MACRO
+CODE	ENDS
+	ENDM
+	ENDIF
+
+	IF	P8086
+PSEG	MACRO
+_CODE	SEGMENT	BYTE
+	ASSUME	CS:_CODE
+	ENDM
+ENDPS	MACRO
+_CODE	ENDS
+	ENDM
+	ENDIF
+
+	IF	L8086
+PSEG	MACRO
+;** MODDIFIED FOR LATTICE 3.2		SEPT. 1 1987 MEI CHUNG
+_PROG	SEGMENT	BYTE PUBLIC 'PROG'	
+	ASSUME	CS:_PROG
+	ENDM
+ENDPS	MACRO
+_PROG	ENDS
+	ENDM
+	ENDIF

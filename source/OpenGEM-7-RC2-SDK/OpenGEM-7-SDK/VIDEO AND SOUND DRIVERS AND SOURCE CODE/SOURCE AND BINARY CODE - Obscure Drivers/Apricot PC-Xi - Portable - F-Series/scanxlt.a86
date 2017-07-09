@@ -1,0 +1,262 @@
+;
+; The Apricot keyboard returns ASCII. Here we translate to IBM 
+; scancode+ASCII combinations, which GEM uses internally.
+;
+scancode_xlt	dw	0300h	;^@ 		00h
+		dw	1E01h	;^A
+		dw	3002h	;^B
+		dw	2E03h	;^C
+		dw	2004h	;^D
+		dw	1205h	;^E
+		dw	2106h	;^F
+		dw	2207h	;^G
+		dw	0E08h	;^H
+		dw	0F09h	;^I
+		dw	240Ah	;^J
+		dw	250Bh	;^K
+		dw	260Ch	;^L
+		dw	1C0Dh	;^M
+		dw	310Eh	;^N
+		dw	180Fh	;^O
+		dw	1910h	;^P		10h
+		dw	1011h	;^Q
+		dw	1312h	;^R
+		dw	1F13h	;^S
+		dw	1414h	;^T
+		dw	1615h	;^U
+		dw	2F16h	;^V
+		dw	1117h	;^W
+		dw	2D18h	;^X
+		dw	1519h	;^Y
+		dw	2C1Ah	;^Z
+		dw	011Bh	;^[
+		dw	2B1Ch	;^\
+		dw	1B1Dh	;^]
+		dw	071Eh	;^^
+		dw	0C1Fh	;^_
+		dw	3920h	;Space		20h
+		dw	0221h	;!
+		dw	2822h	;"
+		dw	0423h	;#
+		dw	0524h	;$
+		dw	0625h	;%
+		dw	0826h	;&
+		dw	2827h	;'
+		dw	0A28h	;(
+		dw	0B29h	;)
+		dw	092Ah	;*
+		dw	0D2Bh	;+
+		dw	332Ch	;,
+		dw	0C2Dh	;-
+		dw	342Eh	;.
+		dw	352Fh	;/
+		dw	0B30h	;0		30h
+		dw	0231h	;1
+		dw	0332h	;2
+		dw	0433h	;3
+		dw	0534h	;4
+		dw	0635h	;5
+		dw	0736h	;6
+		dw	0837h	;7
+		dw	0938h	;8
+		dw	0A39h	;9
+		dw	273Ah	;:
+		dw	273Bh	;;
+		dw	333Ch	;<
+		dw	0D3Dh	;=
+		dw	343Eh	;>
+		dw	353Fh	;?
+		dw	0340h	;@		40h
+		dw	1E41h	;A
+		dw	3042h	;B
+		dw	2E43h	;C
+		dw	2044h	;D
+		dw	1245h	;E
+		dw	2146h	;F
+		dw	2247h	;G
+		dw	2348h	;H
+		dw	1749h	;I
+		dw	244Ah	;J
+		dw	254Bh	;K
+		dw	264Ch	;L
+		dw	324Dh	;M
+		dw	314Eh	;N
+		dw	184Fh	;O
+		dw	1950h	;P		50h
+		dw	1051h	;Q
+		dw	1352h	;R
+		dw	1F53h	;S
+		dw	1454h	;T
+		dw	1655h	;U
+		dw	2F56h	;V
+		dw	1157h	;W
+		dw	2D58h	;X
+		dw	1559h	;Y
+		dw	2C5Ah	;Z
+		dw	1A5Bh	;[
+		dw	2B5Ch	;\
+		dw	1B5Dh	;]
+		dw	075Eh	;^
+		dw	0C5Fh	;_
+		dw	2960h	;`		60h
+		dw	1E61h	;a
+		dw	3062h	;b
+		dw	2E63h	;c
+		dw	2064h	;d
+		dw	1265h	;e
+		dw	2166h	;f
+		dw	2267h	;g
+		dw	2368h	;h
+		dw	1769h	;i
+		dw	246Ah	;j
+		dw	256Bh	;k
+		dw	266Ch	;l
+		dw	326Dh	;m
+		dw	316Eh	;n
+		dw	186Fh	;o
+		dw	1970h	;p		70h
+		dw	1071h	;q
+		dw	1372h	;r
+		dw	1F73h	;s
+		dw	1474h	;t
+		dw	1675h	;u
+		dw	2F76h	;v
+		dw	1177h	;w
+		dw	2D78h	;x
+		dw	1579h	;y
+		dw	2C7Ah	;z
+		dw	1A7Bh	;{
+		dw	2B7Ch	;|
+		dw	1B7Dh	;}
+		dw	297Eh	;~
+		dw	0E7Fh	;Del
+		dw	8100h	;Alt+0		80h
+		dw	7800h	;Alt+1
+		dw	7900h	;Alt+2
+		dw	7A00h	;Alt+3
+		dw	7B00h	;Alt+4
+		dw	7C00h	;Alt+5
+		dw	7D00h	;Alt+6
+		dw	7E00h	;Alt+7
+		dw	7F00h	;Alt+8
+		dw	8000h	;Alt+9
+		dw	8200h	;Alt+-
+		dw	8300h	;Alt+=
+		dw	1E00h	;Alt+A
+		dw	3000h	;Alt+B
+		dw	2E00h	;Alt+C
+		dw	2000h	;Alt+D
+		dw	1200h	;Alt+E		90h
+		dw	2100h	;Alt+F
+		dw	2200h	;Alt+G
+		dw	2300h	;Alt+H
+		dw	1700h	;Alt+I
+		dw	2400h	;Alt+J
+		dw	2500h	;Alt+K
+		dw	2600h	;Alt+L
+		dw	3200h	;Alt+M
+		dw	3100h	;Alt+N
+		dw	1800h	;Alt+O
+		dw	1900h	;Alt+P
+		dw	1000h	;Alt+Q
+		dw	1300h	;Alt+R
+		dw	1F00h	;Alt+S
+		dw	1400h	;Alt+T
+		dw	1600h	;Alt+U		0A0h
+		dw	2F00h	;Alt+V
+		dw	1100h	;Alt+W
+		dw	2D00h	;Alt+X
+		dw	1500h	;Alt+Y
+		dw	2C00h	;Alt+Z
+		dw	6800h	;Alt+F1
+		dw	6900h	;Alt+F2
+		dw	6A00h	;Alt+F3
+		dw	6B00h	;Alt+F4
+		dw	6C00h	;Alt+F5
+		dw	6D00h	;Alt+F6
+		dw	6E00h	;Alt+F7
+		dw	6F00h	;Alt+F8
+		dw	7000h	;Alt+F9
+		dw	7100h	;Alt+F10
+		dw	0000h	;		0B0h
+		dw	3B00h	;F1
+		dw	3C00h	;F2
+		dw	3D00h	;F3
+		dw	3E00h	;F4
+		dw	3F00h	;F5
+		dw	4000h	;F6
+		dw	4100h	;F7
+		dw	4200h	;F8
+		dw	4300h	;F9
+		dw	4400h	;F10
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	7300h	;Ctrl+Left 	0C0h
+		dw	4D00h	;Right
+		dw	4D36h	;Shift+Right
+		dw	7400h	;Ctrl+Right
+		dw	5000h	;Down	
+		dw	5032h	;Shift+Down
+		dw	4800h	;Up
+		dw	4838h	;Shift+Up
+		dw	5100h	;PgDn
+		dw	5133h	;Shift+PgDn
+		dw	7600h	;Ctrl+PgDn
+		dw	4900h	;PgUp
+		dw	4939h	;Shift+PgUp
+		dw	8400h	;Ctrl+PgUp
+		dw	7700h	;Ctrl+Home
+		dw	4700h	;Home
+		dw	4737h	;Shift+Home 	0D0h
+		dw	5200h	;Ins
+		dw	5230h	;Shift+Ins
+		dw	5300h	;Del
+		dw	532Eh	;Shift+Del
+		dw	7200h	;Ctrl+PrtSc
+		dw	372Ah	;Keypad *
+		dw	1A1Bh	;Ctrl+[
+		dw	2308h	;Ctrl+H
+		dw	0
+		dw	0
+		dw	320Dh	;Ctrl+M
+		dw	1C0Ah	;Ctrl+J
+		dw	4C35h	;Shift + KP5
+		dw	4A2Dh	;Shift + KP-
+		dw	4E2Bh	;Shift + KP+
+		dw	1709h	;Ctrl+I	   	0E0h
+		dw	0F00h	;Shift+Tab
+		dw	4B00h	;Left
+		dw	4B34h	;Shift+Left
+		dw	4F00h	;End
+		dw	4F31h	;Shift+End
+		dw	7500h	;Ctrl+End
+		dw	5400h	;Shift+F1
+		dw	5500h	;Shift+F2
+		dw	5600h	;Shift+F3
+		dw	5700h	;Shift+F4
+		dw	5800h	;Shift+F5
+		dw	5900h	;Shift+F6
+		dw	5A00h	;Shift+F7
+		dw	5B00h	;Shift+F8
+		dw	5C00h	;Shift+F9
+		dw	5D00h	;Shift+F10	0F0h
+		dw	5E00h	;Ctrl+F1
+		dw	5F00h	;Ctrl+F2
+		dw	6000h	;Ctrl+F3
+		dw	6100h	;Ctrl+F4
+		dw	6200h	;Ctrl+F5
+		dw	6300h	;Ctrl+F6
+		dw	6400h	;Ctrl+F7
+		dw	6500h	;Ctrl+F8
+		dw	6600h	;Ctrl+F9
+		dw	6700h	;Ctrl+F10
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+		dw	0
+
+

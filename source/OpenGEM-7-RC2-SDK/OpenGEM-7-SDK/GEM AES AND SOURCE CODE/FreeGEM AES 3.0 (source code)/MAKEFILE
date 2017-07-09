@@ -1,0 +1,13 @@
+
+ZIP = pkzip
+
+all:	binzip srczip
+
+binzip:
+	$(ZIP) aes30.zip gem.exe gem.rsc readme.doc license.txt
+	$(ZIP) aes30.zip gem3d.exe settings.app gemset.rsc *.cfg
+
+srczip:
+	$(ZIP) aes30s.zip Makefile *.h *.c *.as gem.rsc gem.dfn getldiv.bat 
+	$(ZIP) aes30s.zip ppdaes.prj build.doc readme.doc license.txt
+	$(ZIP) aes30s.zip settings.zip

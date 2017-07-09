@@ -1,0 +1,21 @@
+sdvx89.vga = entry,
+256_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+256_drv,
+2opttxt1,
+2opttxt2,
+2optdraw,
+256mblit,
+vx8blit,
+256pat,
+enddseg, 
+vgacp, 
+vgafont[nop]
+                                                                    
+                                                                    

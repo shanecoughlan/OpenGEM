@@ -1,0 +1,109 @@
+/*		VDIDEF.ALW	11/17/86 - 3/30/87	J. Grant	*/
+
+#define ABS_2_PT(x)	(12*x + 25)/50	/* Conversion:  absolute to points. */
+#define PT_2_ABS(x)	(50*x + 6)/12	/* Conversion:  points to absolute. */
+
+#define DEF_F_COLOR	1	/* Default fill area color. */
+#define DEF_F_INTERIOR	0	/* Default fill area interior style. */
+#define DEF_F_STYLE	1	/* Default fill area style index. */
+#define DEF_L_BEG	0	/* Default beginning line end style. */
+#define DEF_L_COLOR	1	/* Default line color. */
+#define DEF_L_END	0	/* Default ending line end style. */
+#define DEF_L_STYLE	1	/* Default line style. */
+#define DEF_L_WIDTH	1	/* Default line width. */
+#define DEF_M_COLOR	1	/* Default marker color. */
+#define DEF_M_HEIGHT	32	/* Default marker height. */
+#define DEF_M_TYPE	3	/* Default marker type. */
+#define DEF_T_COLOR	1	/* Default text color. */
+#define DEF_T_POINT	12	/* Default text height in points. */
+
+#define MAX_F_COLOR	1	/* Maximum fill area color. */
+#define MAX_F_INTERIOR	4	/* Maximum fill area interior style. */
+#define MAX_F_STYLE	24	/* Maximum fill area style index. */
+#define MAX_L_COLOR	1	/* Maximum line color index. */
+#define MAX_L_STYLE	7	/* Maximum line style index. */
+#define MAX_L_WIDTH	150	/* Maximum line width. */
+#define MAX_M_COLOR	1	/* Maximum marker color index. */
+#define MAX_M_HEIGHT	150	/* Maximum marker height. */
+#define MAX_M_TYPE	6	/* Maximum marker type. */
+#define MAX_M_WIDTH	150	/* Maximum marker width. */
+#define MAX_T_COLOR	1	/* Maximum text color. */
+#define	MAX_T_FACES	512	/* Maximum number of faces. */
+#define MAX_T_POINT	72	/* Maximum text height in points. */
+
+#define MIN_M_HEIGHT	32	/* Minimum marker height. */
+#define MIN_T_POINT	1	/* Minimum text height in points. */
+
+#define	FFNAME_SIZE	8192	/* Font file name buffer size. */
+#define	FILBUF_SIZE	1024	/* File buffer size. */
+#define	IMAGE_SIZE	512	/* Image file buffer size (in bytes). */
+#define CONTRL_SIZE	11	/* Size of the control array. */
+#define INTIN_SIZE	128	/* Size of the integer input array. */
+#define INTOUT_SIZE	45	/* Size of the integer output array. */
+#define PTSIN_SIZE	256	/* Size of the points input array. */
+#define PTSOUT_SIZE	12	/* Size of the points output array. */
+
+#define ARROWED		1	/* Enumerations:  arrowed line end style. */
+#define CLIP		inq_tab[19]	/* Clipping flag. */
+#define LIGHTEN_BIT	2	/* Lightening special effect bit flag. */
+#define LLUR		0	/* Enumeration:  lower left/upper right. */
+#define NUM_PATTERNS	29	/* Number of fill patterns. */
+#define ROUNDED		2	/* Enumerations:  rounded line end style. */
+#define SKEW_BIT	4	/* Skewing special effect bit flag. */
+#define THICKEN_BIT	1	/* Thickening special effect bit flag. */
+#define TERMINATOR	'\n'	/* String terminator on serial input. */
+#define ULLR		1	/* Enumeration:  upper right/lower left. */
+#define UNDER_BIT	8	/* Underlining special effect bit flag. */
+
+#define	XS_A4		2480	/* 8.27 inch page */
+#define	XS_B5		2078	/* 6.93 inch page */
+#define	XS_BROAD	5399	/* 18 inch page */
+#define	XS_DOUBLE	3299	/* 11 inch page */
+#define	XS_HALF		1649	/* 5.5 inch page */
+#define	XS_LEGAL	2549	/* 8.5 inch page */
+#define	XS_LETTER	2549	/* 8.5 inch page */
+#define	YS_A4		3506	/* 11.69 inch page */
+#define	YS_B5		2951	/* 9.84 inch page */
+#define	YS_BROAD	7199	/* 24 inch page */
+#define	YS_DOUBLE	5099	/* 17 inch page */
+#define	YS_HALF		2549	/* 8.5 inch page */
+#define	YS_LEGAL	4199	/* 14 inch page borders */
+#define	YS_LETTER	3299	/* 11 inch page */
+
+#define F_COLOR		1	/* Fill area color. */
+#define F_INTERIOR	2	/* Fill area interior style. */
+#define F_PERIMETER	3	/* Fill perimeter visibility. */
+#define F_STYLE		4	/* Fill area style index. */
+#define L_BEG		5	/* Beginning line end style. */
+#define L_COLOR		6	/* Line color. */
+#define L_END		7	/* Ending line end style. */
+#define L_STYLE		8	/* Line style. */
+#define L_USER_DEF	9	/* User defined line style. */
+#define L_WIDTH		10	/* Line width. */
+#define M_COLOR		11	/* Marker color. */
+#define M_HEIGHT	12	/* Marker height. */
+#define M_TYPE		13	/* Marker type. */
+#define T_HEIGHT	14	/* Character height. */
+#define T_COLOR		15	/* Text color. */
+#define T_EFFECTS	16	/* Text special effects. */
+#define T_FACE		17	/* Text face number. */
+#define T_H_ALIGN	18	/* Horizontal alignment. */
+#define T_YPOINT	19	/* Text y size in points. */
+#define T_ROTATION	20	/* Text rotation angle. */
+#define T_V_ALIGN	21	/* Text vertical alignment. */
+
+#define T_XPOINT	23	/* Text x size in points. */
+
+#define	MD_REPLACE	(1)
+#define	MD_TRANSPARENT	(2)
+
+#define	CN_DOWNLOADED	(0x10)
+#define	CN_ENCDONE	(0x20)
+#define	CN_FFASCII	(2)
+#define	CN_FFBINARY	(1)
+#define	CN_NOENC	(0x80)
+#define	CN_REQDOWN	(0x40)
+#define	CN_PORTRAIT	(0)
+
+#define FS_LW		(0)
+#define FS_LWPLUS	(1)

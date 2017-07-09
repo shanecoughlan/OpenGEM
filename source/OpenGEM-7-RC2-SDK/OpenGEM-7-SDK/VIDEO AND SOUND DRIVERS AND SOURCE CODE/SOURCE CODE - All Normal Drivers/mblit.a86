@@ -1,0 +1,361 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+public	MONO8XHT
+ega_seq_add	equ	3c4h		;the ega sequencer add reg
+ega_seq_data	equ	3c5h		;the ega sequencer data reg
+ega_wmapmask_reg equ	2		;the write plane mask reg
+ega_graphic_add	equ	3ceh		;the ega graphics add reg
+ega_graphic_data equ	3cfh
+ega_setres_reg	equ	0		;the ega plane set reset values 
+ega_ensetres_reg equ	1		;the ega plane set reset enable bits
+ega_datarot_reg	equ	3		;the ega data rotate register
+ega_rmapmask_reg equ	4		;the ega plane read mask
+ega_mode_reg	equ	5		;the ega data source mode register
+ega_bitmask_reg	equ	8		;the ega bit mask register
+dseg
+MONO8XHT_MODE	dw	offset MONO8XHT_REPLACE
+		dw	offset MONO8XHT_TRAN
+		dw	offset MONO8XHT_XOR
+		dw	offset MONO8XHT_TRAN
+	extrn	WRT_MODE:word
+	extrn	TEXT_BP:word
+	extrn	DESTX:word,DESTY:word		;destination pixel address
+	extrn	DELY:word			;size of area to use
+	extrn	FOFF:word			;offset of source form
+	extrn	FWIDTH:word			;form width of source form
+	extrn	CLIP:word			;clipping flag
+	extrn	XMN_CLIP:WORD,XMX_CLIP:WORD	;clipping region
+	extrn	YMN_CLIP:WORD,YMX_CLIP:WORD	;
+;
+	extrn	INTIN:word
+	extrn	CONTRL:word
+cseg
+	extrn	CONCAT:near
+	extrn   box_plane_enable:near
+	extrn	box_ega_init:near
+;;;;	extrn	set_fnthdr:near
+	extrn	chk_fnt:near
+
+	if	VESA_MULTISEG
+	 extrn	VESA_SLICE:word
+	 extrn	setslice:near
+	endif
+
+	if	manual_update
+	extrn	touch:near
+	endif
+
+MONO8XHT:
+	cmp	CONTRL, 11			;is this justified text
+	jz	MONO8XHT_QUIT
+	mov	ax, DESTX
+	and	al, 7
+	jnz	MONO8XHT_QUIT			; if not on byte bound quit
+	cmp	CLIP, 0
+	jz	MONO8XHT_OK			; if cliping is on then see if ok
+	mov	cx, DESTX
+	cmp	cx, XMN_CLIP
+	jl	MONO8XHT_QUIT
+	mov	bx, DESTY
+	cmp	bx, YMN_CLIP
+	jl	MONO8XHT_QUIT
+	add	bx, DELY
+	dec	bx
+	cmp	bx, YMX_CLIP
+	jg	MONO8XHT_QUIT
+	mov	ax, CONTRL+6			; get the char count
+	shl	ax, 1
+	shl	ax, 1
+	shl	ax, 1				; mpy by 8
+	add	ax, cx
+	cmp	ax, XMX_CLIP
+	jle	MONO8XHT_OK
+MONO8XHT_QUIT:
+	xor	ax,ax
+	ret
+MONO8XHT_OK:
+	if	manual_update
+	 mov	ax, DESTY
+	 add	ax, DELY
+	 push	ax			;Bottom edge
+	 mov	ax, CONTRL+6		;Seems silly to do it all again, but
+	 shl	ax, 1 			;if clipping is off it wasn't done
+	 shl	ax, 1 			;the first time.
+	 shl	ax, 1 
+	 add	ax, DESTX	
+	 push	ax			;AX = right fringe 
+	 push	DESTY
+	 push	DESTX
+	 call	touch
+	 add	sp, 8
+	endif
+
+;;;	mov ax, intin			; jn 1-30-87
+;;;	call set_fnthdr
+;;;	mov intin, ax			; jn 11-21-87
+	call	chk_fnt
+	mov	ax, graph_plane
+	mov	es, ax
+	mov	bx, DESTX
+	mov	ax, DESTY
+	call	concat				; returns di = start add
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	mov	bx, MONO8XHT_MODE[BX]
+	call	bx
+	mov	ax, 1
+	ret
+;*******************************
+;  MONO8XHT_REPLACE
+;		ES:DI = SCREEN POINTER
+;
+;*******************************	
+MONO8XHT_REPLACE:
+	mov	bl, num_colors - 1	;enable all planes to draw
+	call	box_plane_enable
+	mov	bx, TEXT_BP
+	not	bx
+	xchg	bh, bl
+	and	bh, num_colors - 1	;set the planes with ix=0 to set/res
+	mov	bl, 00000000b		;set to no rotate and an replace op
+	call	box_ega_init
+	mov	dx, ega_graphic_add	;now set the planes to reset
+	mov	al, ega_setres_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	mov	al, 0
+	out	dx, al
+	call	MONO8XHT_STRING_REP
+	ret
+;*******************************
+;  MONO8XHT_TRAN
+;		ES:DI = SCREEN POINTER
+;
+;*******************************	
+MONO8XHT_TRAN:
+	mov	bx, TEXT_BP
+	and	bl, num_colors - 1
+	jz	MONO8XHT_TRAN_NO_OR
+	call	box_plane_enable	;enable the planes to be drawn with 1's
+	mov	bh, 0			;don't allow any planes to use set/res
+	mov	bl, 00010000b		;set to no rotate and an or op
+	call	box_ega_init
+	push	di
+	cmp	WRT_MODE, 1		;is this really trans mode
+	jz	MONO8XHT_TRAN_OK
+	call	MONO8XHT_STRING_NOT
+	jmps	MONO8XHT_NEXT
+MONO8XHT_TRAN_OK:
+	call	MONO8XHT_STRING_LOGIC
+MONO8XHT_NEXT:
+	pop	di
+MONO8XHT_TRAN_NO_OR:
+	mov	bx, TEXT_BP
+	not	bx
+	and	bl, num_colors - 1
+	jz	MONO8XHT_TRAN_DONE
+	call	box_plane_enable
+	mov	dx, ega_graphic_add	;set up the writing mode to be applied
+	mov	al, ega_datarot_reg
+	out	dx, al
+	mov	dx, ega_graphic_data
+	mov	al, 00001000b		;set to no rotate with an and op
+	out	dx, al
+	cmp	WRT_MODE, 1
+	jz	MONO8XHT_TRAN_LAST_OK
+	call	MONO8XHT_STRING_LOGIC
+	ret
+MONO8XHT_TRAN_LAST_OK:
+	call	MONO8XHT_STRING_NOT
+MONO8XHT_TRAN_DONE:
+	ret
+;*******************************
+;  MONO8XHT_XOR
+;		ES:DI = SCREEN POINTER
+;
+;*******************************	
+MONO8XHT_XOR:
+	mov	bl, num_colors - 1
+	call	box_plane_enable	;enable the planes to be drawn with 1's
+	mov	bh, 0			;don't allow any planes to use set/res
+	mov	bl, 00011000b		;set to no rotate and an or op
+	call	box_ega_init
+	call	MONO8XHT_STRING_LOGIC
+	ret
+;
+;
+MONO8XHT_STRING_REP:
+	mov	bx, offset INTIN		; get the character pointer
+	mov	dx, FWIDTH			; get the font form width
+	mov	cx, DELY
+	mov	ax, CONTRL+6			; get the count
+	push	bp
+	mov	bp, next_line
+MONO8XHT_STRING_REP_LOOP:
+	push	ax
+	mov	al,[bx]				; get the character
+	xor	ah,ah
+	mov	si, FOFF
+	add	si,ax				; si = pointer to font
+;
+	if	VESA_MULTISEG
+	 push	cs:VESA_SLICE
+	endif
+	push	di				; save the screen pointer
+	push	cx				; save the scan line counter
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_CHAR_REP_LOOP:
+	mov	al,[si]
+	mov	es:[di],al
+	add	si, dx
+	add	di, bp
+	if	VESA_MULTISEG
+	 jnc	G0001
+	 inc	cs:VESA_SLICE
+	 call	setslice
+G0001:
+	endif
+	loop	MONO8XHT_CHAR_REP_LOOP
+	pop	ds
+	pop	cx				; restore the scan line counter
+	pop	di				; save the screen pointer
+	if	VESA_MULTISEG
+	 pop	cs:VESA_SLICE
+	 call	setslice
+	endif
+;
+	inc	di				; point to the next byte in dest
+	inc	bx
+	inc	bx				; point to the next character
+	pop	ax				; get the loop count back
+	dec	ax
+	jnz	MONO8XHT_STRING_REP_LOOP
+	pop	bp
+	ret
+;
+MONO8XHT_STRING_NOT:
+	mov	bx, offset INTIN		; get the character pointer
+	mov	dx, FWIDTH			; get the font form width
+	mov	cx, DELY
+	mov	ax, CONTRL+6			; get the count
+	push	bp
+	mov	bp, next_line
+MONO8XHT_STRING_NOT_LOOP:
+	push	ax
+	mov	al,[bx]				; get the character
+	xor	ah,ah
+	mov	si, FOFF
+	add	si,ax				; si = pointer to font
+;
+	if	VESA_MULTISEG
+	 push	cs:VESA_SLICE
+	endif
+	push	di				; save the screen pointer
+	push	cx				; save the scan line counter
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_CHAR_NOT_LOOP:
+	mov	al, es:[di]			; set the logic op
+	mov	al,[si]
+	not	al				; invert the data before the op
+	mov	es:[di],al
+	add	si, dx
+	add	di, bp
+	if	VESA_MULTISEG
+	 jnc	G0002
+	 inc	cs:VESA_SLICE
+	 call	setslice
+G0002:
+	endif
+	loop	MONO8XHT_CHAR_NOT_LOOP
+	pop	ds
+	pop	cx				; restore the scan line counter
+	pop	di				; save the screen pointer
+	if	VESA_MULTISEG
+	 pop	cs:VESA_SLICE
+	 call	setslice
+	endif
+;
+	inc	di				; point to the next byte in dest
+	inc	bx
+	inc	bx				; point to the next character
+	pop	ax				; get the loop count back
+	dec	ax
+	jnz	MONO8XHT_STRING_NOT_LOOP
+	pop	bp
+	ret
+;
+MONO8XHT_STRING_LOGIC:
+	mov	bx, offset INTIN		; get the character pointer
+	mov	dx, FWIDTH			; get the font form width
+	mov	cx, DELY
+	mov	ax, CONTRL+6			; get the count
+	push	bp
+	mov	bp, next_line
+MONO8XHT_STRING_LOGIC_LOOP:
+	push	ax
+	mov	al,[bx]				; get the character
+	xor	ah,ah
+	mov	si, FOFF
+	add	si,ax				; si = pointer to font
+;
+	if	VESA_MULTISEG
+	 push	cs:VESA_SLICE
+	endif
+	push	di				; save the screen pointer
+	push	cx				; save the scan line counter
+	push	ds
+	mov	ax, FOFF+2			; get font segment
+	mov	ds, ax
+MONO8XHT_CHAR_LOGIC_LOOP:
+	mov	al, es:[di]			; set the logic op
+	mov	al,[si]
+	mov	es:[di],al
+	add	si, dx
+	add	di, bp
+	if	VESA_MULTISEG
+	 jnc	G0003
+	 inc	cs:VESA_SLICE
+	 call	setslice
+G0003:
+	endif
+	loop	MONO8XHT_CHAR_LOGIC_LOOP
+	pop	ds
+	pop	cx				; restore the scan line counter
+	pop	di				; save the screen pointer
+	if	VESA_MULTISEG
+	 pop	cs:VESA_SLICE
+	 call	setslice
+	endif
+;
+	inc	di				; point to the next byte in dest
+	inc	bx
+	inc	bx				; point to the next character
+	pop	ax				; get the loop count back
+	dec	ax
+	jnz	MONO8XHT_STRING_LOGIC_LOOP
+	pop	bp
+	ret
+

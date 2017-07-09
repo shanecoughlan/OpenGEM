@@ -1,0 +1,729 @@
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 1  
+
+Groups:
+
+    
+    Name       Address  Size  DSalloc
+    DGROUP       D910   46C0         
+    PGROUP          0   D910         
+
+Sections:
+
+    
+    Name        Maddr Msize  Daddr Dsize Lev Ov# Fth Pload
+                    0 11FD0    200 11FD0   0   0   0   No 
+
+Absolute Symbols:
+
+    
+    Name          Addr     Name          Addr     Name          Addr  
+    $STRT$        0:   0
+
+Modules:
+
+    Module A from file TCS
+        Segment BASE.PROG, Addr = 0, Size = 0
+        Segment DATA.DATA, Addr = D910, Size = 413
+            _PSP        D91:   0   _VER        D91:   4
+        Segment STACK.DATA, Addr = 11BC0, Size = 400
+        Segment PROG.PROG, Addr = 0, Size = 19
+            _TCS          0:   0
+    Module A from file PROSTART
+        Segment DATA.DATA, Addr = DD30, Size = 22A
+        Segment PROEND.DATA, Addr = 11FC0, Size = 0
+        Segment PROG.PROG, Addr = 19, Size = 8C
+            PROMAIN       0:  19
+    Module A from file VDIASM
+        Segment DATA.DATA, Addr = DF60, Size = 14
+            PBLOCK      D91: 650
+        Segment PROG.PROG, Addr = A5, Size = 38
+            GEMCHECK      0:  AE   GSX1          0:  A5   GSX2          0:  A5
+            VDI           0:  A5
+    Module VDIMISC from file VDIMISC
+        Segment PROG.PROG, Addr = DE, Size = 114
+            I_INTIN       0: 13A   I_INTOUT      0: 168   I_LPTR1       0: 1B8
+            I_PTR         0: 196   I_PTR2        0: 1A7   I_PTSIN       0:  DE
+            I_PTSOUT      0: 10C   M_LPTR2       0: 1C8
+    Module OMAIN from file OMAIN
+        Segment DATA.DATA, Addr = DF74, Size = 30D0
+            AD_BREAK    D91:1AC2   BF_HEIGH    D91:1A1A   BKGND_OK    D91:1402
+            BRK_OUT     D91:1A32   BTCH_HDR    D91: 6E4   BUFFER      D91:1B16
+            BUF_END     D91:19EC   BUF_LGTH    D91:19F0   BUF_POS     D91:19E8
+            B_INDX      D91:19DC   B_LENGTH    D91:19DE   CD_DEFAU    D91:3690
+            CELL_HGT    D91:1A16   CELL_WID    D91:1A14   CHAR_HGT    D91:1A12
+            CHAR_WID    D91:1A10   CMD_TAIL    D91:12F2   CNTL_TR     D91:1AD6
+            CONTRL      D91:1474   COPIES_I    D91:1410   CUR_FILE    D91:10C6
+            CUR_FONT    D91:1464   CUR_HNDL    D91:19FE   CUR_OPTS    D91:24FA
+            DESK        D91:25E6   DEV         D91:3602   DEV_TREE    D91:1ACA
+            DVC         D91:27DE   DVC_HPIX    D91:1A0E   DVC_NXOF    D91:1A2E
+            DVC_NXPI    D91:1A08   DVC_NYOF    D91:1A30   DVC_NYPI    D91:1A0A
+            DVC_WPIX    D91:1A0C   EDIT_COP    D91:140E   EXPAND_T    D91:1400
+            E_SLOT      D91:19C8   FILE_TYP    D91:19F4   FILM_NAM    D91:140C
+            FLAGS       D91:19C0   FONTS_LO    D91:1404   FONT_EPS    D91:1462
+            FONT_IDS    D91:1A9A   FR_STR      D91:1ADE   FST_BUF     D91:19F2
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 2  
+
+            F_HANDLE    D91:19E6   F_OPEN      D91:19E4   GEM_HNDL    D91:1468
+            GL_BASEO    D91:1472   GL_DESK     D91:25A8   GL_HBOX     D91:1470
+            GL_HCELL    D91:146C   GL_HOB      D91:19DA   GL_MENU     D91:1ACE
+            GL_OB       D91:19D2   GL_RMSG     D91:199C   GL_SMSG     D91:19AC
+            GL_UDTRA    D91:25C0   GL_WBOX     D91:146E   GL_WCELL    D91:146A
+            GL_WIN      D91:25B0   GL_WOB      D91:19D8   GL_WORK     D91:25B8
+            GL_XOB      D91:19D4   GL_YOB      D91:19D6   GRF_MODE    D91:19F6
+            GSX_WC      D91:121E   HDR_SIZE    D91:19E2   HORZ_JUS    D91:19FA
+            ICON        D91:25FE   INIT_FF     D91:140A   INTIN       D91:1494
+            INTOUT      D91:179C   INVKR_FI    D91:1374   INVOKER     D91:1270
+            INV_FNAM    D91:1262   IS_1ST_W    D91:13F8   IS_GMP_F    D91:13FC
+            IS_IMG_F    D91:13FA   IS_OUT_F    D91:13F6   IS_SPOOL    D91:13FE
+            KEY_MAP     D91:2568   LET_ROT     D91:1406   LIST_NAM    D91:110C
+            LIS_DIR     D91:1152   LIS_WC      D91:11DA   LONGEST_    D91:145E
+            MAKE_FIT    D91:19F8   MENU_WID    D91:1A34   MF_XLENG    D91:1A24
+            MF_XTRAN    D91:1A20   MF_YLENG    D91:1A26   MF_YTRAN    D91:1A22
+            MODIFIED    D91:19D0   NAMES       D91: 6EE   NEXT_SLO    D91:19CA
+            NFONTS      D91:1460   NN          D91:19E0   NUM_EMPT    D91:19CC
+            NUM_SLCT    D91:19CE   NXOFFSET    D91:1A2A   NXPIXEL     D91:1A00
+            NYOFFSET    D91:1A2C   NYPIXEL     D91:1A02   N_COL       D91:1A86
+            OPT_DIR     D91:1196   ORG_HEIG    D91:1A18   OUT_EXTE    D91:1B0E
+            PAGE_HEI    D91:1A1E   PAGE_WDW    D91:1B06   PAGE_WID    D91:1A1C
+            PARM_TR     D91:25C8   PCNT_TRE    D91:1AD2   PD_DEFAU    D91:362E
+            PRNT_OPE    D91:1408   PTSIN       D91:159C   PTSOUT      D91:189C
+            P_COL1      D91:1A36   P_COL2      D91:1A4A   ROTATE      D91:1A28
+            SAV_BYTE    D91:1ADA   SCR_HNDL    D91:1466   SD_DEFAU    D91:3628
+            SELECTED    D91:1412   STRT_COL    D91:145C   STRT_NAM    D91:145A
+            S_COL1      D91:1A5E   S_COL2      D91:1A72   S_SLOT      D91:19C6
+            THIS_PGN    D91:19C4   TMHI        D91:19BC   TMLO        D91:19BE
+            TRAY_TR     D91:1AC6   VERT_JUS    D91:19FC   W_HANDLE    D91:19C2
+            X_SIZE      D91:1A04   Y_SIZE      D91:1A06   _DTA        D91: 664
+        Segment PROG.PROG, Addr = 1F2, Size = EBC
+            CNTL_BDO      0: 57D   DEV_BDOW      0: 711   DO_AP_WR      0: 289
+            DO_DESKM      0: 2E2   DO_FILEM      0: 2FB   DO_OPTIM      0: 385
+            DO_STRT       0: 2B7   GEMAIN        0: F36   HDLE_MES      0: B33
+            HNDL_BDO      0: 7F4   HNDL_BUT      0: 8AC   HNDL_KEY      0: 8F7
+            HNDL_MEN      0: A66   HNDL_TIM      0: 403   INITIALI      0: D50
+            SET_PREF      0: 67D   _ABORT        0: 1F2
+    Module ODIALOG from file ODIALOG
+        Segment PROG.PROG, Addr = 10AE, Size = 2A2
+            DO_INFO       0:110A   DO_MISS       0:10AE   DO_SHRTI      0:1148
+            OKCANHLP      0:12B2   OKCAN_OB      0:1339
+    Module ORSCINIT from file ORSCINIT
+        Segment PROG.PROG, Addr = 1350, Size = AEF
+            ADD_DEVI      0:1CB4   DO_ICN_I      0:18FF   DO_INI_I      0:1A1C
+            DVC_ICON      0:1BD0   FIX_MENU      0:1700   FLAG_USE      0:16C3
+            GET_ICN_      0:1B55   INI_DESK      0:1A35   RSRC_INI      0:17B5
+            SETUP_DE      0:1DBF   SETUP_RS      0:1E16   SET_ICN_      0:1952
+            SET_ICON      0:13A0   SET_IMAG      0:14C9   SET_MFDB      0:1350
+            TRNFM_BI      0:153C   TRNFM_IC      0:1578   TRNFM_RS      0:15D3
+        Segment DATA.DATA, Addr = 11044, Size = 31
+    Module OOPTIMZ from file OOPTIMZ
+        Segment PROG.PROG, Addr = 1E40, Size = 2E1
+            COMPACT?      0:1E40   INSIDE        0:1FDB   MAX           0:201F
+            MIN           0:200F   OVERLAP       0:1E64   RC_INTER      0:1EAE
+            RC_UNION      0:1F52   R_SET         0:1E41   STRCAT        0:20A6
+            STRCHK        0:20DA   STRCMP        0:204F   STRCPY        0:2080
+            STRLEN        0:202F
+    Module OUTILITY from file OUTILITY
+        Segment PROG.PROG, Addr = 2122, Size = A92
+            ABS           0:2219   ALIGN_H       0:21F8   ALIGN_X       0:27EA
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 3  
+
+            ATOI          0:2692   BLD_DIR       0:239A   COMP_EXT      0:22E9
+            DEC_TO_I      0:2725   DEL_FNAM      0:245B   DEL_PATH      0:23F8
+            DOS_AVAI      0:2122   ETEXT_TO      0:2AF1   EXTENSIO      0:2250
+            FNAME_TO      0:2B51   F_ALERT       0:2AC9   GET_NAME      0:2908
+            ITOA          0:259B   LSWAP         0:2804   MINMAX        0:2381
+            MOVB          0:222A   NEW_EXT       0:2345   PAD_N_IT      0:25F5
+            POS           0:2896   PSWAP         0:285E   RC_EQUAL      0:2517
+            RC_INSID      0:24C7   REVERSE       0:254B   RM_SPACE      0:28C9
+            SIDEBAR_      0:297F   VALID_DR      0:23BF   VOPEN         0:2152
+            WSWAP         0:283C
+    Module OWINDOW from file OWINDOW
+        Segment PROG.PROG, Addr = 2BB4, Size = 9E2
+            DEF_TXT_      0:33A8   DO_ARROW      0:2D9A   DO_SCROL      0:2E5C
+            DO_WM_FU      0:303F   DO_WM_MO      0:2EE4   DO_WM_SI      0:2F74
+            DR_CODE       0:3507   FNAME_NO      0:343F   INIT_SCR      0:2CE5
+            PRONTO_M      0:318D   REALIGN_      0:2D29   SEND_RED      0:2BB4
+            SET_OB        0:320F   SET_SCRO      0:2C71   SET_SLID      0:2BDA
+            SIZE_SLO      0:3108   UPD_MENU      0:32C6   UPD_TRAY      0:324E
+    Module A from file UTIL86
+        Segment DATA.DATA, Addr = 11080, Size = E
+            BRK_ADDR    D91:3770   BRK_SEG     D91:3772
+        Segment PROG.PROG, Addr = 3596, Size = 1CF
+            BRK_HNDLE     0:35F7   B_MOVE        0:362C   B_STUFF       0:3641
+            CXC33         0:3664   CXD33         0:367C   CXM33         0:36AA
+            L_NEG         0:3752   RMUL_DIV      0:35C7   SEG_OFF       0:361A
+            SMUL_DIV      0:3596   SWAPBYTE      0:3651   UMUL_DIV      0:35DE
+            VEC_LEN       0:36C5
+    Module OPORTABL from file OPORTABL
+        Segment PROG.PROG, Addr = 3766, Size = A7
+            FILE_SIZ      0:3772   XDOS_ALL      0:3766
+    Module OSETUP from file OSETUP
+        Segment DATA.DATA, Addr = 1108E, Size = 4D
+            FREEGEM     D91:377E
+        Segment PROG.PROG, Addr = 380E, Size = AB2
+            DEV_PREF      0:3960   FIX_FILE      0:3CB9   GET_DIR       0:41A7
+            GET_FILE      0:405B   GET_INVO      0:3E1D   GET_LISD      0:3F96
+            INIT1         0:422B   INI_TRAY      0:380E   OUTINIT       0:42BC
+            RD_DEF        0:3A3B
+    Module OTRAYUTL from file OTRAYUTL
+        Segment PROG.PROG, Addr = 42C0, Size = 1265
+            ADD_ALL       0:4886   ADD_ENTR      0:4A5B   ADD_NAME      0:47C6
+            ADD_ONE       0:4869   ADD_WCAR      0:4981   DEL_ENTR      0:4D51
+            DESLCT_S      0:44D4   DO_EDITM      0:54BC   DUP_ENTR      0:4C05
+            GET_OBSL      0:448F   GET_TROB      0:4445   INI_SLOT      0:43B0
+            MOVE_ENT      0:4E95   MOVE_TRA      0:4360   NEW_TRAY      0:5019
+            OPEN_TRA      0:5226   RD_BTCH       0:52DF   REDR_SLO      0:42C0
+            RUB_SLCT      0:45FC   SAVE_TRA      0:5184   SHOW_LAS      0:47FE
+            SLCT_SLO      0:4544   SORT_LIS      0:4711   SVAS_TRA      0:507B
+            SWAP_STR      0:46DC   TRAY_FME      0:54EB
+    Module OOPTIONS from file OOPTIONS
+        Segment PROG.PROG, Addr = 5526, Size = 18B7
+            CHECK_PA      0:5EF6   DIAL_OPT      0:6CB4   DO_PRNTD      0:57D0
+            DO_PSZDI      0:69D0   FIX_BKGN      0:5DF2   GET_GLOB      0:650C
+            GET_OPTS      0:668D   GET_PORT      0:63B1   GET_PRIN      0:61B5
+            GET_PSIZ      0:6223   GET_PTRA      0:633E   GET_SCRE      0:613B
+            GT_FILM       0:658C   GT_POSIT      0:5628   ICON_NAM      0:67BD
+            IS_SERIA      0:5A67   MAKE_DEF      0:5526   MV_POSIT      0:569A
+            OPT_DIAL      0:67F2   PORT_DIA      0:6B9F   PORT_STR      0:5D2C
+            PORT_TGG      0:5C67   PREF_ICO      0:670D   PRNT_DIA      0:6873
+            PSIZE_DI      0:6A99   SETUP_PO      0:5A8A   SET_FILM      0:60F8
+            SET_GLOB      0:5966   SET_OPTS      0:65DC   SET_PORT      0:5F88
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 4  
+
+            SET_PRIN      0:570D   SET_PSIZ      0:59D6   SET_PTRA      0:5A11
+            SET_SCRE      0:58FA   SHOWHELP      0:6DA9   SWAP_PSI      0:6979
+    Module ODISPLAY from file ODISPLAY
+        Segment PROG.PROG, Addr = 6DDE, Size = 224D
+            ADD_PATH      0:8221   CASE_GDP      0:7F36   CHANGE_P      0:87B0
+            CHECK_ES      0:7D39   CLOSE_EN      0:8061   COMP_RAT      0:7894
+            DO_IMAGE      0:82E1   DO_V_TRA      0:70F2   DRAW_PAG      0:87F0
+            DSP_PIX       0:88A8   FIND_ROT      0:7A2E   FLIP_MAG      0:777E
+            FUDGE_SI      0:8142   FULL_CIR      0:7CD6   GREY_BOX      0:7063
+            HOLD_PIX      0:7DEE   INIT_PRN      0:8A8D   IS_DP_KL      0:81B2
+            IS_STROK      0:854E   JUSTIFY       0:7552   MOFF_ALE      0:8881
+            OPEN_DVC      0:7141   OUTDISP       0:9027   OUT_ADJU      0:791F
+            PRINT_SP      0:6DDE   PROCESS_      0:8591   PRT_CLEA      0:8E8F
+            PRT_FILE      0:8FEA   PRT_INIT      0:8B29   PRT_LOOP      0:8CEA
+            REMV_PCN      0:74CD   RESET_MF      0:7D20   ROT_ANG       0:7CEF
+            SET_AVAI      0:6F0F   SET_COL_      0:6FFD   SET_NPIX      0:7B85
+            SET_TRFM      0:7C4A   TRFM_MAG      0:764C   TRFM_PTS      0:76E9
+            UPD_COUN      0:7D97   UPD_PCNT      0:749F   _IMUL_DI      0:760B
+            _SMULDIV      0:77DA   _UMUL_DI      0:75A9
+        Segment DATA.DATA, Addr = 110DC, Size = 1E
+    Module OBUFFER from file OBUFFER
+        Segment PROG.PROG, Addr = 902C, Size = 566
+            CLOSE_MF      0:9402   GET_EXT       0:90A4   GET_MF        0:9265
+            GET_PGSI      0:9477   MFREAD_B      0:910E   MF_SKIP       0:93AA
+            MF_WORDS      0:933E   OPEN_MF       0:918F   REWIND_M      0:941F
+            SEARCH_P      0:902C
+    Module OGEMWRIT from file OGEMWRIT
+        Segment PROG.PROG, Addr = 9592, Size = AD6
+            CHECK_B_      0:95ED   DO_OUT        0:9E11   DO_TEXT       0:9A5F
+            DSP_OUT       0:9FD1   ESC_ESC       0:9DC6   FIND_END      0:95AF
+            FIND_EOL      0:9D36   FIVE_COM      0:990C   GET_FNAM      0:9647
+            LINE_OUT      0:9B34   OUTGWRT       0:A064   OUT_GEM       0:993B
+            OUT_TXT       0:9C39   REDO_OFF      0:9794   RESET_OU      0:98A4
+            SCRN_TEX      0:9F55   SET_MISC      0:9592
+        Segment DATA.DATA, Addr = 110FA, Size = 10
+    Module OIMAGE from file OIMAGE
+        Segment PROG.PROG, Addr = A068, Size = 78
+            DSP_IMG       0:A07F   OUTIMAG       0:A068
+    Module OIMAGUTL from file OIMAGUTL
+        Segment DATA.DATA, Addr = 1110A, Size = 5CE
+            BLT_ADDR    D91:3DA2   BLT_BYTE    D91:3D9C   BLT_PTR     D91:3DB4
+            BUFF_ADD    D91:3DA6   BUFF_CNT    D91:3DAE   BUFF_PTR    D91:3DB0
+            DCODE_PT    D91:3D84   DECODE_B    D91:3D80   DEST_MFD    D91:3D6C
+            F_BUF_LE    D91:3D8C   F_BUF_SI    D91:3D8E   F_INDEX     D91:3D90
+            F_PTR       D91:3D88   HEADER      D91:3DB8   LINES_AV    D91:3D94
+            NXT_PLAN    D91:3DAA   PLANES      D91:3DA0   RAW_FPTR    D91:37FA
+            RAW_FSIZ    D91:37FE   SCAN_BYT    D91:3D9E   SCRATCH     D91:3800
+            SRC_MFDB    D91:3D58   S_NEXT_P    D91:3D98   S_SCAN_B    D91:3D9A
+            VERT_REP    D91:3D92   XYR         D91:3D48
+        Segment PROG.PROG, Addr = A0E0, Size = 90C
+            ADDR_ADD      0:A0E0   DECODE        0:A7BD   DO_DECOD      0:A656
+            GET_LINE      0:A475   IMAGE_AL      0:A29C   INIT_MFD      0:A1AD
+            LB_STUFF      0:A121   TRANSFER      0:A36E   UMIN          0:A111
+    Module OCAMCOLR from file OCAMCOLR
+        Segment DATA.DATA, Addr = 116D8, Size = AC
+            CUR_COL     D91:3E68   CUR_INDE    D91:3E72   NEW_BNDL    D91:3DC8
+        Segment PROG.PROG, Addr = A9EC, Size = C5C
+            CAM_TGGL      0:AD48   CMCL_DIA      0:B4AA   DESEL_CA      0:B430
+            GET_FLM_      0:A9EC   GET_RGB       0:B039   NEW_COL       0:B2D7
+            NEW_RGB       0:AF0F   OUTCMCL       0:B635   SAVE_COL      0:B327
+            SET_CAMC      0:AB5C   SHAD_TGG      0:AD0E   TGGL_COL      0:B26B
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 5  
+
+            TUNE_COL      0:B171   WHT_OR_B      0:B15A
+    Module XDOREDRA from file XDOREDRA
+        Segment PROG.PROG, Addr = B648, Size = CA
+            DO_REDRA      0:B648
+    Module VXBITIMA from file VXBITIMA
+        Segment PROG.PROG, Addr = B712, Size = AA
+            V_XBIT_I      0:B712
+    Module VGETDRIV from file VGETDRIV
+        Segment PROG.PROG, Addr = B7BC, Size = 7C
+            V_GET_DR      0:B7BC
+    Module VCOPIES from file VCOPIES
+        Segment PROG.PROG, Addr = B838, Size = 2C
+            V_COPIES      0:B838
+    Module VQSCAN from file VQSCAN
+        Segment PROG.PROG, Addr = B864, Size = 53
+            _VQ_SCAN      0:B864
+    Module VTRAY from file VTRAY
+        Segment PROG.PROG, Addr = B8B8, Size = 2C
+            V_TRAY        0:B8B8
+    Module VOPNWK from file VOPNWK
+        Segment PROG.PROG, Addr = B8E4, Size = 5E
+            V_OPNWK       0:B8E4
+    Module A from file RTLASM
+        Segment PROG.PROG, Addr = B942, Size = C1
+            _MWDIVL       0:B967   _MWMPYL       0:B942   _MWUDIVL      0:B9CE
+    Module A from file FARDRAW
+        Segment PROG.PROG, Addr = BA03, Size = 47
+        Segment DATA.DATA, Addr = 11790, Size = 206
+            DRAWADDR    D91:3E80
+    Module A from file LONGASM
+        Segment DATA.DATA, Addr = 119A0, Size = 0
+        Segment PROG.PROG, Addr = BA4A, Size = 156
+            ADDR          0:BA6A   LBCOPY        0:BACE   LBGET         0:BB36
+            LBSET         0:BB45   LBWMOV        0:BB04   LLCS          0:BA7E
+            LLDS          0:BA75   LLGET         0:BB74   LLSET         0:BB87
+            LLSS          0:BA87   LSTRLEN       0:BA4A   LWCOPY        0:BA90
+            LWGET         0:BB57   LWSET         0:BB64
+    Module A from file GEMASM
+        Segment PROG.PROG, Addr = BBA0, Size = 15
+            CRYSTAL       0:BBA0   GEM           0:BBA0
+    Module A from file DOSASM
+        Segment DATA.DATA, Addr = 119A0, Size = 0
+        Segment PROG.PROG, Addr = BBB5, Size = 86
+            __DOS         0:BBBD
+    Module A from file PROEND
+        Segment PROEND.DATA, Addr = 11FC0, Size = 2
+            PROGEND     D91:46B0
+    Module GET_TEPT from file XGEMBIND
+        Segment PROG.PROG, Addr = BC3C, Size = 19
+            GET_TEPT      0:BC3C
+    Module GET_STAT from file XGEMBIND
+        Segment PROG.PROG, Addr = BC56, Size = 22
+            GET_STAT      0:BC56
+    Module TGGL_STA from file XGEMBIND
+        Segment PROG.PROG, Addr = BC78, Size = 46
+            TGGL_STA      0:BC78
+    Module GET_FLAG from file XGEMBIND
+        Segment PROG.PROG, Addr = BCBE, Size = 22
+            GET_FLAG      0:BCBE
+    Module SET_STAT from file XGEMBIND
+        Segment PROG.PROG, Addr = BCE0, Size = 25
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 6  
+
+            SET_STAT      0:BCE0
+    Module GET_OBLO from file XGEMBIND
+        Segment PROG.PROG, Addr = BD06, Size = 43
+            GET_OBLO      0:BD06
+    Module SET_SPEC from file XGEMBIND
+        Segment PROG.PROG, Addr = BD4A, Size = 28
+            SET_SPEC      0:BD4A
+    Module DO_DIALO from file XGEMBIND
+        Segment PROG.PROG, Addr = BD72, Size = 5A
+            DO_DIALO      0:BD72
+    Module OKCAN from file XGEMBIND
+        Segment PROG.PROG, Addr = BDCC, Size = 73
+            OKCAN         0:BDCC
+    Module GET_SPEC from file XGEMBIND
+        Segment PROG.PROG, Addr = BE40, Size = 22
+            GET_SPEC      0:BE40
+    Module GET_TYPE from file XGEMBIND
+        Segment PROG.PROG, Addr = BE62, Size = 22
+            GET_TYPE      0:BE62
+    Module SET_X from file XGEMBIND
+        Segment PROG.PROG, Addr = BE84, Size = 25
+            SET_X         0:BE84
+    Module SET_Y from file XGEMBIND
+        Segment PROG.PROG, Addr = BEAA, Size = 25
+            SET_Y         0:BEAA
+    Module SET_WIDT from file XGEMBIND
+        Segment PROG.PROG, Addr = BED0, Size = 25
+            SET_WIDT      0:BED0
+    Module SET_HEIG from file XGEMBIND
+        Segment PROG.PROG, Addr = BEF6, Size = 25
+            SET_HEIG      0:BEF6
+    Module GET_WIDT from file XGEMBIND
+        Segment PROG.PROG, Addr = BF1C, Size = 22
+            GET_WIDT      0:BF1C
+    Module SET_FLAG from file XGEMBIND
+        Segment PROG.PROG, Addr = BF3E, Size = 25
+            SET_FLAG      0:BF3E
+    Module GET_HEIG from file XGEMBIND
+        Segment PROG.PROG, Addr = BF64, Size = 22
+            GET_HEIG      0:BF64
+    Module GET_Y from file XGEMBIND
+        Segment PROG.PROG, Addr = BF86, Size = 22
+            GET_Y         0:BF86
+    Module DO_OPEN from file XGEMBIND
+        Segment PROG.PROG, Addr = BFA8, Size = 49
+            DO_OPEN       0:BFA8
+    Module DO_CREAT from file XGEMBIND
+        Segment PROG.PROG, Addr = BFF2, Size = AF
+            DO_CREAT      0:BFF2
+    Module SET_TAIL from file XGEMBIND
+        Segment PROG.PROG, Addr = C0A2, Size = 25
+            SET_TAIL      0:C0A2
+    Module SET_NEXT from file XGEMBIND
+        Segment PROG.PROG, Addr = C0C8, Size = 1F
+            SET_NEXT      0:C0C8
+    Module SET_RBUT from file XGEMBIND
+        Segment PROG.PROG, Addr = C0E8, Size = 4F
+            SET_RBUT      0:C0E8
+    Module GET_RBUT from file XGEMBIND
+        Segment PROG.PROG, Addr = C138, Size = 5B
+            GET_RBUT      0:C138
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 7  
+
+    Module START_DI from file XGEMBIND
+        Segment PROG.PROG, Addr = C194, Size = 174
+            START_DI      0:C194
+    Module END_DIAL from file XGEMBIND
+        Segment PROG.PROG, Addr = C308, Size = 63
+            END_DIAL      0:C308
+    Module UPD_ITEP from file XGEMBIND
+        Segment PROG.PROG, Addr = C36C, Size = 26
+            UPD_ITEP      0:C36C
+    Module UPD_TEPT from file XGEMBIND
+        Segment PROG.PROG, Addr = C392, Size = 7A
+            UPD_TEPT      0:C392
+    Module TGGL_FLA from file XGEMBIND
+        Segment PROG.PROG, Addr = C40C, Size = 34
+            TGGL_FLA      0:C40C
+    Module GET_HEAD from file XGEMBIND
+        Segment PROG.PROG, Addr = C440, Size = 22
+            GET_HEAD      0:C440
+    Module GET_NEXT from file XGEMBIND
+        Segment PROG.PROG, Addr = C462, Size = 1C
+            GET_NEXT      0:C462
+    Module GEMGLOB from file GEMBIND
+        Segment DATA.DATA, Addr = 119A0, Size = 202
+            ADDR_IN     D91:4282   ADDR_OUT    D91:428A   AD_G        D91:428E
+            CONTROL     D91:422E   CTRL_CNT    D91:4090   GB          D91:4216
+            GLOBAL      D91:4236   INT_IN      D91:4254   INT_OUT     D91:4274
+    Module SHEL_WRI from file GEMBIND
+        Segment PROG.PROG, Addr = C47E, Size = 39
+            SHEL_WRI      0:C47E
+    Module GRAF_GRO from file GEMBIND
+        Segment PROG.PROG, Addr = C4B8, Size = A
+            GRAF_GRO      0:C4B8   GRAF_SHR      0:C4BD
+    Module WIND_CLO from file GEMBIND
+        Segment PROG.PROG, Addr = C4C2, Size = 13
+            WIND_CLO      0:C4C2
+    Module WIND_DEL from file GEMBIND
+        Segment PROG.PROG, Addr = C4D6, Size = 13
+            WIND_DEL      0:C4D6
+    Module RSRC_FRE from file GEMBIND
+        Segment PROG.PROG, Addr = C4EA, Size = D
+            RSRC_FRE      0:C4EA
+    Module MENU_BAR from file GEMBIND
+        Segment PROG.PROG, Addr = C4F8, Size = 20
+            MENU_BAR      0:C4F8
+    Module APPL_EXI from file GEMBIND
+        Segment PROG.PROG, Addr = C518, Size = 10
+            APPL_EXI      0:C518
+    Module APPL_WRI from file GEMBIND
+        Segment PROG.PROG, Addr = C528, Size = 26
+            APPL_WRI      0:C528
+    Module GRAF_MOU from file GEMBIND
+        Segment PROG.PROG, Addr = C54E, Size = 20
+            GRAF_MOU      0:C54E
+    Module OBJC_DRA from file GEMBIND
+        Segment PROG.PROG, Addr = C56E, Size = 3E
+            OBJC_DRA      0:C56E
+    Module GRAF_DRA from file GEMBIND
+        Segment PROG.PROG, Addr = C5AC, Size = 52
+            GRAF_DRA      0:C5AC
+    Module GRAF_RUB from file GEMBIND
+        Segment PROG.PROG, Addr = C5FE, Size = 3A
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 8  
+
+            GRAF_RUB      0:C5FE
+    Module EVNT_BUT from file GEMBIND
+        Segment PROG.PROG, Addr = C638, Size = 46
+            EVNT_BUT      0:C638
+    Module OBJC_EDI from file GEMBIND
+        Segment PROG.PROG, Addr = C67E, Size = 41
+            OBJC_EDI      0:C67E
+    Module OBJC_FIN from file GEMBIND
+        Segment PROG.PROG, Addr = C6C0, Size = 32
+            OBJC_FIN      0:C6C0
+    Module MENU_TNO from file GEMBIND
+        Segment PROG.PROG, Addr = C6F2, Size = 26
+            MENU_TNO      0:C6F2
+    Module WIND_SET from file GEMBIND
+        Segment PROG.PROG, Addr = C718, Size = 31
+            WIND_SET      0:C718
+    Module EVNT_MUL from file GEMBIND
+        Segment PROG.PROG, Addr = C74A, Size = B3
+            EVNT_MUL      0:C74A
+    Module WIND_UPD from file GEMBIND
+        Segment PROG.PROG, Addr = C7FE, Size = 13
+            WIND_UPD      0:C7FE
+    Module GRAF_MKS from file GEMBIND
+        Segment PROG.PROG, Addr = C812, Size = 31
+            GRAF_MKS      0:C812
+    Module RSRC_GAD from file GEMBIND
+        Segment PROG.PROG, Addr = C844, Size = 2D
+            RSRC_GAD      0:C844
+    Module FORM_CEN from file GEMBIND
+        Segment PROG.PROG, Addr = C872, Size = 41
+            FORM_CEN      0:C872
+    Module FORM_DIA from file GEMBIND
+        Segment PROG.PROG, Addr = C8B4, Size = 43
+            FORM_DIA      0:C8B4
+    Module FORM_DO from file GEMBIND
+        Segment PROG.PROG, Addr = C8F8, Size = 20
+            FORM_DO       0:C8F8
+    Module RSRC_LOA from file GEMBIND
+        Segment PROG.PROG, Addr = C918, Size = 1A
+            RSRC_LOA      0:C918
+    Module FORM_ALE from file GEMBIND
+        Segment PROG.PROG, Addr = C932, Size = 20
+            FORM_ALE      0:C932
+    Module WIND_GET from file GEMBIND
+        Segment PROG.PROG, Addr = C952, Size = 40
+            WIND_GET      0:C952
+    Module GRAF_HAN from file GEMBIND
+        Segment PROG.PROG, Addr = C992, Size = 34
+            GRAF_HAN      0:C992
+    Module FSEL_INP from file GEMBIND
+        Segment PROG.PROG, Addr = C9C6, Size = 33
+            FSEL_INP      0:C9C6
+    Module MENU_IEN from file GEMBIND
+        Segment PROG.PROG, Addr = C9FA, Size = 26
+            MENU_IEN      0:C9FA
+    Module OBJC_OFF from file GEMBIND
+        Segment PROG.PROG, Addr = CA20, Size = 35
+            OBJC_OFF      0:CA20
+    Module MENU_TEX from file GEMBIND
+        Segment PROG.PROG, Addr = CA56, Size = 2D
+            MENU_TEX      0:CA56
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 9  
+
+    Module SHEL_FIN from file GEMBIND
+        Segment PROG.PROG, Addr = CA84, Size = 1A
+            SHEL_FIN      0:CA84
+    Module SHEL_REA from file GEMBIND
+        Segment PROG.PROG, Addr = CA9E, Size = 27
+            SHEL_REA      0:CA9E
+    Module APPL_INI from file GEMBIND
+        Segment PROG.PROG, Addr = CAC6, Size = 7B
+            APPL_INI      0:CAC6
+    Module APPL_FIN from file GEMBIND
+        Segment PROG.PROG, Addr = CB42, Size = 1A
+            APPL_FIN      0:CB42
+    Module OBJC_CHA from file GEMBIND
+        Segment PROG.PROG, Addr = CB5C, Size = 4A
+            OBJC_CHA      0:CB5C
+    Module EVNT_MES from file GEMBIND
+        Segment PROG.PROG, Addr = CBA6, Size = 1A
+            EVNT_MES      0:CBA6
+    Module WIND_OPE from file GEMBIND
+        Segment PROG.PROG, Addr = CBC0, Size = 2B
+            WIND_OPE      0:CBC0
+    Module WIND_CAL from file GEMBIND
+        Segment PROG.PROG, Addr = CBEC, Size = 58
+            WIND_CAL      0:CBEC
+    Module WIND_CRE from file GEMBIND
+        Segment PROG.PROG, Addr = CC44, Size = 2B
+            WIND_CRE      0:CC44
+    Module GEM_IF from file GEMBIND
+        Segment PROG.PROG, Addr = CC70, Size = 57
+            GEM_IF        0:CC70
+    Module DOS_SINT from file DOSBIND
+        Segment PROG.PROG, Addr = CCC8, Size = 1D
+            DOS_SINT      0:CCC8
+    Module DOS_SFIR from file DOSBIND
+        Segment PROG.PROG, Addr = CCE6, Size = 26
+            DOS_SFIR      0:CCE6
+    Module DOS_FUNC from file DOSBIND
+        Segment DATA.DATA, Addr = 11BA2, Size = 12
+            DOS_AX      D91:4292   DOS_BX      D91:4294   DOS_CX      D91:4296
+            DOS_DI      D91:42A0   DOS_DS      D91:429A   DOS_DX      D91:4298
+            DOS_ERR     D91:42A2   DOS_ES      D91:429C   DOS_SI      D91:429E
+        Segment PROG.PROG, Addr = CD0C, Size = 1A
+            DOS_FUNC      0:CD0C
+    Module DOS_ALLO from file DOSBIND
+        Segment PROG.PROG, Addr = CD26, Size = 66
+            DOS_ALLO      0:CD26
+    Module DOS_SDTA from file DOSBIND
+        Segment PROG.PROG, Addr = CD8C, Size = 14
+            DOS_SDTA      0:CD8C
+    Module DOS_READ from file DOSBIND
+        Segment PROG.PROG, Addr = CDA0, Size = A0
+            DOS_READ      0:CDC4   READ_PIE      0:CDA0
+    Module DOS_OPEN from file DOSBIND
+        Segment PROG.PROG, Addr = CE40, Size = 1B
+            DOS_OPEN      0:CE40
+    Module DOS_CLOS from file DOSBIND
+        Segment PROG.PROG, Addr = CE5C, Size = 1F
+            DOS_CLOS      0:CE5C
+    Module DOS_GINT from file DOSBIND
+        Segment PROG.PROG, Addr = CE7C, Size = 23
+            DOS_GINT      0:CE7C
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 10 
+
+    Module DOS_SNEX from file DOSBIND
+        Segment PROG.PROG, Addr = CEA0, Size = 19
+            DOS_SNEX      0:CEA0
+    Module DOS_CREA from file DOSBIND
+        Segment PROG.PROG, Addr = CEBA, Size = 1E
+            DOS_CREA      0:CEBA
+    Module DOS_WRIT from file DOSBIND
+        Segment PROG.PROG, Addr = CED8, Size = A0
+            DOS_WRIT      0:CEFC   WRITE_PI      0:CED8
+    Module DOS_LSEE from file DOSBIND
+        Segment PROG.PROG, Addr = CF78, Size = 36
+            DOS_LSEE      0:CF78
+    Module DOS_FREE from file DOSBIND
+        Segment PROG.PROG, Addr = CFAE, Size = 17
+            DOS_FREE      0:CFAE
+    Module V_CLSVWK from file VDIBIND
+        Segment PROG.PROG, Addr = CFC6, Size = 1C
+            V_CLSVWK      0:CFC6
+    Module V_SOUND from file VDIBIND
+        Segment PROG.PROG, Addr = CFE2, Size = 32
+            V_SOUND       0:CFE2
+    Module VR_TRNFM from file VDIBIND
+        Segment PROG.PROG, Addr = D014, Size = 30
+            VR_TRNFM      0:D014
+    Module V_OPNVWK from file VDIBIND
+        Segment PROG.PROG, Addr = D044, Size = 63
+            V_OPNVWK      0:D044
+    Module VQT_FONT from file VDIBIND
+        Segment PROG.PROG, Addr = D0A8, Size = 73
+            VQT_FONT      0:D0A8
+    Module VSWR_MOD from file VDIBIND
+        Segment PROG.PROG, Addr = D11C, Size = 29
+            VSWR_MOD      0:D11C
+    Module VST_POIN from file VDIBIND
+        Segment PROG.PROG, Addr = D146, Size = 4D
+            VST_POIN      0:D146
+    Module VST_ROTA from file VDIBIND
+        Segment PROG.PROG, Addr = D194, Size = 29
+            VST_ROTA      0:D194
+    Module VST_FONT from file VDIBIND
+        Segment PROG.PROG, Addr = D1BE, Size = 29
+            VST_FONT      0:D1BE
+    Module VST_COLO from file VDIBIND
+        Segment PROG.PROG, Addr = D1E8, Size = 29
+            VST_COLO      0:D1E8
+    Module VST_EFFE from file VDIBIND
+        Segment PROG.PROG, Addr = D212, Size = 29
+            VST_EFFE      0:D212
+    Module VST_ALIG from file VDIBIND
+        Segment PROG.PROG, Addr = D23C, Size = 3E
+            VST_ALIG      0:D23C
+    Module VSL_TYPE from file VDIBIND
+        Segment PROG.PROG, Addr = D27A, Size = 29
+            VSL_TYPE      0:D27A
+    Module VSL_WIDT from file VDIBIND
+        Segment PROG.PROG, Addr = D2A4, Size = 2B
+            VSL_WIDT      0:D2A4
+    Module VSL_COLO from file VDIBIND
+        Segment PROG.PROG, Addr = D2D0, Size = 29
+            VSL_COLO      0:D2D0
+    Module VSL_ENDS from file VDIBIND
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 11 
+
+        Segment PROG.PROG, Addr = D2FA, Size = 2C
+            VSL_ENDS      0:D2FA
+    Module V_GTEXT from file VDIBIND
+        Segment PROG.PROG, Addr = D326, Size = 51
+            V_GTEXT       0:D326
+    Module V_PLINE from file VDIBIND
+        Segment PROG.PROG, Addr = D378, Size = 33
+            V_PLINE       0:D378
+    Module VS_CLIP from file VDIBIND
+        Segment PROG.PROG, Addr = D3AC, Size = 39
+            VS_CLIP       0:D3AC
+    Module VQT_NAME from file VDIBIND
+        Segment PROG.PROG, Addr = D3E6, Size = 4C
+            VQT_NAME      0:D3E6
+    Module VS_COLOR from file VDIBIND
+        Segment PROG.PROG, Addr = D432, Size = 4C
+            VS_COLOR      0:D432
+    Module VQF_ATTR from file VDIBIND
+        Segment PROG.PROG, Addr = D47E, Size = 2F
+            VQF_ATTR      0:D47E
+    Module VSF_INTE from file VDIBIND
+        Segment PROG.PROG, Addr = D4AE, Size = 29
+            VSF_INTE      0:D4AE
+    Module VSF_COLO from file VDIBIND
+        Segment PROG.PROG, Addr = D4D8, Size = 29
+            VSF_COLO      0:D4D8
+    Module VSF_STYL from file VDIBIND
+        Segment PROG.PROG, Addr = D502, Size = 29
+            VSF_STYL      0:D502
+    Module VSF_PERI from file VDIBIND
+        Segment PROG.PROG, Addr = D52C, Size = 29
+            VSF_PERI      0:D52C
+    Module V_BAR from file VDIBIND
+        Segment PROG.PROG, Addr = D556, Size = 39
+            V_BAR         0:D556
+    Module VQ_EXTND from file VDIBIND
+        Segment PROG.PROG, Addr = D590, Size = 4C
+            VQ_EXTND      0:D590
+    Module VST_LOAD from file VDIBIND
+        Segment PROG.PROG, Addr = D5DC, Size = 1F
+            VST_LOAD      0:D5DC
+    Module VSP_FILM from file VDIBIND
+        Segment PROG.PROG, Addr = D5FC, Size = 32
+            VSP_FILM      0:D5FC
+    Module VQ_SCAN from file VDIBIND
+        Segment PROG.PROG, Addr = D62E, Size = 4F
+            VQ_SCAN       0:D62E
+    Module VST_UNLO from file VDIBIND
+        Segment PROG.PROG, Addr = D67E, Size = 1C
+            VST_UNLO      0:D67E
+    Module V_BIT_IM from file VDIBIND
+        Segment PROG.PROG, Addr = D69A, Size = 89
+            V_BIT_IM      0:D69A
+    Module V_OUTPUT from file VDIBIND
+        Segment PROG.PROG, Addr = D724, Size = 39
+            V_OUTPUT      0:D724
+    Module V_UPDWK from file VDIBIND
+        Segment PROG.PROG, Addr = D75E, Size = 1C
+            V_UPDWK       0:D75E
+    Module V_EXIT_C from file VDIBIND
+        Segment PROG.PROG, Addr = D77A, Size = 22
+
+Memory Map for OUTPUT.APP  1/02/ 1                                     Page 12 
+
+            V_EXIT_C      0:D77A
+    Module V_CLRWK from file VDIBIND
+        Segment PROG.PROG, Addr = D79C, Size = 1C
+            V_CLRWK       0:D79C
+    Module V_FORM_A from file VDIBIND
+        Segment PROG.PROG, Addr = D7B8, Size = 22
+            V_FORM_A      0:D7B8
+    Module V_CLSWK from file VDIBIND
+        Segment PROG.PROG, Addr = D7DA, Size = 1C
+            V_CLSWK       0:D7DA
+    Module V_CLEAR_ from file VDIBIND
+        Segment PROG.PROG, Addr = D7F6, Size = 22
+            V_CLEAR_      0:D7F6
+    Module V_ALPHA_ from file VDIBIND
+        Segment PROG.PROG, Addr = D818, Size = 4B
+            V_ALPHA_      0:D818
+    Module VRO_CPYF from file VDIBIND
+        Segment PROG.PROG, Addr = D864, Size = 4B
+            VRO_CPYF      0:D864
+    Module VQP_FILM from file VDIBIND
+        Segment PROG.PROG, Addr = D8B0, Size = 5E
+            VQP_FILM      0:D8B0

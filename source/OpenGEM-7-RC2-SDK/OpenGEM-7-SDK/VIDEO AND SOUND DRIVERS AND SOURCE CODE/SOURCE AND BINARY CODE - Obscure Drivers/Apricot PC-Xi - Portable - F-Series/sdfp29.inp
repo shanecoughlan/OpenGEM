@@ -1,0 +1,19 @@
+sdfp29.cga= fp2entry, fp2_zyxg,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+fp2_drv,
+f2pttxt1,
+f2pttxt2,
+f2ptdraw,
+fp2mblit,
+fp2blit,
+fp2pat,
+enddseg,
+cgacp,
+cgafont[nop]
+
+                                                                                                                                                                                                                

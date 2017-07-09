@@ -1,0 +1,1252 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+;
+cseg
+;
+	public	CLEARMEM
+	public	CHK_ESC
+	public	GLOC_KEY,GCHC_KEY,GCHR_KEY
+	if not GSX
+	public	GSHIFT_S
+	endif
+	public	load_lut
+;
+;
+;***************************************************************************
+;* load_lut								   *
+;*	  loads lookup table						   *
+;*	  si contains address of request_color_table entry		   *
+;*	  ax contains color index requested				   *
+;*	Original data in request_color_table				   *
+;*	New data in realized color table				   *
+;*	Programs look-up table if available				   *
+;***************************************************************************
+load_lut:
+	ret
+;
+;****************************************
+;* clearmem				*
+;*	    clears graphics memory	*
+;*	    uses ax,cx,di		*
+;*    stores zeros in graphics plane	*
+;****************************************
+if( num_planes eq 1 ) and not( mono_multisegs or mono_xrxfp or mono_mem or mono_port)
+
+clearmem:
+	cld
+	mov	ax, graph_plane
+	mov	es, ax
+	mov	cx,true_plane_size 	;number of bytes to zero
+	shr	cx,1
+if zero_white				; jn 10-21-87
+	xor	ax,ax
+else
+	mov ax, 0FFFFh			; jn 10-7-87
+endif
+	mov	di,0
+	rep	stosw			; store plane_size zeros in graphmem
+
+	if	manual_update
+	 mov	ax, yresmx
+	 push	ax
+	 mov	ax, xresmx
+	 push	ax
+	 xor	ax, ax
+	 push	ax
+	 push	ax
+	 call	touch
+	 add	sp, 8
+	endif	
+
+	ret
+
+endif
+
+if mono_port or mono_mem
+
+clearmem:
+	call	devdclearmem
+	if	manual_update
+	 mov	ax, yresmx
+	 push	ax
+	 mov	ax, xresmx
+	 push	ax
+	 xor	ax, ax
+	 push	ax
+	 push	ax
+	 call	touch
+	 add	sp, 8
+	endif	
+	ret
+
+endif
+
+if mono_xrxfp
+
+clearmem:
+	cld
+	mov	ax, graph_plane
+	mov	es, ax
+	call	clearmem_1
+	mov	ax, graph_plane_high
+	mov	es, ax
+clearmem_1:
+	mov	cx,true_plane_size 	;number of bytes to zero
+	shr	cx,1
+	xor	ax,ax
+	mov	di,0
+	rep	stosw			; store plane_size zeros in graphmem
+	if	manual_update
+	 mov	ax, yresmx
+	 push	ax
+	 mov	ax, xresmx
+	 push	ax
+	 xor	ax, ax
+	 push	ax
+	 push	ax
+	 call	touch
+	 add	sp, 8
+	endif	
+	ret
+
+endif
+
+if mono_multisegs
+
+clearmem:
+	mov	ax, seg_low
+	mov	es, ax
+	call	clearmem_1
+	mov	ax, seg_high
+	mov	es, ax
+clearmem_1:
+	mov	cx,true_plane_size 	;number of bytes to zero
+	shr	cx,1
+if zero_white
+	xor	ax,ax
+else
+	mov ax, 0ffffh
+endif
+	mov	di,0
+	rep	stosw			; store plane_size zeros in graphmem
+	if	manual_update
+	 mov	ax, yresmx
+	 push	ax
+	 mov	ax, xresmx
+	 push	ax
+	 xor	ax, ax
+	 push	ax
+	 push	ax
+	 call	touch
+	 add	sp, 8
+	endif	
+	ret
+
+endif
+
+if pc1512
+;
+; The conditional compilation here is horrible, and it seems to be assuming
+; that multiplane = EGA (and hence trying to program the EGA). So for PC1512
+; copy what's in AMSTRAD.SYS.
+;
+CLEARMEM:
+	mov	dx, 03DDh	;[JCE 26-2-2007] Write to all four planes
+	mov	al, 0Fh		;in one go, as for EGA
+	out	dx, al
+	cld
+	mov	ax, graph_plane
+	mov	es, ax
+;;;	mov	plane_loop_count, num_planes
+zap_planes:
+	mov	cx, plane_size/2
+	xor	ax, ax
+	mov	di, ax
+if REV_VID
+	not	ax
+endif
+	rep	stosw
+;;;	dec	plane_loop_count
+;;;	jnz	zap_planes
+	if	manual_update
+	 mov	ax, yresmx
+	 push	ax
+	 mov	ax, xresmx
+	 push	ax
+	 xor	ax, ax
+	 push	ax
+	 push	ax
+	 call	touch
+	 add	sp, 8
+	endif	
+	ret
+
+else
+if ( num_planes gt 1 )
+
+clearmem:
+	; jn 9-29-87
+	; The clear screen function periodically left vertical lines
+	; on the screen.  It appears that the register index into the
+	; sequencer was not explicitly set for the mask register.
+	; The following out instruction sets the sequencer index register
+	; to the Plane Mask Register.
+
+	mov dx, 03C4h			; jn 9-29-87
+	mov al, 02			; jn 9-29-87
+	out dx, al			; jn 9-29-87
+	
+	mov dx, 03C5h			; jn 9-29-87
+	mov al, 0Fh			; jn 9-29-87
+	out dx, al			; jn 9-29-87
+
+	; jn 9-30-87
+	; The vertical lines appeared less often, but they still appeared
+	; The following debug code showed that the EGA was in writting
+	; mode 1.  This caused previously latched data to be used
+	; for the value to write to EGA memory.
+	;---
+	; Now set the writting mode to 0 and
+	; disable the set/reset latches
+	; set the data rotation register to 0
+
+		; set the writting mode
+
+	mov dx, 3CEh			;jn 9-30-87
+	mov al, 05h			;jn 9-30-87
+	out dx, al			;jn 9-30-87
+
+	mov dx, 3CFh			;jn 9-30-87
+	mov al, 0			;jn 9-30-87
+	out dx, al			;jn 9-30-87
+
+		; disable the set/reset latches
+
+	mov dx, 3CEh			;jn 9-30-87
+	mov al, 1			;jn 9-30-87
+	out dx, al			;jn 9-30-87
+
+	mov dx, 3CFh			;jn 9-30-87
+	mov al, 0			;jn 9-30-87
+	out dx, al			;jn 9-30-87
+
+		; disable the data rotation register
+
+	mov dx, 03CEh			;jn 9-30-87
+	mov al, 3			;jn 9-30-87
+	out dx, al			;jn 9-30-87
+
+	mov dx, 03CFh			;jn 9-30-87
+	mov al, 0			;jn 9-30-87
+	out dx, al			;jn 9-30-87
+
+	mov	ax,graph_plane		; ld in graphics memory address
+	mov	es,ax
+if (num_planes gt 1) and not( segment_access ) ; jn 9-30-87
+	mov plane_loop_count, 1		; do all the planes at once
+else
+	mov	plane_loop_count, num_planes	; load up the plane count
+endif
+	mov	ax, 1
+	push	ax
+endif
+
+clearmem_0:
+	pop	ax
+
+if (num_planes gt 1) and not( segment_access )
+
+if 0	; jn 9-29-87
+	; the set up code for the clear screen function set the plane
+	; mask register in the sequencer so all the planes are
+	; written to at the same time.  So we do not have to go
+	; through all 4 planes.  That is why this section is not
+	; assembled into the code.
+
+	mov	dx, PLANE_SEL_PORT
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	ax, bx
+
+endif	; jn 9-29-87
+
+endif	 
+	shl	ax, 1			; move the bit mask over one
+	push	ax			; save the mask
+	mov	cx,true_plane_size 	;number of bytes to zero
+	shr	cx,1
+
+if num_planes gt 1			;ViewMAX EGA/VGA driver
+	mov	ah, byte ptr MAP_COL	;uses MAP_COL to find bg col
+	xor	al,al
+else
+	xor	ax,ax
+endif
+
+if rev_vid
+	not	ax
+endif
+
+if (num_planes gt 1) and not( segment_access )
+	push	ax			;If it's in a colour mode, the EGA
+	mov	dx, 3CEh		;doesn't care what's being written.
+	out	dx, ax			;But in a mono mode it certainly does.
+	mov	ax, 0F01h
+	out	dx, ax
+	pop	ax
+endif
+	mov	di,0
+	rep	stosw			; store plane_size zeros in graphmem
+
+if (num_planes gt 1) and not( segment_access )
+	mov	ax, 1
+	out	dx, ax
+endif
+
+if ( num_planes gt 1 ) and segment_access
+
+	mov	ax, es			; 
+	add	ax, next_plane
+	mov	es, ax			; point to the next plane
+
+endif
+
+	dec	plane_loop_count	; is line done
+	jnz	clearmem_0
+	pop	ax
+	if	manual_update
+	 mov	ax, yresmx
+	 push	ax
+	 mov	ax, xresmx
+	 push	ax
+	 xor	ax, ax
+	 push	ax
+	 push	ax
+	 call	touch
+	 add	sp, 8
+	endif	
+
+	ret
+endif	;pc1512
+
+;
+;************************************************************************
+;*			escape functions				*
+;*	 handle character I/O , alpha and graphics cursor		*
+;*									*
+;*	ENTRY								*
+;*		CONTRL	points to segment and offset of CONTRL		*
+;*		INTIN	points to segment and offset of INTIN		*
+;*		PTSIN	points to segment and offset of PTSIN		*
+;*		INTOUT	points to segment and offset of INTOUT		*
+;*		PTSOUT	points to segment and offset of PTSOUT		*
+;*									*
+;*									*
+;************************************************************************
+;
+;****************************************
+;check_escape				*
+;	checks escape function called	*
+;	against last_escape		*
+;****************************************
+CHK_ESC:
+	mov	bx,offset CONTRL
+	mov	bx,W_6[bx]
+	cmp	bx,last_dri_escape
+	jna	its_ok
+	cmp	bx, 62
+	ja	not_ok
+	sub	bx,40
+	jmps	its_ok
+not_ok: 
+	xor	bx,bx			;do a nop if its not valid
+its_ok:
+	shl	bx,1
+	call	esctbl[bx]
+	ret
+
+;
+;****************************************
+;escape func 0
+; Nop
+;****************************************	
+escfn0:
+	ret
+;
+;****************************************	
+;escape func 1
+; Inquire Addressable Character Cells
+;****************************************	
+escfn1:
+	mov	di,offset CONTRL
+	mov	W_5[di], 2		; 2 integers returned	
+	mov	di,offset INTOUT
+	mov	W_1[di], lines_page	; number of addressable rows. 
+	mov	W_2[di], chars_line	; number of addressable columns.
+	ret
+;
+;****************************************	
+;escape func 4
+; Cursor Up
+;****************************************	
+escfn4:
+	mov	si, offset esca
+	jmp	putstr
+;
+;****************************************	
+;escape func 5
+; Cursor Down
+;****************************************	
+escfn5:
+	mov	si, offset escb
+	jmp	putstr
+;
+;****************************************	
+;escape func 6
+; Cursor Right
+;****************************************	
+escfn6:
+	mov	si, offset escc
+	jmp	putstr
+;
+;****************************************	
+;escape func 7
+; Cursor Left
+;****************************************	
+escfn7:
+	mov	si, offset escd
+	jmp	putstr
+;
+;****************************************	
+;escape func 8
+; Home Cursor
+;****************************************	
+escfn8:
+	mov	si, offset esch
+	jmp	putstr
+;
+;****************************************	
+;escape func 9
+; Erase to end of screen
+;****************************************	
+escfn9:
+	mov	si, offset escj
+	jmp	putstr
+;
+;****************************************	
+;escape func 10
+; Erase to end of line
+;****************************************	
+escf10:
+	mov	si, offset esck
+	jmp	putstr
+;
+;****************************************	
+;escape func 11
+; Move Cursor to x,y
+;****************************************	
+escf11:
+	mov	di,offset INTIN
+	mov	ax, [di]			; get the row number (1-24)
+	add	al, 1Fh
+	mov	escyrow, al
+	mov	ax, W_2[di] 		; get the column number (1-80)
+	add	al, 1Fh
+	mov	escycol, al
+	mov	si, offset escy
+	jmp	putstr
+;
+;****************************************	
+;escape func 12
+; Output text
+;****************************************	
+escf12:
+	mov	di,offset CONTRL
+	mov	cx, W_4[di] 	; get string length.
+	and	cx, cx			; test if 0 count
+	jz	esc12_done
+	mov	di,offset INTIN
+esc120:
+	mov	al, [di]	; load character to be output.	
+	int	29h
+	inc	di
+	inc	di
+	loop	esc120	
+esc12_done:
+	ret
+;****************************************	
+;escape func 13     
+; Reverse video on
+;****************************************	
+escf13:
+	mov	si, offset revon
+	jmp	putstr
+;
+;****************************************	
+;escape func 14
+; Reverse video off
+;****************************************	
+escf14:
+	mov	si, offset revoff
+	jmp	putstr
+;
+;****************************************	
+;escape func 15
+; Return Current Cursor Address 
+;****************************************	
+escf15:
+	mov	si, offset getcurpos
+	call	putstr
+	call	getch		;ESC
+	call	getch		;Y
+	call	getch		;row
+	xor	ah, ah
+	sub	ax, 1Fh
+	mov	[di], ax
+	call	getch		;col
+	xor	ah, ah
+	sub	ax, 1Fh
+	mov	W_2[di], ax
+	ret
+;
+getch:	mov	ah, 7
+	int	21h
+	ret
+;
+;****************************************	
+;escape func 17 	NOT SUPPORTED
+; Hard Copy
+;****************************************	
+escf17:
+	ret
+;
+;****************************************	
+;escape func 18
+; Place graphic cross-hair cursor at x,y
+;****************************************	
+escf18_exit:
+	ret
+escf18:
+	cmp	HIDE_CNT, 0
+	jle	escf18_exit
+	mov	HIDE_CNT, 1		; force the hide flag
+	jmp	DIS_CUR			; display it
+;****************************************	
+;escape func 19
+; Remove cursor /Marker 
+;****************************************	
+escf19:
+	jmp	HIDE_CUR		; hide the cursor
+;****************************************
+;escape func 60
+; select palette
+; INTIN[1]=0 for RGB
+;	   1 for Cyan,Magenta,White
+;***************************************
+escf60:
+	ret
+;
+;****************************************	
+;escape func 16
+; Return Tablet Status
+;****************************************	
+escf16:
+	mov	di,offset CONTRL
+	mov	W_5[di],1		;1 word returned
+	mov	di,offset INTOUT
+if mouse
+	mov	W_1[di],1		;if mouse then return 1
+else
+	mov	W_1[di], 0		;else return a 0
+endif
+	ret
+;****************************************
+;escape func 61
+; Sound Output
+; INTIN[0]= frequency in hertz 
+; INTIN[1]= duration in timer ticks ( 18.2/sec ) 
+;***************************************
+
+;
+;
+escf61:	mov	si, offset INTIN
+;
+; Get the current bell frequency & duration.
+;
+	mov	dx, 0FFFFh
+	mov	cx, 7
+	mov	bx, 38h
+	int	0FCh		;AX = current frequency
+	push	ax
+	mov	dx, 0FFFFh
+	mov	cx, 8
+	mov	bx, 38h
+	int	0FCh		;AX = current duration
+	push	ax
+;
+; The chip clock runs at 2MHz. The frequency of the sound produced is 
+; therefore (2MHz / 32) / input value; so input value is 65536 / Hz. 
+;
+	mov	bx, [si]	;Frequency in Hz.
+	mov	ax, 0
+	mov	dx, 1
+	div	bx		;AX = frequency
+	mov	dx, ax
+	mov	cx, 7
+	mov	bx, 38h
+	int	0FCh	
+	push	bp
+	mov	bp, sp
+	mov	ax, 20		;Divide by 20
+	push	ax
+	mov	ax, 55		;Multiply by 55
+	push	ax
+	mov	ax, 2[si]	;Duration
+	push	ax
+	call	SMUL_DIV	;AX = frequency
+	mov	sp, bp
+	pop	bp
+	mov	dx, ax
+	mov	cx, 8
+	mov	bx, 38h
+	int	0FCh
+	mov	sound_playing, dx
+;
+; Now provoke a beep.
+;
+	mov	al, 7
+	int	29h
+;
+; Wait for it to finish
+;
+	mov	bx, 20h
+sndwait1:
+	xor	cx, cx
+sndwait:
+	mov	ax, sound_playing
+	or	ax, ax
+	jz	soundend
+	loop	sndwait
+	dec	bx
+	jnz	sndwait1
+
+soundend:	
+;
+; Now restore original settings.
+;
+	pop	dx
+	mov	cx, 8
+	mov	bx, 38h
+	int	0FCh
+	pop	dx
+	mov	cx, 7
+	mov	bx, 38h
+	int	0FCh
+	ret
+;
+sound_mute	db	0
+sound_playing	dw	0
+;
+escf62:
+	mov	ax, INTIN		;get the mute flag
+	cmp	ax, -1
+	jz	escf62_ret
+	mov	sound_mute, al
+	mov	bx, 38h		;Sound
+	mov	cx, 2		;Set beeper volume
+	mov	dx, 15		;15 = minimum
+	test	al, al
+	jnz	escf62a
+	mov	dl, al		; 0 = maximum
+escf62a:
+	int	0FCh
+	ret 
+
+escf62_ret:
+	mov	al,sound_mute
+	xor	ah,ah
+	mov	INTOUT,ax
+	mov	di,offset CONTRL
+	mov	W_5[di], 1		; sound status returned	
+	ret
+;
+;************************************************************************
+;*GLOC_KEY								*
+;*	Get Locator key 						*
+;*		Entry  none						*
+;*		Exit							*
+;*			ax=0 nothing happened				*
+;*									*
+;*			ax=1 button press				*
+;*				TERM_CH = 16 bit character information	*
+;*									*
+;*			ax=2 coordinate information			*
+;*				X1 = new x				*
+;*				Y1 = new y				*
+;*									*
+;*			ax=4 keyboard coord infor			*
+;*				X1 = new x				*
+;*				Y1 = new y				*
+;************************************************************************
+GLOC_KEY:
+	call	GCHR_KEY		;allow the keyboard mouse emul to work
+	and	ax, ax
+	jnz	GLOC_KEY_TERM
+if mouse
+	mov	bl,3
+	call	mouse_function
+	and	al,al
+	jz	GLOC_KEY_NONE
+	mov	dl,ah
+	xor	dh,dh
+	mov	TERM_CH,dx
+	mov	ah,dh
+	ret 
+endif		     
+GLOC_KEY_TERM:
+	mov	ax, 1
+	ret
+GLOC_KEY_NONE:
+	xor	ax, ax
+	ret
+EJECT
+;
+;************************************************************************
+;*  Get choice for choice input 					*
+;*		Entry  none						*
+;*									*
+;*		Exit							*
+;*			ax=0 nothing happened				*
+;*									*
+;*			ax=1 choice value				*
+;*			   TERM_CH = choice number 1 to max choice keys *
+;*									*
+;*			ax=2 button press				*
+;*			   TERM_CH = 16 bit character			*
+;*									*
+;************************************************************************
+GCHC_KEY:
+	mov	ax,1
+	mov	TERM_CH,1
+	ret
+;
+;************************************************************************
+;*GCHR_KEY								*
+;*	Get character for string input					*
+;*		Entry  none						*
+;*									*
+;*		Exit							*
+;*			ax=0 nothing happened				*
+;*									*
+;*			ax=1 button press				*
+;*			   TERM_CH =  16 bit character information	*
+;*									*
+;************************************************************************
+GCHR_KEY:
+	mov	bx, 32h			; Keyboard
+	mov	cx, 0Ah			; Poll for keys
+	int	0FCh
+	and	al, al
+	jz	get_char_none
+;
+; Ensure the keyboard's in raw mode
+;
+	mov     bx, 32h
+	mov     cx, 4
+	mov     dx, 1
+	int     0FCh
+;
+; Get a key (using DOS)
+;
+	mov	ah,7
+	int	21h			
+	call	xlt_scancode		; Translate Apricot scancode to IBM
+	and	ax, ax			; Was it ignored?
+	jz	GCHR_KEY
+	cmp	ax, 0001h		; 0001h is a special meaning 
+					; 'toggle mouse control'.
+	jz	kbd_mouse_toggle	
+
+	mov	CONTRL_STATUS, 0	; clear out control status 
+	mov	TERM_CH,ax
+	mov	bx,1			; return character in TERM_CH
+	jmps	GCHR_KEY_CTLSTS
+get_char_none:
+	xor	bx,bx
+GCHR_KEY_CTLSTS:
+	push	bx
+	mov	ax, cs:kb_shifts
+	pop	bx
+	and	ax,000fh		; mask it to only the three keys
+	mov	cl, al
+;	and	cl, 4
+	and	cl, 5
+	cmp	cl, 5			; is rt shift and control down
+	jz	GCHR_KEY_CTLNDSHT
+	xor	cl, cl
+GCHR_KEY_CTLNDSHT:
+	cmp	cl, LAST_CONTRL		; is the control key the same as last
+	mov	LAST_CONTRL, cl	
+	jz	J_G_K_MOUSE_TST
+	and	cl, cl			; did it toggle off?
+	jz	GCHR_KEY_CTLOFF_TST	; else it must have toggled on
+	and	bl, bl			; if key was pressed this time ignore
+	jnz	GCHR_KEY_MOUSE_TST
+	mov	CONTRL_STATUS, 0ffh	; set the control on status to on
+J_G_K_MOUSE_TST:
+	jmps	GCHR_KEY_MOUSE_TST
+GCHR_KEY_CTLOFF_TST:
+	test	CONTRL_STATUS, 0ffh	; is it set
+	jz	GCHR_KEY_MOUSE_TST
+kbd_mouse_toggle:
+	not	KBD_MOUSE_STS		; toggle the KBD MOUSE STATUS
+	mov	CONTRL_STATUS, 0 
+	mov	INTIN, 500		; lets have a 2khz tone for 1/2 sec
+	mov	INTIN+2, 2		; 18 tics / sec
+	push	ax
+	push	bx
+	push	cx
+;
+; NEW in ViewMAX: If mouse type is 0 (no mouse) toggle whether pointer shown
+;
+	cmp	mouse_type,0
+	jnz	G_K_MOUSE_TOGGLE
+	cmp	HIDE_CNT, 0
+	jnz	G_K_MOUSE_TOGGLE
+	push	dx
+	push	bp
+	push	si
+	push	di
+	mov	mouse_lock,1
+	test	KBD_MOUSE_STS, 0FFh
+	jz	G_K_OFF
+	call	mouson
+	jmps	G_K_POP
+;
+G_K_OFF:
+	call	mousoff	
+G_K_POP:
+	mov	mouse_lock, 0
+	pop	di
+	pop	si
+	pop	bp
+	pop	dx
+G_K_MOUSE_TOGGLE:
+;
+; end of new ViewMAX bit
+;
+	call	k_m_show_stat
+
+	test	KBD_MOUSE_STS, 0ffh	; are we now mouseing the kbd?
+	jnz	make_beep
+	test	MOUSE_BT, 0ffffh	; if the button is down clear the status
+	jz	make_beep
+	xor	bx, bx
+	mov	ax, bx
+	mov	cx, bx
+	call	KEYBOARD_MOUSE		; turn off the button if it was on
+make_beep:
+	call	escf61
+	pop	cx
+	pop	bx
+	pop	ax
+GCHR_KEY_MOUSE_TST:
+	test	KBD_MOUSE_STS, 0ffh	; are we mouseing the kbd?
+	jz	GCHR_KEY_NO_MOUSE
+	test	bl, 1
+	jz	GCHR_KEY_NO_MOUSE	; if no char read then return
+;now we will test if it is a valid key board mouse key
+	mov	cx, TERM_CH
+	test	al, 3
+	jz	kbd_mouse_search
+	or	ch, 80h	
+kbd_mouse_search:
+	mov	ah, ch			; ah = 8 bit value to search for
+	mov	cx, 11			; search for 6 chars
+	mov	si, offset kbd_mouse_tbl
+kbd_mouse_loop:
+	cmp	ah, [si]
+	jz	kbd_mouse_found
+	add	si, 4
+	loop	kbd_mouse_loop
+GCHR_KEY_NO_MOUSE:
+	mov	ax, bx			; return the correct status
+	ret
+kbd_mouse_found:
+	mov	al, byte ptr 2[si]
+	cbw
+	mov	bx, ax
+	mov	al, byte ptr 3[si]
+	cbw
+	mov	cx, ax
+	mov	al, byte ptr 1[si]
+	push	ax
+	and	al, 0fh			; get rid of the button state flag
+	call	KEYBOARD_MOUSE
+	pop	ax
+	test	al, 80h			; is the stick flag set
+	jnz	kbd_mouse_ok
+	test	al, 0fh
+	jz	kbd_mouse_ok		; if the button doesn't stick or none
+	xor	bx, bx
+	mov	ax, bx
+	mov	cx, bx
+	call	KEYBOARD_MOUSE		; turn off the button if it was on
+kbd_mouse_ok:
+	xor	ax, ax
+	ret
+;
+; Show keyboard mouse status
+;
+k_m_show_stat:
+	push	ax
+	push	dx
+	push	si
+	mov	al, KBD_MOUSE_STS
+	mov	si, offset stat_on
+	and	al, al
+	jnz	kmss1
+	mov	si, offset stat_off	
+kmss1:	call	putstr
+	pop	si
+	pop	dx
+	pop	ax
+	ret
+;
+	if not GSX	
+;***************************************************************************
+;*									   *
+;*  GSHIFT_S          			    				   *
+;*		                                        		   *
+;*	Returns the status of Shift, Ctrl, Alt Keys          		   *
+;*									   *
+;*		ax = Status	bit0= Shift, Bit1=Ctrl, Bit2=Alt	   *
+;*									   *
+;***************************************************************************
+GSHIFT_S:
+	mov	ax, cs:kb_shifts
+	ret
+
+	endif
+;
+kb_shifts dw	0
+;
+; Deal with a shift key being pressed or released
+;
+shfdown:
+	or	cs:byte ptr kb_shifts, ah
+	xor	ax, ax
+	ret
+;
+shfup:	xor	ah, 0FFh
+	and	cs:byte ptr kb_shifts, ah
+	xor	ax, ax
+	ret
+;
+shfswap:
+	xor	cs:byte ptr kb_shifts, ah
+	xor	ax, ax
+	ret
+;
+; For each scancode, we give 4 words - the IBM key/scancode combination for
+; key, SHIFT+key, CTRL+key, CTRL+SHIFT+key
+;
+xlt_scancode:
+
+	mov	ah, 40h
+	cmp	al, 34h	
+	jz	shfswap
+;
+; Check for shift keys.
+;
+	mov	ah, 1
+	cmp	al, 51h		;Right shift
+	jz	shfdown
+	cmp	al, 0D1h
+	jz	shfup
+	
+	mov	ah, 2		;Left shift
+	cmp	al, 46h
+	jz	shfdown
+	cmp	al, 0C6h
+	jz	shfup
+
+	mov	ah, 4
+	cmp	al, 58h		;Control down
+	jz	shfdown
+	cmp	al, 0D8h	;Control up
+	jz	shfup
+;
+; Skip 'up' scancodes (other than for the shifts)
+;
+	test	al, 80h
+	jz	notup
+nokey:
+	xor	ax, ax
+	ret
+
+notup:
+	and	al, 7Fh
+	cmp	al, 97		;Scancodes above 97 we ignore
+	jnc	nokey
+;
+; Any other funnies go here (eg: binding STOP as ALT)
+;
+	xor	ah, ah		;AX = scancode
+	add	ax, ax		;*2
+	add	ax, ax		;*4
+	add	ax, ax		;*8
+	mov	bx, cs:kb_shifts
+	push	bx
+	and	bx, 4
+	add	ax, bx		;If CTRL is down add 4
+	pop	bx	
+	test	bx, 3
+	jz	noshift
+	inc	ax
+	inc	ax
+noshift:mov	bx, offset keytab
+	add	bx, ax
+	mov	ax, cs:[bx]
+	mov	bx, cs:kb_shifts
+	test	bx, 40h		;Caps lock on?
+	jnz	nocaps
+	cmp	al, 'a'
+	jc	nocaps
+	cmp	al, 'z' + 1
+	jnc	nocaps
+	sub	al, 20h
+nocaps:
+	and	bx, 0F7h	;Reset simulated ALT
+	test	ax, 8000h
+	jz	noalt
+	or	bx, 8
+	and	ax, 7FFFh
+noalt:	
+	mov	cs:kb_shifts, bx
+	ret
+;
+keytab	dw	0000h,  0000h, 0000h, 0000h	;Scancode 0 has no effect
+	dw	3B00h,  5400h, 5E00h, 0BB00h	;Help -> F1    [Function keys
+	dw	3C00h,  5500h, 5F00h, 0BC00h	;Undo -> F2     replicated on
+	dw	3D00h,  5600h, 6000h, 0BD00h	;Repeat -> F3   the microscreen]
+	dw	3E00h,  5700h, 6100h, 0BE00h	;Calc -> F4
+	dw	3F00h,  5800h, 6200h, 0BF00h	;Print -> F5
+	dw	4300h,  5C00h, 5500h, 6600h	;Intr -> F6
+	dw	4400h,  5D00h, 6700h, 6700h	;Menu -> F10
+	dw	0BE00h, 0D700h, 0E100h, 0E100h	;Finish -> Alt+F4
+	dw	3B00h,  3C00h, 5E00h, 5F00h	;Microscreen 1
+	dw	3D00h,  3E00h, 6000h, 6100h	;Microscreen 2
+	dw	3F00h,  4000h, 6200h, 6300h	;Microscreen 3
+	dw	4100h,  4200h, 6400h, 6500h	;Microscreen 4
+	dw	4300h,  4400h, 6600h, 6700h	;Microscreen 5
+	dw	0001h,  0001h, 0001h, 0001h	;Microscreen 6
+	dw	2B5Ch,  2B5Eh, 2B1Ch, 2B1Eh	;Backslash
+	dw	0231h,  0221h, 02ABh, 0F800h	;1
+	dw	0332h,  0340h, 0300h, 0F900h	;2
+	dw	0433h,  0423h, 009Ch, 0FA00h	;3
+	dw	0534h,  059Ch, 009Dh, 0FB00h	;4
+	dw	0635h,  0625h, 06F8h, 0FC00h	;5
+	dw	0736h,  0724h, 079Bh, 0FD00h	;6
+	dw	0837h,  0826h, 0860h, 0FE00h	;7
+	dw	0938h,  092Ah, 097Eh, 0FF00h	;8
+	dw	0A39h,  0A28h, 0A7Ch, 0000h	;9
+	dw	0B30h,  0B29h, 0000h, 0000h	;0
+	dw	0C2Dh,  0C5Fh, 0C00h, 0C1Fh	;-
+	dw	0D3Dh,  0D2Bh, 0000h, 0000h	;=
+	dw	0E08h,  0E08h, 0E7Fh, 0E7Fh	;Backspace
+	dw	4525h,  4525h, 0000h, 0000h	;%
+	dw	372Ah,  372Ah, 0000h, 0000h	;*
+	dw	352Fh,  352Fh, 0000h, 0000h	;/
+	dw	4A2Dh,  4A2Dh, 0000h, 0000h	;-
+	dw	4E2Bh,  4E2Bh, 0000h, 0000h	;+
+	dw	0F09h,  0F00h, 0000h, 0000h	;Tab
+	dw	1071h,  1051h, 1011h, 9000h	;Q
+	dw	1177h,  1157h, 1117h, 9100h	;W
+	dw	1265h,  1245h, 1205h, 9200h	;E
+	dw	1372h,  1352h, 1312h, 9300h	;R
+	dw	1474h,  1454h, 1414h, 9400h	;T
+	dw	1579h,  1559h, 1519h, 9500h	;Y
+	dw	1675h,  1655h, 1615h, 9600h	;U
+	dw	1769h,  1749h, 1709h, 9700h	;I
+	dw	186Fh,  184Fh, 180Fh, 9800h	;O
+	dw	1970h,  1950h, 1910h, 9900h	;P
+	dw	1A5Bh,  1A7Bh, 1A1Bh, 1A1Bh	;[
+	dw	1B5Dh,  1B7Dh, 1B1Dh, 1B1Dh	;]
+	dw	4700h,  4700h, 7700h, 7700h	;Home (left mouse)
+	dw	4900h,  4900h, 7900h, 7900h	;Clear (right mouse)
+	dw	4737h,  4700h, 771Fh, 7700h	;Number pad 7
+	dw	4838h,  4800h, 781Fh, 7800h	;Number pad 8
+	dw	4939h,  4900h, 791Fh, 7900h	;Number pad 9
+	dw	3A00h,  3A00h, 0000h, 0000h	;Caps Lock (map as ALT?)
+	dw	1E61h,  1E41h, 1E01h, 9E00h	;a
+	dw	1F73h,  1F53h, 1F13h, 9F00h	;s
+	dw	2064h,  2044h, 2004h, 0A000h	;d
+	dw	2166h,  2146h, 2106h, 0A100h	;f
+	dw	2267h,  2247h, 2207h, 0A200h	;g
+	dw	2368h,  2348h, 2308h, 0A300h	;h
+	dw	246Ah,  244Ah, 244Ah, 0A400h	;j
+	dw	256Bh,  254Bh, 254Bh, 0A500h	;k
+	dw	266Ch,  264Ch, 264Ch, 0A600h	;l
+	dw	273Bh,  273Ah, 0000h, 0000h	;:
+	dw	2827h,  2822h, 0000h, 0000h	;'
+	dw	1C0Dh,  1C0Dh, 1C0Ah, 1C0Ah	;Return
+	dw	5200h,  5230h, 0000h, 0000h	;Insert
+	dw	5300h,  532eh, 0000h, 0000h	;Delete
+	dw	4B34h,  4B00h, 731Ch, 7300h	;Number pad 4
+	dw	4C35h,  4C00h, 741Dh, 7400h	;Number pad 5
+	dw	4D36h,  4D00h, 751Eh, 7500h	;Number pad 6
+	dw	0000h,  0000h, 0000h, 0000h	;Shift
+	dw	2C7Ah,  2C5Ah, 2C1Ah, 0AC00h	;z
+	dw	2D78h,  2D58h, 2D18h, 0AD00h	;x
+	dw	2E63h,  2E43h, 2E03h, 0AE00h	;c
+	dw	2F76h,  2F56h, 2F16h, 0AF00h	;v
+	dw	3062h,  3042h, 3002h, 0B000h	;b
+	dw	316Eh,  314Eh, 310Eh, 0B100h	;n
+	dw	326Dh,  324Eh, 320Dh, 0B200h	;m
+	dw	332Ch,  333Ch, 0000h, 0000h	;,
+	dw	342Eh,  343Eh, 0000h, 0000h	;.
+	dw	352Fh,  353Fh, 0000h, 0000h	;/
+	dw	0000h,  0000h, 0000h, 0000h	;Shift
+	dw	4800h,  4800h, 7800h, 7800h	;Cursor up
+	dw	4600h,  4600h, 0000h, 0000h	;Scroll lock
+	dw	4F31h,  4F00h, 7500h, 7500h	;Number pad 1
+	dw	5032h,  5000h, 0000h, 0000h	;Number pad 2
+	dw	5133h,  5100h, 761Bh, 7600h	;Number pad 3
+	dw	011Bh,  011Bh, 011Bh, 011Bh	;ESC
+	dw	0000h,  0000h, 0000h, 0000h	;Ctrl
+	dw	3920h,  3920h, 3920h, 3920h	;Space
+	dw	0000h,  0000h, 0000h, 0000h	;Stop
+	dw	4B00h,  4B00h, 7300h, 7300h	;Cursor left
+	dw	5000h,  5000h, 0000h, 0000h	;Cursor down
+	dw	4D00h,  4D00h, 7400h, 7400h	;Cursor right
+	dw	5230h,  5200h, 0000h, 0000h	;Number pad 0
+	dw	532Eh,  5300h, 0000h, 0000h	;Number pad .
+	dw	1C0Dh,  1C0Dh, 1C0Ah, 1C0Ah	;Enter
+ 
+
+
+EJECT
+;
+dseg
+;***************************************************************************
+;*									   *
+;*				Data Area				   *
+;*		     contains data for escape functions 		   *
+;*		and the values returned on open_workstation		   *
+;*									   *
+;*									   *
+;*									   *
+;***************************************************************************
+;
+	public	REAL_COL
+	public	REQ_COL
+	public	TERM_CH
+TERM_CH		dw	0
+REAL_COL	rw	24
+REQ_COL		rw	24
+;
+;
+
+CONTRL_STATUS	db	0
+LAST_CONTRL	db	0
+KBD_MOUSE_STS	db	0FFh	;XXX		;;;0ffh	
+FIRST_MOTN	db	0
+;kbd_mouse_tbl
+;
+;	table of bytes for mouse motion emulated on keyboard
+;
+kbd_mouse_tbl	db	47h		;unshifted home key
+		db	1		;button value
+		db	0		;x value
+		db	0		;y value
+		db	0c7h		;shifted home key
+		db	1		;button value
+		db	0		;x value
+		db	0		;y value
+
+		db	04fh		;drag key key
+		db	81h		;button value
+		db	0		;x value
+		db	0		;y value
+;
+		db	48h		;unshifed up arrow key
+		db	0
+		db	0		;x value
+		db	0-cur_mot_max_y
+		db	0c8h		;shifed up arrow key
+		db	0
+		db	0		;x value
+		db	-1
+;
+		db	4bh		;unshifed left arrow key
+		db	0
+		db	0-cur_mot_max_x	;x value
+		db	0
+		db	0cbh		;shifed left arrow key
+		db	0
+		db	-1		;x value
+		db	0
+;
+		db	4dh		;unshifed right arrow key
+		db	0
+		db	cur_mot_max_x	;x value
+		db	0
+		db	0cdh		;shifed right arrow key
+		db	0
+		db	1		;x value
+		db	0
+;
+		db	50h		;unshifed down arrow key
+		db	0
+		db	0		;x value
+		db	cur_mot_max_y
+		db	0d0h		;shifed down arrow key
+		db	0
+		db	0		;x value
+		db	1
+
+esctbl	dw	escfn0
+	dw	escfn1
+	dw	escfn2
+	dw	escfn3
+	dw	escfn4
+	dw	escfn5
+	dw	escfn6
+	dw	escfn7
+	dw	escfn8
+	dw	escfn9
+	dw	escf10
+	dw	escf11
+	dw	escf12
+	dw	escf13
+	dw	escf14
+	dw	escf15
+	dw	escf16
+	dw	escf17
+	dw	escf18
+	dw	escf19
+	dw	escf60
+	dw	escf61
+	dw	escf62
+

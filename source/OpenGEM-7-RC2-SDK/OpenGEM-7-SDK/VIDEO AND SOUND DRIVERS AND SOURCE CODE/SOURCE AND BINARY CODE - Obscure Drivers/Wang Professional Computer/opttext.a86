@@ -1,0 +1,2546 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+		cseg
+		extrn	v_nop:near,entry:near
+		extrn	dr_recfl:near,arb_corner:near
+		extrn	cpy_head:near,ACT_SIZ:near,chk_fnt:near
+		extrn	CLC_DDA:near,in_rot:near,in_doub:near,inc_lfu:near
+		extrn	text_blt:near,clr_skew:near
+		extrn	mono8xht:near
+
+		dseg
+		extrn	system6x6_hdr:word,txbuf1:word,txbuf2:word
+		extrn	sav_buf1:word,sav_buf2:word,buff_ptr:dword
+		extrn	CONTRL:word,PTSIN:word,PTSOUT:word,INTIN:word
+		extrn	INTOUT:word
+		extrn	DEV_TAB:word,SIZ_TAB:word,MAP_COL:word
+		extrn	X1:word,X2:word,Y1:word,Y2:word
+		extrn	ftmgradd:dword
+		extrn	WRT_MODE:word
+		extrn	fi_botto:word,fi_desce:word
+		extrn	fi_half:word,fi_ascen:word
+		extrn	f_i_top:word,fi_flags:word,off_tbl:word
+		extrn	off_htbl:word,fi_mx_ce:word
+		extrn	FIR_CHR:word,f_i_last:word
+		extrn	fi_mx_ch:word,DELY:word,fi_ul_si:word
+		extrn	font_inf:word,fi_l_off:word,fi_r_off:word
+		extrn	fi_thick:word,fi_point:word
+		extrn	foff:dword,FWIDTH:word
+		extrn	def_buf:word
+		extrn	FLIP_Y:word, patptr:word, patmsk:word
+		extrn	xrad:word, yrad:word, xc:word, yc:word
+		extrn	start:word
+		extrn	intin_ptr:dword,ptsin_ptr:dword,contrl_ptr:dword
+		extrn	line_color:word,line_index:word,line_beg:word
+		extrn	line_end:word,line_width:word
+		extrn	bez_flag:word, beg_ang:word,end_ang:word
+		extrn	del_ang:word,fill_per:word,fill_qper:word
+		extrn	mark_qc:word,write_qm:word,mark_scale:word
+		extrn	fill_style:word,line_qc:word,write_qm:word
+		extrn	line_qw:word,line_qi:word,fill_qi:word
+		extrn	fill_qc:word,fill_miny:word,fill_maxy:word
+		extrn	mark_color:word,mark_index:word,xfm_mode:word
+		extrn	loca_mode:word,val_mode:word,chc_mode:word
+		extrn	str_mode:word,fill_color:word,mark_qi:word
+		extrn	mark_height:word,fill_index:word,s_patmsk:word
+		extrn	s_begsty:word,es_endsty:word,s_patptr:word
+		extrn	s_patmsk:word,s_nxtpat:word,s_fill_per:word
+		extrn	q_circle:word,num_qc_lines:word,n_steps:word
+		extrn	angle:word
+
+		public	MONO_STA,TEXT_BP,ROT_CASE,ACT_FONT,CUR_HEAD
+		public	CHAR_DEL,T_SCLSTS,R_OFF,DESTX,DESTY,WEIGHT,XACC_DDA
+		public	ACTDELY,L_OFF,R_OFF,WIDTH,CUR_FONT,SPECIAL,DDA_INC
+		public	FIRST
+
+		cseg
+		extrn	mouse_port:byte, mouse_type:byte
+
+		public	TEXT_INIT
+		public	DST_ROTATION
+		public	DQT_ATTRIBUTES
+		public	D_GTEXT
+		public	DST_ALIGNMENT
+		public	DQT_EXTENT
+		if not GSX
+		 public	DQT_WIDTH
+		 public	DT_LOADFONT
+		 public	DT_UNLOADFONT
+		 public	DST_POINT
+		 public	DQT_FONTINFO
+		 public	DQT_NAME
+		 public	DST_STYLE
+		endif
+		public	DST_COLOR
+		public	DST_FONT
+		public	DST_HEIGHT
+		public	check_ade
+
+d_gtext:
+					; DATA XREF: dseg:0128o
+		push	bp
+		sub	sp, 10h
+		mov	bp, sp
+if prosync
+		call    EGA_KLUG
+endif
+		cmp	CONTRL+6, 0
+		jnz	d_gtext1
+		add	sp, 10h
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext1:				; CODE XREF: d_gtext+Bj
+		call	chk_fnt
+		cmp	CONTRL,	0Bh
+		jnz	d_gtext2
+		xor	ax, ax
+		jmps	d_gtext3
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext2:				; CODE XREF: d_gtext+1Aj
+		xor	ax, ax
+		inc	ax
+
+d_gtext3:				; CODE XREF: d_gtext+1Ej
+		cmp	h_align, 0
+		mov	4[bp],	ax
+		jnz	d_gtext4
+		mov	word ptr 6[bp], 0
+		jmps	d_gtext8
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext4:				; CODE XREF: d_gtext+2Bj
+		cmp	word ptr 4[bp], 0
+		jz	d_gtext5
+		call	dqt_extent
+
+d_gtext5:				; CODE XREF: d_gtext+38j
+		mov	word ptr 4[bp], 0
+		cmp	h_align, 1
+		jnz	d_gtext6
+		mov	ax, width
+		sar	ax, 1
+		jmps	d_gtext7
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext6:				; CODE XREF: d_gtext+47j
+		mov	ax, width
+
+d_gtext7:				; CODE XREF: d_gtext+4Ej
+		mov	CONTRL+4, 0
+		mov	6[bp],	ax
+
+d_gtext8:				; CODE XREF: d_gtext+32j
+		mov	X1, 1
+		mov	ax, v_align
+		jmp	d_gtext19
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext9:				; CODE XREF: d_gtext+146u
+					; DATA XREF: d_gtext+131o
+		mov	word ptr 8[bp], 0
+		mov	ax, L_OFF
+		add	6[bp],	ax
+		jmp	d_gtext20
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext10:				; CODE XREF: d_gtext+146u
+					; DATA XREF: d_gtext+133o
+		mov	ax, fi_half
+		mov	8[bp],	ax
+		mov	ax, f_i_top
+		test	ax, ax
+		jz	d_gtext11
+		mov	X1, ax
+
+d_gtext11:				; CODE XREF: d_gtext+81j
+		mov	ax, R_OFF
+		mov	0[bp],	ax
+		mov	ax, fi_half
+		mov	bx, 0[bp]
+		mul	bx
+		mov	bx, X1
+		xor	dx, dx
+		div	bx
+		mov	bx, L_OFF
+		add	bx, ax
+		add	6[bp], bx
+		jmp	d_gtext20
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext12:				; CODE XREF: d_gtext+146u
+					; DATA XREF: d_gtext+135o
+		mov	ax, fi_ascen
+		mov	8[bp],	ax
+		mov	ax, f_i_top
+		test	ax, ax
+		jz	d_gtext13
+		mov	X1, ax
+
+d_gtext13:				; CODE XREF: d_gtext+B8j
+		mov	ax, R_OFF
+		mov	0[bp],	ax
+		mov	ax, fi_ascen
+		mov	bx, 0[bp]
+		mul	bx
+		mov	bx, X1
+		xor	dx, dx
+		div	bx
+		mov	bx, L_OFF
+		add	bx, ax
+		add	6[bp], bx
+		jmps	d_gtext20
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext14:				; CODE XREF: d_gtext+146u
+					; DATA XREF: d_gtext+137o
+		mov	ax, fi_botto
+		neg	ax
+		mov	8[bp],	ax
+		mov	ax, fi_botto
+		test	ax, ax
+		jz	d_gtext15
+		mov	X1, ax
+
+d_gtext15:				; CODE XREF: d_gtext+F0j
+		mov	ax, fi_botto
+		sub	ax, fi_desce
+		mov	bx, L_OFF
+		mul	bx
+		mov	bx, X1
+		xor	dx, dx
+		div	bx
+		sub	6[bp], ax
+		jmps	d_gtext20
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext16:				; CODE XREF: d_gtext+146u
+					; DATA XREF: d_gtext+139o
+		mov	ax, fi_desce
+		neg	ax
+		mov	8[bp],	ax
+		jmps	d_gtext20
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext17:				; CODE XREF: d_gtext+146u
+					; DATA XREF: d_gtext+13Bo
+		mov	ax, f_i_top
+		mov	bx, L_OFF
+		add	bx, R_OFF
+		add	6[bp],	bx
+		mov	8[bp],	ax
+		jmps	d_gtext20
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+d_gtext18	dw offset d_gtext9	; DATA XREF: d_gtext+146o
+		dw offset d_gtext10
+		dw offset d_gtext12
+		dw offset d_gtext14
+		dw offset d_gtext16
+		dw offset d_gtext17
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext19:				; CODE XREF: d_gtext+65j
+		mov	si, ax
+		cmp	si, 6
+		jnb	d_gtext20
+		shl	si, 1
+		jmp	cs:d_gtext18[si]
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext20:				; CODE XREF: d_gtext+73j d_gtext+AAj
+					; ...
+		mov	ax, 8[bp]
+		mov	bx, f_i_top
+		sub	bx, ax
+		mov	cx, ACTDELY
+		sub	cx, f_i_top
+		dec	cx
+		add	cx, ax
+		mov	12[bp], cx
+		mov	10[bp], bx
+		mov	ax, rot_case
+		jmps	d_gtext26
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext21:				; CODE XREF: d_gtext+1D3u
+					; DATA XREF: d_gtext+1C2o
+		mov	ax, word ptr PTSIN
+		sub	ax, 6[bp]
+		mov	bx, word ptr PTSIN+2
+		sub	bx, 10[bp]
+		mov	DESTX, ax
+		mov	DESTY, bx
+		jmps	d_gtext27
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext22:				; CODE XREF: d_gtext+1D3u
+					; DATA XREF: d_gtext+1C4o
+		mov	ax, word ptr PTSIN
+		sub	ax, 10[bp]
+		mov	bx, word ptr PTSIN+2
+		add	bx, 6[bp]
+		mov	DESTX, ax
+		mov	DESTY, bx
+		jmps	d_gtext27
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext23:				; CODE XREF: d_gtext+1D3u
+					; DATA XREF: d_gtext+1C6o
+		mov	ax, word ptr PTSIN
+		add	ax, 6[bp]
+		mov	bx, word ptr PTSIN+2
+		sub	bx, 12[bp]
+		mov	DESTX, ax
+		mov	DESTY, bx
+		jmps	d_gtext27
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext24:				; CODE XREF: d_gtext+1D3u
+					; DATA XREF: d_gtext+1C8o
+		mov	ax, word ptr PTSIN
+		sub	ax, 12[bp]
+		mov	bx, word ptr PTSIN+2
+		sub	bx, 6[bp]
+		mov	DESTX, ax
+		mov	DESTY, bx
+		jmps	d_gtext27
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+d_gtext25	dw offset d_gtext21	; DATA XREF: d_gtext+1D3o
+		dw offset d_gtext22
+		dw offset d_gtext23
+		dw offset d_gtext24
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext26:				; CODE XREF: d_gtext+168j
+		mov	si, ax
+		cmp	si, 4
+		jnb	d_gtext27
+		shl	si, 1
+		jmp	cs:d_gtext25[si]
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext27:				; CODE XREF: d_gtext+17Ej d_gtext+194j
+					; ...
+		cmp	SPECIAL, 0
+		jnz	d_gtext28
+		cmp	MONO_STA, 0
+		jz	d_gtext28
+		call	MONO8XHT
+		test	ax, ax
+		jz	d_gtext28
+		jmp	d_gtext49
+
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext28:				; CODE XREF: d_gtext+1DDj d_gtext+1E4j
+					; ...
+		mov	ax, SPECIAL
+		and	ax, 4
+		jnz	d_gtext29
+		jmp	d_gtext39
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext29:				; CODE XREF: d_gtext+1F6j
+		mov	ax, WRT_MODE
+		test	ax, ax
+		jz	d_gtext30
+		cmp	ax, 3
+		jz	d_gtext30
+		jmp	d_gtext39
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext30:				; CODE XREF: d_gtext+200j d_gtext+205j
+		cmp	word ptr 4[bp], 0
+		jz	d_gtext31
+		call	dqt_extent
+
+d_gtext31:				; CODE XREF: d_gtext+20Ej
+		mov	word ptr 4[bp], 0
+		mov	ax, rot_case
+		jmps	d_gtext37
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext32:				; CODE XREF: d_gtext+2A4u
+					; DATA XREF: d_gtext+293o
+		mov	ax, DESTX
+		mov	X1, ax
+		add	ax, width
+		mov	bx, DESTY
+		add	bx, ACTDELY
+		dec	bx
+		mov	X2, ax
+		mov	Y2, bx
+		mov	Y1, bx
+		jmps	d_gtext38
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext33:				; CODE XREF: d_gtext+2A4u
+					; DATA XREF: d_gtext+295o
+		mov	ax, DESTY
+		mov	Y2, ax
+		sub	ax, width
+		mov	bx, DESTX
+		add	bx, ACTDELY
+		dec	bx
+		mov	Y1, ax
+		mov	X1, bx
+		mov	X2, bx
+		jmps	d_gtext38
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext34:				; CODE XREF: d_gtext+2A4u
+					; DATA XREF: d_gtext+297o
+		mov	ax, DESTX
+		mov	X2, ax
+		sub	ax, width
+		mov	bx, DESTY
+		mov	X1, ax
+		mov	Y2, bx
+		mov	Y1, bx
+		jmps	d_gtext38
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext35:				; CODE XREF: d_gtext+2A4u
+					; DATA XREF: d_gtext+299o
+		mov	ax, DESTY
+		mov	Y1, ax
+		add	ax, width
+		mov	bx, DESTX
+		mov	Y2, ax
+		mov	X1, bx
+		mov	X2, bx
+		jmps	d_gtext38
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+d_gtext36	dw offset d_gtext32	; DATA XREF: d_gtext+2A4o
+		dw offset d_gtext33
+		dw offset d_gtext34
+		dw offset d_gtext35
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext37:				; CODE XREF: d_gtext+21Bj
+		mov	si, ax
+		cmp	si, 4
+		jnb	d_gtext38
+		shl	si, 1
+		jmp	cs:d_gtext36[si]
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext38:				; CODE XREF: d_gtext+23Bj d_gtext+25Bj
+					; ...
+		call	clr_skew
+if prosync
+		call    EGA_KLUG
+endif
+
+d_gtext39:				; CODE XREF: d_gtext+1F8j d_gtext+207j
+		mov	ax, SPECIAL
+		and	ax, 8
+		jnz	d_gtext40
+		jmp	d_gtext48
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext40:				; CODE XREF: d_gtext+2B2j
+		cmp	word ptr 4[bp], 0
+		jz	d_gtext41
+		call	dqt_extent
+
+d_gtext41:				; CODE XREF: d_gtext+2BBj
+		mov	ax, rot_case
+		jmp	d_gtext47
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext42:				; CODE XREF: d_gtext+384u
+					; DATA XREF: d_gtext+373o
+		mov	ax, DESTX
+		add	ax, L_OFF
+		mov	X1, ax
+		add	ax, width
+		mov	bx, DESTY
+		add	bx, f_i_top
+		inc	bx
+		mov	Y1, bx
+		add	bx, fi_ul_si
+		dec	bx
+		mov	X2, ax
+		mov	Y2, bx
+		jmp	d_gtext48
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext43:				; CODE XREF: d_gtext+384u
+					; DATA XREF: d_gtext+375o
+		mov	ax, DESTX
+		add	ax, f_i_top
+		inc	ax
+		mov	X1, ax
+		add	ax, fi_ul_si
+		dec	ax
+		mov	bx, DESTY
+		sub	bx, L_OFF
+		mov	Y2, bx
+		sub	bx, width
+		mov	X2, ax
+		mov	Y1, bx
+		jmps	d_gtext48
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext44:				; CODE XREF: d_gtext+384u
+					; DATA XREF: d_gtext+377o
+		mov	ax, DESTX
+		sub	ax, L_OFF
+		mov	X2, ax
+		sub	ax, width
+		mov	bx, DESTY
+		add	bx, ACTDELY
+		sub	bx, f_i_top
+		dec	bx
+		mov	Y2, bx
+		sub	bx, fi_ul_si
+		inc	bx
+		mov	X1, ax
+		mov	Y1, bx
+		jmps	d_gtext48
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext45:				; CODE XREF: d_gtext+384u
+					; DATA XREF: d_gtext+379o
+		mov	ax, DESTX
+		add	ax, ACTDELY
+		sub	ax, f_i_top
+		dec	ax
+		mov	X2, ax
+		sub	ax, fi_ul_si
+		inc	ax
+		mov	bx, DESTY
+		add	bx, L_OFF
+		mov	Y1, bx
+		add	bx, width
+		mov	X1, ax
+		mov	Y2, bx
+		jmps	d_gtext48
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+d_gtext46	dw offset d_gtext42	; DATA XREF: d_gtext+384o
+		dw offset d_gtext43
+		dw offset d_gtext44
+		dw offset d_gtext45
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext47:				; CODE XREF: d_gtext+2C3j
+		mov	si, ax
+		cmp	si, 4
+		jnb	d_gtext48
+		shl	si, 1
+		jmp	cs:d_gtext46[si]
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+d_gtext48:				; CODE XREF: d_gtext+2B4j d_gtext+2EDj
+					; ...
+		mov	XACC_DDA, 7FFFh
+		mov	ax, TEXT_BP
+		mov	14[bp], ax
+		call	TEXT_BLT
+		mov	ax, 14[bp]
+		mov	TEXT_BP, ax
+
+d_gtext49:				; CODE XREF: d_gtext+1EDj
+		add	sp, 10h
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+check_ade_sub:
+					; check_ade+6Fp
+		push	bp
+		mov	bp, sp
+		les	si, act_font
+		mov	ax, es:36[si]
+		mov	bx, es:38[si]
+		mov	cx, es:46h[si]
+		mov	dx, es:44h[si]
+		mov	FIR_CHR,	ax
+		mov	ax, es:4Ah[si]
+		mov	f_i_last, bx
+		mov	bx, es:48h[si]
+		mov	word ptr off_tbl+2, ax
+		mov	ax, es:4Eh[si]
+		mov	word ptr off_tbl, bx
+		mov	bx, es:4Ch[si]
+		mov	word ptr foff+2, ax
+		mov	ax, es:50h[si]
+		mov	FWIDTH, ax
+		mov	ax, es:52h[si]
+		mov	DELY, ax
+		mov	ax, es:42h[si]
+		mov	fi_flags,	ax
+		mov	word ptr off_htbl+2, cx
+		mov	word ptr off_htbl, dx
+		mov	word ptr foff, bx
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+check_ade:
+					; dqt_extent+4Ap ...
+		push	bp
+		sub	sp, 8
+		mov	bp, sp
+		mov	ax, word ptr act_sys8x16_hdr+2
+		mov	bx, word ptr act_sys8x16_hdr
+		mov	6[bp],	ax
+		mov	4[bp],	bx
+
+check_ade_1:				; CODE XREF: check_ade+5Cj
+		mov	ax, 6[bp]
+		or	ax, 4[bp]
+		jz	check_ade_3
+		mov	ax, 12[bp]
+		les	si, 4[bp]
+		mov	bx, es:36[si]
+		cmp	bx, ax
+		mov	0[bp],	ax
+		ja	check_ade_2
+		cmp	ax, es:38[si]
+		ja	check_ade_2
+		mov	ax, es
+		mov	bx, si
+		mov	word ptr act_font+2, ax
+		mov	word ptr act_font, bx
+		call	chk_fnt
+		call	check_ade_sub
+		mov	ax, 1
+		add	sp, 8
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+check_ade_2:				; CODE XREF: check_ade+2Aj
+					; check_ade+30j
+		les	si, 4[bp]
+		mov	ax, es:5Ah[si]
+		mov	bx, es:58h[si]
+		mov	6[bp],	ax
+		mov	4[bp],	bx
+		jmps	check_ade_1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+check_ade_3:				; CODE XREF: check_ade+19j
+		mov	ax, word ptr act_sys8x16_hdr+2
+		mov	bx, word ptr act_sys8x16_hdr
+		mov	word ptr act_font+2, ax
+		mov	word ptr act_font, bx
+		call	chk_fnt
+		call	check_ade_sub
+		xor	ax, ax
+		add	sp, 8
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+text_init:
+		push	bp
+		sub	sp, 14h
+		mov	bp, sp
+		mov	ax, ds
+		mov	bx, offset font_inf
+		mov	cx, ds
+		mov	dx, offset def_buf
+		mov	word ptr cur_head+2, ax
+		mov	18[bp], cx
+		mov	16[bp], dx
+		mov	word ptr cur_head, bx
+		call	v_nop		; To keep Lattice optimiser happy
+		mov	ax, 18[bp]
+		mov	bx, sav_buf1
+		mov	cx, sav_buf2
+		mov	dx, 7FFFh
+		mov	word ptr buff_ptr+2, ax
+		xor	ax, ax
+		mov	SIZ_TAB+4, ax
+		mov	SIZ_TAB+6, ax
+		mov	ax, word ptr first+2
+		mov	txbuf1,	bx
+		mov	bx, word ptr first
+		push	ax
+		push	bx
+		mov	word ptr cur_font+2, ax
+		mov	txbuf2,	cx
+		mov	SIZ_TAB, dx
+		mov	SIZ_TAB+2, dx
+		mov	word ptr cur_font, bx
+		call	get_font_id
+		mov	sp, bp
+		mov	DEV_TAB+0Ah, 0
+		mov	ini_font_count,	1
+		mov	6[bp],	ax
+
+count_fonts:				; CODE XREF: text_init+127j
+		les	si, cur_font
+		mov	ax, es:42h[si]
+		and	ax, 1
+		jz	text_init2
+		mov	ax, es
+		mov	bx, si
+		mov	14[bp], ax
+		mov	12[bp], bx
+
+text_init2:				; CODE XREF: text_init+78j
+		push	word ptr cur_font+2
+		push	word ptr cur_font
+		call	get_font_id
+		mov	sp, bp
+		cmp	ax, 6[bp]
+		jz	text_init3
+		inc	ini_font_count
+		push	word ptr cur_font+2
+		push	word ptr cur_font
+		call	get_font_id
+		mov	sp, bp
+		mov	6[bp],	ax
+
+text_init3:				; CODE XREF: text_init+94j
+		push	word ptr cur_font+2
+		push	word ptr cur_font
+		call	get_font_id
+		mov	sp, bp
+		dec	ax
+		jnz	text_init8
+		les	si, cur_font
+		mov	ax, es:50[si]
+		mov	bx, es:40[si]
+		inc	bx
+		mov	cx, SIZ_TAB
+		cmp	cx, ax
+		mov	8[bp],	ax
+		mov	10[bp], bx
+		jle	text_init4
+		mov	SIZ_TAB, ax
+
+text_init4:				; CODE XREF: text_init+D3j
+		mov	ax, 10[bp]
+		mov	bx, SIZ_TAB+2
+		cmp	bx, ax
+		jle	text_init5
+		mov	SIZ_TAB+2, ax
+
+text_init5:				; CODE XREF: text_init+E1j
+		mov	ax, 8[bp]
+		mov	bx, SIZ_TAB+4
+		cmp	bx, ax
+		jge	text_init6
+		mov	SIZ_TAB+4, ax
+
+text_init6:				; CODE XREF: text_init+EFj
+		mov	ax, 10[bp]
+		mov	bx, SIZ_TAB+6
+		cmp	bx, ax
+		jge	text_init7
+		mov	SIZ_TAB+6, ax
+
+text_init7:				; CODE XREF: text_init+FDj
+		inc	DEV_TAB+0Ah
+
+text_init8:				; CODE XREF: text_init+B8j
+		les	si, cur_font
+		mov	ax, es:56h[si]
+		or	ax, es:54h[si]
+		jz	text_init9
+		les	si, cur_font
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	word ptr cur_font+2, ax
+		mov	word ptr cur_font, bx
+		jmp	count_fonts
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+text_init9:				; CODE XREF: text_init+112j
+		if 	GSX
+		mov	ax, 16		; 16 text styles -> 16 fonts
+		else
+		mov	ax, ini_font_count
+		endif
+		mov	bx, 14[bp]
+		mov	cx, 12[bp]
+		mov	DEV_TAB+14h, ax
+		mov	word ptr act_sys8x16_hdr, cx
+		mov	word ptr act_font, cx
+		mov	word ptr cur_font, cx
+		mov	word ptr act_sys8x16_hdr+2, bx
+		mov	word ptr act_font+2, bx
+		mov	word ptr cur_font+2, bx
+		call	cpy_head
+		mov	ax, INTIN+0Ch
+		test	ax, ax
+		js	text_init10
+		mov	bx, DEV_TAB + 1Ah
+		dec	bx
+		cmp	ax, bx
+		jle	text_init11
+
+text_init10:				; CODE XREF: text_init+156j
+		mov	ax, 1
+		jmps	text_init12
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+text_init11:				; CODE XREF: text_init+15Bj
+		mov	ax, INTIN+0Ch
+
+text_init12:				; CODE XREF: text_init+160j
+		mov	text_color, ax
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, MAP_COL[si]
+		xor	bx, bx
+		mov	TEXT_BP, ax
+		mov	SPECIAL, bx
+		mov	rot_case, bx
+		mov	h_align, bx
+		mov	v_align, bx
+		call	in_rot
+		call	in_doub
+		mov	ax, 1
+		mov	rq_attr, 0
+		xor	bx, bx
+		mov	cx, f_i_top
+		add	cx, fi_botto
+		inc	cx
+		mov	dx, DELY
+		mov	rq_type, ax
+		mov	rq_size, ax
+		mov	rq_font, ax
+		mov	CHR_HT,	cx
+		mov	ACTDELY, dx
+		mov	CHAR_DEL, bx
+		mov	WEIGHT,	bx
+		mov	R_OFF, bx
+		mov	L_OFF, bx
+		mov	MONO_STA, bx
+		mov	loaded,	bx
+		mov	dbl, bx
+		add	sp, 14h
+		pop	bp
+		retn	
+
+
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dst_height:				; DATA XREF: dseg:0130o
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+if not GSX
+		cmp	xfm_mode, 0
+		jnz	dst_height1
+endif
+		mov	ax, DEV_TAB+2
+		inc	ax
+		sub	ax, word ptr PTSIN+2
+		mov	word ptr PTSIN+2, ax
+
+dst_height1:				; CODE XREF: cseg:298Aj
+		mov	ax, word ptr PTSIN+2
+		test	ax, ax
+		mov	rq_size, ax
+		jnz	dst_height2
+		mov	rq_size, 1
+
+dst_height2:				; CODE XREF: cseg:299Fj
+		mov	rq_type, 0
+		call	sel_font
+		mov	ax, fi_mx_ch
+		mov	bx, f_i_top
+		inc	bx
+		mov	cx, fi_mx_ce
+		mov	dx, CHR_HT
+		mov	word ptr PTSOUT, ax
+		mov	word ptr PTSOUT+4, cx
+		mov	word ptr PTSOUT+6, dx
+		mov	word ptr PTSOUT+2, bx
+		call	inc_lfu
+		mov	CONTRL+4, 2
+		mov	FLIP_Y, 1
+		add	sp, 2
+		pop	bp
+		retn	
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+		if not GSX
+dst_point:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, INTIN
+		mov	rq_type, 1
+		mov	rq_size, ax
+		call	sel_font
+		mov	CONTRL+8, 1
+		mov	CONTRL+4, 2
+		mov	ax, fi_point
+		mov	bx, fi_mx_ch
+		mov	cx, f_i_top
+		inc	cx
+		mov	dx, fi_mx_ce
+		mov	INTOUT,	ax
+		mov	ax, CHR_HT
+		mov	word ptr PTSOUT+6, ax
+		mov	word ptr PTSOUT+2, cx
+		mov	word ptr PTSOUT+4, dx
+		mov	word ptr PTSOUT, bx
+		call	inc_lfu
+		add	sp, 2
+		pop	bp
+		retn	
+		endif	;not GSX
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+make_header:
+					; sel_font+D9p
+		push	bp
+		sub	sp, 6
+		mov	bp, sp
+		call	cpy_head
+		shl	fi_point,	1
+		push	f_i_top
+		call	ACT_SIZ
+		mov	sp, bp
+		cmp	DDA_INC, 0FFFFh
+		mov	4[bp],	ax
+		jnz	make_header1
+		inc	word ptr 4[bp]
+		jmps	make_header2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+make_header1:				; CODE XREF: make_header+1Ej
+		mov	ax, f_i_top
+		inc	ax
+		push	ax
+		call	ACT_SIZ
+		mov	sp, bp
+		mov	bx, 4[bp]
+		cmp	ax, bx
+		jnz	make_header2
+		dec	word ptr 4[bp]
+
+make_header2:				; CODE XREF: make_header+23j
+					; make_header+34j
+		mov	ax, 4[bp]
+		push	fi_ascen
+		mov	f_i_top, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		inc	ax
+		push	fi_half
+		mov	fi_ascen, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		inc	ax
+		push	fi_desce
+		mov	fi_half, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	fi_botto
+		mov	fi_desce, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	fi_mx_ch
+		mov	fi_botto, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	fi_mx_ce
+		mov	fi_mx_ch,	ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	fi_l_off
+		mov	fi_mx_ce, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	fi_r_off
+		mov	fi_l_off, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	fi_thick
+		mov	fi_r_off,	ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	fi_ul_si
+		mov	fi_thick, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		push	DELY
+		mov	fi_ul_si, ax
+		call	ACT_SIZ
+		mov	sp, bp
+		or	SPECIAL, 100h
+		mov	bx, word ptr cur_head+2
+		mov	cx, word ptr cur_head
+		mov	ACTDELY, ax
+		mov	word ptr cur_font, cx
+		mov	word ptr cur_font+2, bx
+		add	sp, 6
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+		if GSX
+dst_font:
+		dec	word ptr INTIN
+		else
+dst_style:
+		endif
+
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, INTIN
+		and	ax, 0Fh
+		mov	rq_attr, al
+		call	sel_font
+		mov	CONTRL+8, 1
+		mov	al, rq_attr
+		xor	ah, ah
+		mov	INTOUT,	ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+dst_alignment:
+		push	bp
+		mov	bp, sp
+		mov	ax, INTIN
+		mov	bx, INTIN+2
+		mov	CONTRL+8, 2
+		mov	h_align, ax
+		mov	INTOUT,	ax
+		mov	v_align, bx
+		mov	INTOUT+2, bx
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+dst_rotation:
+		push	bp
+		sub	sp, 4
+		mov	bp, sp
+
+dst_rotation1:				; CODE XREF: dst_rotation+13j
+		mov	ax, INTIN
+		test	ax, ax
+		jns	dst_rotation2
+		add	INTIN, 3600
+		jmps	dst_rotation1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dst_rotation2:				; CODE XREF: dst_rotation+Bj
+					; dst_rotation+23j
+		mov	ax, INTIN
+		cmp	ax, 3600
+		jl	dst_rotation3
+		sub	INTIN, 3600
+		jmps	dst_rotation2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dst_rotation3:				; CODE XREF: dst_rotation+1Bj
+		mov	ax, INTIN
+		add	ax, 450
+		mov	bx, 900
+		cwd	
+		idiv	bx
+		mov	rot_case, ax
+		mov	ax, bx
+		imul	rot_case
+		mov	bx, SPECIAL
+		and	bx, 0FF3Fh
+		mov	cl, 6
+		mov	dx, rot_case
+		shl	dx, cl
+		or	bx, dx
+		mov	CONTRL+8, 1
+		mov	INTOUT,	ax
+		mov	SPECIAL, bx
+		add	sp, 4
+		pop	bp
+		retn	
+
+
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+		if not GSX
+dst_font:				; DATA XREF: dseg:0142o
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, INTIN
+		mov	rq_font, ax
+		call	sel_font
+		mov	CONTRL+8, 1
+		push	ds
+		mov	ax, offset font_inf
+		push	ax
+		call	get_font_id
+		mov	sp, bp
+		mov	INTOUT,	ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+		endif
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+sel_effect:
+		push	bp
+		sub	sp, 1Ah
+		mov	bp, sp
+		push	word ptr 32[bp]
+		push	word ptr 30[bp]
+		call	get_font_id
+		mov	sp, bp
+		les	si, 30[bp]
+		mov	bx, es:2[si]
+		mov	cl, rq_attr
+		xor	ch, ch
+		mov	0[bp],	cx
+		and	cx, 5
+		xor	dx, dx
+		mov	8[bp],	ax
+		xor	ax, ax
+		mov	18[bp], ax
+		mov	14[bp], ax
+		mov	10[bp], ax
+		mov	ax, SPECIAL
+		and	ax, 0FFF0h
+		mov	SPECIAL, ax
+		or	ax, 0[bp]
+		mov	SPECIAL, ax
+		mov	ax, es
+		mov	4[bp],	bx
+		mov	bx, si
+		mov	24[bp], ax
+		mov	7[bp],	cl
+		mov	20[bp], dx
+		mov	16[bp], dx
+		mov	12[bp], dx
+		mov	22[bp], bx
+
+sel_effect1:				; CODE XREF: sel_effect+108j
+		mov	ax, 24[bp]
+		or	ax, 22[bp]
+		jnz	sel_effect2
+		jmp	sel_effect9
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect2:				; CODE XREF: sel_effect+63j
+		push	word ptr 24[bp]
+		push	word ptr 22[bp]
+		call	get_font_id
+		mov	sp, bp
+		cmp	ax, 8[bp]
+		jz	sel_effect3
+		jmp	sel_effect9
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect3:				; CODE XREF: sel_effect+76j
+		les	si, 22[bp]
+		mov	ax, es:2[si]
+		cmp	ax, 4[bp]
+		jz	sel_effect4
+		jmp	sel_effect9
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect4:				; CODE XREF: sel_effect+85j
+		mov	cl, 8
+		mov	ax, es:[si]
+		sar	ax, cl
+		and	ax, 0FFh
+		mov	bl, 7[bp]
+		xor	bh, bh
+		mov	6[bp],	al
+		xor	ah, ah
+		cmp	ax, bx
+		mov	0[bp],	bx
+		jnz	sel_effect5
+		not	bx
+		and	SPECIAL, bx
+		mov	ax, es
+		mov	bx, si
+		add	sp, 1Ah
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect5:				; CODE XREF: sel_effect+A3j
+		mov	al, 6[bp]
+		xor	ah, ah
+		test	ax, ax
+		jnz	sel_effect6
+		mov	ax, 24[bp]
+		mov	bx, 22[bp]
+		mov	20[bp], ax
+		mov	18[bp], bx
+		jmps	sel_effect8
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect6:				; CODE XREF: sel_effect+BBj
+		mov	al, 6[bp]
+		xor	ah, ah
+		dec	ax
+		jnz	sel_effect7
+		mov	ax, 24[bp]
+		mov	bx, 22[bp]
+		mov	12[bp], ax
+		mov	10[bp], bx
+		jmps	sel_effect8
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect7:				; CODE XREF: sel_effect+D1j
+		mov	al, 6[bp]
+		xor	ah, ah
+		cmp	ax, 4
+		jnz	sel_effect8
+		mov	ax, 24[bp]
+		mov	bx, 22[bp]
+		mov	16[bp], ax
+		mov	14[bp], bx
+
+sel_effect8:				; CODE XREF: sel_effect+C9j
+					; sel_effect+DFj ...
+		les	si, 22[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	24[bp], ax
+		mov	22[bp], bx
+		jmp	sel_effect1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect9:				; CODE XREF: sel_effect+65j
+					; sel_effect+78j ...
+		mov	al, 7[bp]
+		xor	ah, ah
+		cmp	ax, 5
+		jnz	sel_effect11
+		mov	ax, 16[bp]
+		mov	bx, 14[bp]
+		or	ax, bx
+		jz	sel_effect10
+		and	SPECIAL, 0FFFBh
+		mov	ax, 16[bp]
+		add	sp, 1Ah
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect10:				; CODE XREF: sel_effect+11Dj
+		mov	ax, 12[bp]
+		mov	bx, 10[bp]
+		or	ax, bx
+		jz	sel_effect11
+		and	SPECIAL, 0FFFEh
+		mov	ax, 12[bp]
+		add	sp, 1Ah
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect11:				; CODE XREF: sel_effect+113j
+					; sel_effect+135j
+		mov	ax, 20[bp]
+		mov	bx, 18[bp]
+		or	ax, bx
+		jz	sel_effect12
+		mov	ax, 20[bp]
+		add	sp, 1Ah
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_effect12:				; CODE XREF: sel_effect+14Dj
+		mov	ax, 32[bp]
+		mov	bx, 30[bp]
+		add	sp, 1Ah
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+sel_size:
+		push	bp
+		sub	sp, 1Ah
+		mov	bp, sp
+		push	word ptr 32[bp]
+		push	word ptr 30[bp]
+		call	get_font_id
+		mov	sp, bp
+		les	si, 30[bp]
+		mov	bx, es:2[si]
+		mov	cx, es
+		mov	dx, si
+		mov	8[bp],	ax
+		mov	24[bp], cx
+		mov	16[bp], cx
+		mov	22[bp], dx
+		mov	14[bp], dx
+		mov	10[bp], bx
+
+sel_size1:				; CODE XREF: sel_size+AEj
+		mov	ax, 24[bp]
+		or	ax, 22[bp]
+		jz	sel_size6
+		push	word ptr 24[bp]
+		push	word ptr 22[bp]
+		call	get_font_id
+		mov	sp, bp
+		cmp	ax, 8[bp]
+		jnz	sel_size6
+		les	si, 22[bp]
+		mov	ax, es:2[si]
+		mov	12[bp], ax
+		cmp	rq_type, 0
+		jz	sel_size2
+		mov	6[bp],	ax
+		jmps	sel_size3
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size2:				; CODE XREF: sel_size+55j
+		les	si, 22[bp]
+		mov	ax, es:40[si]
+		inc	ax
+		mov	6[bp],	ax
+
+sel_size3:				; CODE XREF: sel_size+5Aj
+		mov	ax, 12[bp]
+		mov	bx, 10[bp]
+		cmp	bx, ax
+		jz	sel_size4
+		mov	bx, 24[bp]
+		mov	cx, 22[bp]
+		mov	10[bp], ax
+		mov	14[bp], cx
+		mov	16[bp], bx
+
+sel_size4:				; CODE XREF: sel_size+6Fj
+		mov	ax, 6[bp]
+		cmp	ax, rq_size
+		jnz	sel_size5
+		mov	ax, 16[bp]
+		mov	bx, 14[bp]
+		add	sp, 1Ah
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size5:				; CODE XREF: sel_size+87j
+		mov	ax, 6[bp]
+		cmp	ax, rq_size
+		jg	sel_size6
+		les	si, 22[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	24[bp], ax
+		mov	22[bp], bx
+		jmp	sel_size1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size6:				; CODE XREF: sel_size+34j
+					; sel_size+44j ...
+		les	si, 30[bp]
+		mov	ax, es:2[si]
+		mov	bx, es
+		mov	cx, si
+		mov	10[bp], ax
+		mov	22[bp], cx
+		mov	14[bp], cx
+		mov	24[bp], bx
+		mov	16[bp], bx
+
+sel_size7:				; CODE XREF: sel_size+159j
+		mov	ax, 24[bp]
+		or	ax, 22[bp]
+		jnz	sel_size8
+		jmp	sel_size13
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size8:				; CODE XREF: sel_size+D1j
+		push	word ptr 24[bp]
+		push	word ptr 22[bp]
+		call	get_font_id
+		mov	sp, bp
+		cmp	ax, 8[bp]
+		jnz	sel_size13
+		les	si, 22[bp]
+		mov	ax, es:2[si]
+		mov	12[bp], ax
+		cmp	rq_type, 0
+		jz	sel_size9
+		mov	6[bp],	ax
+		jmps	sel_size10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size9:				; CODE XREF: sel_size+F5j
+		les	si, 22[bp]
+		mov	ax, es:40[si]
+		inc	ax
+		mov	6[bp],	ax
+
+sel_size10:				; CODE XREF: sel_size+FAj
+		mov	ax, 12[bp]
+		mov	bx, 10[bp]
+		cmp	bx, ax
+		jz	sel_size11
+		mov	bx, 24[bp]
+		mov	cx, 22[bp]
+		mov	10[bp], ax
+		mov	14[bp], cx
+		mov	16[bp], bx
+
+sel_size11:				; CODE XREF: sel_size+10Fj
+		mov	ax, 6[bp]
+		shl	ax, 1
+		cmp	ax, rq_size
+		mov	6[bp],	ax
+		jnz	sel_size12
+		mov	dbl, 1
+		mov	ax, 16[bp]
+		mov	bx, 14[bp]
+		add	sp, 1Ah
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size12:				; CODE XREF: sel_size+12Cj
+		mov	ax, 6[bp]
+		cmp	ax, rq_size
+		jg	sel_size13
+		les	si, 22[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	24[bp], ax
+		mov	22[bp], bx
+		jmp	sel_size7
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size13:				; CODE XREF: sel_size+D3j
+					; sel_size+E4j ...
+		cmp	rq_type, 0
+		jz	sel_size14
+		les	si, 30[bp]
+		mov	ax, es:2[si]
+		mov	4[bp],	ax
+		jmps	sel_size15
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size14:				; CODE XREF: sel_size+161j
+		les	si, 30[bp]
+		mov	ax, es:40[si]
+		inc	ax
+		mov	4[bp],	ax
+
+sel_size15:				; CODE XREF: sel_size+16Dj
+		mov	ax, 32[bp]
+		mov	bx, 30[bp]
+		mov	es, ax
+		mov	cx, es:2[bx]
+		mov	24[bp], ax
+		mov	16[bp], ax
+		mov	20[bp], ax
+		mov	10[bp], cx
+		mov	22[bp], bx
+		mov	14[bp], bx
+		mov	18[bp], bx
+
+sel_size16:				; CODE XREF: sel_size+268j
+		mov	ax, 24[bp]
+		or	ax, 22[bp]
+		jnz	sel_size17
+		jmp	sel_size25
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size17:				; CODE XREF: sel_size+1A1j
+		push	word ptr 24[bp]
+		push	word ptr 22[bp]
+		call	get_font_id
+		mov	sp, bp
+		cmp	ax, 8[bp]
+		jz	sel_size18
+		jmp	sel_size25
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size18:				; CODE XREF: sel_size+1B4j
+		les	si, 22[bp]
+		mov	ax, es:2[si]
+		mov	12[bp], ax
+		cmp	rq_type, 0
+		jz	sel_size19
+		mov	6[bp],	ax
+		jmps	sel_size20
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size19:				; CODE XREF: sel_size+1C8j
+		les	si, 22[bp]
+		mov	ax, es:40[si]
+		inc	ax
+		mov	6[bp],	ax
+
+sel_size20:				; CODE XREF: sel_size+1CDj
+		mov	ax, 12[bp]
+		mov	bx, 10[bp]
+		cmp	bx, ax
+		jz	sel_size21
+		mov	bx, 24[bp]
+		mov	cx, 22[bp]
+		mov	10[bp], ax
+		mov	14[bp], cx
+		mov	16[bp], bx
+
+sel_size21:				; CODE XREF: sel_size+1E2j
+		mov	ax, rq_size
+		mov	bx, 6[bp]
+		cmp	bx, ax
+		jge	sel_size22
+		sub	ax, bx
+		mov	cx, rq_size
+		sub	cx, 4[bp]
+		cmp	ax, cx
+		jg	sel_size22
+		mov	ax, 16[bp]
+		mov	cx, 14[bp]
+		mov	dbl, 0
+		mov	20[bp], ax
+		mov	18[bp], cx
+		mov	4[bp],	bx
+
+sel_size22:				; CODE XREF: sel_size+1FBj
+					; sel_size+208j
+		mov	ax, 6[bp]
+		shl	ax, 1
+		mov	bx, rq_size
+		cmp	ax, bx
+		mov	6[bp],	ax
+		jge	sel_size24
+		sub	bx, ax
+		mov	cx, rq_size
+		sub	cx, 4[bp]
+		cmp	bx, cx
+		jge	sel_size23
+		mov	bx, 24[bp]
+		mov	cx, 22[bp]
+		mov	dbl, 1
+		mov	4[bp],	ax
+		mov	18[bp], cx
+		mov	20[bp], bx
+
+sel_size23:				; CODE XREF: sel_size+23Aj
+		mov	dbl, 1
+
+sel_size24:				; CODE XREF: sel_size+22Dj
+		les	si, 22[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	24[bp], ax
+		mov	22[bp], bx
+		jmp	sel_size16
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_size25:				; CODE XREF: sel_size+1A3j
+					; sel_size+1B6j
+		mov	ax, 6[bp]
+		shl	ax, 1
+		cmp	ax, rq_size
+		jge	sel_size26
+		mov	dbl, 1
+
+sel_size26:				; CODE XREF: sel_size+274j
+		mov	ax, 20[bp]
+		mov	bx, 18[bp]
+		add	sp, 1Ah
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+get_font_id:
+					; text_init+8Cp ...
+		push	bp
+		sub	sp, 4
+		mov	bp, sp
+		les	si, 8[bp]
+		mov	ax, es:42h[si]
+		and	ax, 2000h
+		jz	get_font_id1
+		mov	ax, es:6Eh[si]
+		mov	2[bp],	ax
+		jmps	get_font_id2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+get_font_id1:				; CODE XREF: get_font_id+10j
+		les	si, 8[bp]
+		mov	ax, es:[si]
+		and	ax, 0FFh
+		mov	2[bp],	ax
+
+get_font_id2:				; CODE XREF: get_font_id+19j
+		mov	ax, 2[bp]
+		add	sp, 4
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+sel_font:
+					; ...
+		push	bp
+		sub	sp, 8
+		mov	bp, sp
+		mov	ax, word ptr first+2
+		mov	bx, word ptr first
+		mov	6[bp],	ax
+		mov	4[bp],	bx
+
+sel_font1:				; CODE XREF: sel_font+3Dj
+		mov	ax, 6[bp]
+		or	ax, 4[bp]
+		jz	sel_font2
+		push	word ptr 6[bp]
+		push	word ptr 4[bp]
+		call	get_font_id
+		mov	sp, bp
+		cmp	ax, rq_font
+		jz	sel_font2
+		les	si, 4[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	6[bp],	ax
+		mov	4[bp],	bx
+		jmps	sel_font1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_font2:				; CODE XREF: sel_font+19j
+					; sel_font+2Aj
+		mov	ax, 6[bp]
+		or	ax, 4[bp]
+		jnz	sel_font3
+		mov	ax, word ptr first+2
+		mov	bx, word ptr first
+		mov	6[bp],	ax
+		mov	4[bp],	bx
+
+sel_font3:				; CODE XREF: sel_font+45j
+		mov	dbl, 0
+		push	word ptr 6[bp]
+		push	word ptr 4[bp]
+		call	sel_size
+		mov	sp, bp
+		push	ax
+		push	bx
+		mov	6[bp],	ax
+		mov	4[bp],	bx
+		call	sel_effect
+		mov	sp, bp
+		and	SPECIAL, 0FEFFh
+		mov	word ptr act_sys8x16_hdr+2, ax
+		mov	word ptr act_font+2, ax
+		mov	word ptr cur_font+2, ax
+		mov	word ptr act_sys8x16_hdr, bx
+		mov	word ptr act_font, bx
+		mov	word ptr cur_font, bx
+		call	cpy_head
+		mov	ax, DELY
+		mov	ACTDELY, ax
+		cmp	dbl, 0
+		jnz	sel_font4
+		mov	ax, f_i_top
+		inc	ax
+		mov	bx, rq_size
+		cmp	ax, bx
+		jz	sel_font6
+
+sel_font4:				; CODE XREF: sel_font+9Bj
+		cmp	dbl, 0
+		jz	sel_font5
+		mov	DDA_INC, 0FFFFh
+		mov	T_SCLSTS, 1
+		call	make_header
+		jmps	sel_font6
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_font5:				; CODE XREF: sel_font+AEj
+		cmp	rq_type, 0
+		jnz	sel_font6
+		mov	ax, f_i_top
+		inc	ax
+		push	rq_size
+		push	ax
+		call	CLC_DDA
+		mov	sp, bp
+		mov	DDA_INC, ax
+		call	make_header
+
+sel_font6:				; CODE XREF: sel_font+A7j
+					; sel_font+BFj ...
+		mov	ax, f_i_top
+		inc	ax
+		add	ax, fi_botto
+		xor	bx, bx
+		mov	cx, SPECIAL
+		and	cx, 1
+		mov	CHR_HT,	ax
+		mov	CHAR_DEL, bx
+		mov	WEIGHT,	bx
+		mov	R_OFF, bx
+		mov	L_OFF, bx
+		jz	sel_font7
+		mov	ax, fi_thick
+		mov	CHAR_DEL, ax
+		mov	WEIGHT,	ax
+
+sel_font7:				; CODE XREF: sel_font+101j
+		mov	ax, SPECIAL
+		and	ax, 4
+		jz	sel_font8
+		mov	ax, fi_l_off
+		mov	bx, fi_r_off
+		mov	L_OFF, ax
+		add	ax, bx
+		add	CHAR_DEL, ax
+		mov	R_OFF, bx
+
+sel_font8:				; CODE XREF: sel_font+112j
+		cmp	fi_mx_ce, 8
+		jnz	sel_font9
+		mov	ax, fi_flags
+		and	ax, 8
+		jmps	sel_font10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+sel_font9:				; CODE XREF: sel_font+12Dj
+		xor	ax, ax
+
+sel_font10:				; CODE XREF: sel_font+135j
+		mov	MONO_STA, ax
+		add	sp, 8
+		pop	bp
+		retn	
+
+
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dst_color:				; DATA XREF: dseg:0144o
+		push	bp
+		sub	sp, 4
+		mov	bp, sp
+		mov	ax, 1
+		mov	bx, INTIN
+		test	bx, bx
+		mov	CONTRL+8, ax
+		js	dst_color1
+		mov	ax, DEV_TAB + 1Ah
+		dec	ax
+		cmp	bx, ax
+		jle	dst_color2
+
+dst_color1:				; CODE XREF: cseg:3145j
+		mov	ax, 1
+		jmps	dst_color3
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dst_color2:				; CODE XREF: cseg:314Aj
+		mov	ax, INTIN
+
+dst_color3:				; CODE XREF: cseg:314Fj
+		mov	INTOUT,	ax
+		mov	text_color, ax
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, MAP_COL[si]
+		mov	TEXT_BP, ax
+		add	sp, 4
+		pop	bp
+		retn	
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+dqt_attributes:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		push	ds
+		mov	ax, offset font_inf
+		push	ax
+		call	get_font_id
+		mov	sp, bp
+		mov	bx, text_color
+		mov	cx, SPECIAL
+		and	cx, 0C0h
+		mov	0[bp],	cx
+		mov	cl, 6
+		mov	dx, 0[bp]
+		sar	dx, cl
+		mov	INTOUT,	ax
+		mov	ax, dx
+		mov	cx, 384h
+		imul	cx
+		mov	cx, h_align
+		mov	dx, v_align
+		mov	INTOUT+4, ax
+		mov	ax, WRT_MODE
+		mov	INTOUT+0Ah, ax
+		mov	ax, fi_mx_ch
+		mov	word ptr PTSOUT, ax
+		mov	ax, f_i_top
+		inc	ax
+		mov	INTOUT+2, bx
+		mov	bx, fi_mx_ce
+		mov	word ptr PTSOUT+2, ax
+		add	ax, fi_botto
+		mov	CONTRL+4, 2
+		mov	CONTRL+8, 6
+		mov	FLIP_Y, 1
+		mov	word ptr PTSOUT+6, ax
+		mov	INTOUT+6, cx
+		mov	INTOUT+8, dx
+		mov	word ptr PTSOUT+4, bx
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+		if not GSX
+
+dqt_width:
+		push	bp
+		sub	sp, 0Eh
+		mov	bp, sp
+		mov	ax, INTIN
+		mov	10[bp], ax
+		call	chk_fnt
+		push	word ptr 10[bp]
+		call	check_ade
+		mov	sp, bp
+		test	ax, ax
+		mov	12[bp], ax
+		jnz	dqt_width1
+		mov	INTOUT,	0FFFFh
+		jmp	dqt_width4
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_width1:				; CODE XREF: dqt_width+1Cj
+		mov	ax, 10[bp]
+		mov	bx, FIR_CHR
+		mov	INTOUT,	ax
+		sub	ax, bx
+		mov	10[bp], ax
+		shl	ax, 1
+		mov	0[bp],	ax
+		inc	ax
+		inc	ax
+		mov	bx, word ptr off_tbl+2
+		mov	si, word ptr off_tbl
+		add	si, ax
+		mov	di, word ptr off_tbl
+		add	di, 0[bp]
+		mov	es, bx
+		mov	ax, es:[si]
+		mov	es, bx
+		sub	ax, es:[di]
+		mov	bx, SPECIAL
+		and	bx, 100h
+		mov	word ptr PTSOUT, ax
+		jz	dqt_width2
+		push	ax
+		call	ACT_SIZ
+		mov	sp, bp
+		mov	word ptr PTSOUT, ax
+
+dqt_width2:				; CODE XREF: dqt_width+61j
+		mov	ax, fi_flags
+		and	ax, 2
+		jz	dqt_width3
+		mov	ax, 10[bp]
+		shl	ax, 1
+		mov	bx, word ptr off_htbl+2
+		mov	si, word ptr off_htbl
+		add	si, ax
+		mov	es, bx
+		mov	cl, es:[si]
+		xor	ch, ch
+		inc	ax
+		mov	si, word ptr off_htbl
+		add	si, ax
+		mov	es, bx
+		mov	al, es:[si]
+		xor	ah, ah
+		mov	word ptr PTSOUT+8, ax
+		mov	word ptr PTSOUT+4, cx
+		jmps	dqt_width4
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_width3:				; CODE XREF: dqt_width+72j
+		xor	ax, ax
+		mov	word ptr PTSOUT+4, ax
+		mov	word ptr PTSOUT+8, ax
+
+dqt_width4:				; CODE XREF: dqt_width+24j
+					; dqt_width+9Fj
+		mov	CONTRL+4, 3
+		mov	ax, 1
+		mov	FLIP_Y, ax
+		mov	CONTRL+8, ax
+		add	sp, 0Eh
+		pop	bp
+		retn	
+
+		endif			;not GSX
+
+;栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢栢
+
+;		S u b r	o u t i	n e
+
+dqt_extent:
+					; ...
+		push	bp
+		sub	sp, 10h
+		mov	bp, sp
+		cmp	CONTRL+6, 0
+		jnz	dqt_extent1
+		add	sp, 10h
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent1:				; CODE XREF: dqt_extent+Bj
+		call	chk_fnt
+		xor	ax, ax
+		mov	10[bp], ax
+		mov	width, ax
+
+dqt_extent2:				; CODE XREF: dqt_extent+CAj
+		mov	ax, 10[bp]
+		mov	bx, CONTRL+6
+		cmp	bx, ax
+		jg	dqt_extent3
+		jmp	dqt_extent7
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent3:				; CODE XREF: dqt_extent+26j
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, INTIN[si]
+		mov	bx, FIR_CHR
+		cmp	bx, ax
+		mov	0[bp],	ax
+		mov	14[bp], ax
+		ja	dqt_extent4
+		cmp	ax, f_i_last
+		jbe	dqt_extent5
+
+dqt_extent4:				; CODE XREF: dqt_extent+3Fj
+		push	word ptr 14[bp]
+		call	check_ade
+		mov	sp, bp
+		test	ax, ax
+		jnz	dqt_extent5
+		mov	word ptr 14[bp], 20h ; ' '
+
+dqt_extent5:				; CODE XREF: dqt_extent+45j
+					; dqt_extent+51j
+		mov	ax, 14[bp]
+		sub	ax, FIR_CHR
+		mov	12[bp], ax
+		shl	ax, 1
+		mov	0[bp],	ax
+		inc	ax
+		inc	ax
+		mov	bx, word ptr off_tbl+2
+		mov	si, word ptr off_tbl
+		add	si, ax
+		mov	di, word ptr off_tbl
+		add	di, 0[bp]
+		mov	es, bx
+		mov	ax, es:[si]
+		mov	es, bx
+		sub	ax, es:[di]
+		mov	bx, width
+		add	ax, bx
+		mov	bx, 12[bp]
+		shl	bx, 1
+		mov	cx, fi_flags
+		and	cx, 2
+		mov	width, ax
+		mov	12[bp], bx
+		jz	dqt_extent6
+		mov	cx, word ptr off_htbl+2
+		mov	dx, word ptr off_htbl
+		add	dx, bx
+		inc	bx
+		mov	si, word ptr off_htbl
+		add	si, bx
+		mov	es, cx
+		mov	bl, es:[si]
+		xor	bh, bh
+		mov	es, cx
+		mov	si, dx
+		mov	cl, es:[si]
+		xor	ch, ch
+		add	cx, bx
+		sub	width, cx
+
+dqt_extent6:				; CODE XREF: dqt_extent+9Ej
+		inc	word ptr 10[bp]
+		jmp	dqt_extent2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent7:				; CODE XREF: dqt_extent+28j
+		mov	ax, SPECIAL
+		and	ax, 100h
+		jz	dqt_extent8
+		push	width
+		call	ACT_SIZ
+		mov	sp, bp
+		mov	width, ax
+
+dqt_extent8:				; CODE XREF: dqt_extent+D3j
+		mov	ax, SPECIAL
+		and	ax, 1
+		jz	dqt_extent9
+		mov	ax, fi_flags
+		and	ax, 8
+		jnz	dqt_extent9
+		mov	ax, CONTRL+6
+		imul	WEIGHT
+		add	width, ax
+
+dqt_extent9:				; CODE XREF: dqt_extent+E7j
+					; dqt_extent+EFj
+		mov	ax, CHR_HT
+		mov	CONTRL+4, 4
+		mov	word ptr 10[bp], 0
+		mov	height,	ax
+
+dqt_extent10:				; CODE XREF: dqt_extent+122j
+		mov	ax, 10[bp]
+		cmp	ax, 8
+		jge	dqt_extent11
+		shl	ax, 1
+		mov	si, ax
+		mov	word ptr PTSOUT[si], 0
+		inc	word ptr 10[bp]
+		jmps	dqt_extent10
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent11:				; CODE XREF: dqt_extent+113j
+		mov	ax, rot_case
+		jmps	dqt_extent17
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent12:				; CODE XREF: dqt_extent+196u
+		mov	ax, width
+		mov	bx, height
+		mov	word ptr PTSOUT+4, ax
+		mov	word ptr PTSOUT+8, ax
+		mov	word ptr PTSOUT+0Ah, bx
+		mov	word ptr PTSOUT+0Eh, bx
+		jmps	dqt_extent18
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent13:				; CODE XREF: dqt_extent+196u
+		mov	ax, height
+		mov	bx, width
+		mov	word ptr PTSOUT, ax
+		mov	word ptr PTSOUT+4, ax
+		mov	word ptr PTSOUT+6, bx
+		mov	word ptr PTSOUT+0Ah, bx
+		jmps	dqt_extent18
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent14:				; CODE XREF: dqt_extent+196u
+		mov	ax, width
+		mov	bx, height
+		mov	word ptr PTSOUT, ax
+		mov	word ptr PTSOUT+0Ch, ax
+		mov	word ptr PTSOUT+2, bx
+		mov	word ptr PTSOUT+6, bx
+		jmps	dqt_extent18
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent15:				; CODE XREF: dqt_extent+196u
+		mov	ax, height
+		mov	bx, width
+		mov	word ptr PTSOUT+8, ax
+		mov	word ptr PTSOUT+0Ch, ax
+		mov	word ptr PTSOUT+2, bx
+		mov	word ptr PTSOUT+0Eh, bx
+		jmps	dqt_extent18
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+dqt_extent16	dw offset dqt_extent12	; DATA XREF: dqt_extent+196o
+		dw offset dqt_extent13
+		dw offset dqt_extent14
+		dw offset dqt_extent15
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent17:				; CODE XREF: dqt_extent+127j
+		mov	si, ax
+		cmp	si, 4
+		jnb	dqt_extent18
+		shl	si, 1
+		jmp	cs:dqt_extent16[si]
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_extent18:				; CODE XREF: dqt_extent+13Ej
+					; dqt_extent+155j ...
+		mov	FLIP_Y, 1
+		add	sp, 10h
+		pop	bp
+		retn	
+
+
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+		if not GSX
+
+dqt_name:				; DATA XREF: dseg:01A4o
+		push	bp
+		sub	sp, 12h
+		mov	bp, sp
+		mov	ax, word ptr first+2
+		mov	bx, word ptr first
+		mov	word ptr 8[bp], 1
+		mov	16[bp], ax
+		mov	14[bp], bx
+
+dqt_name1:				; CODE XREF: cseg:34BAj
+		mov	ax, 8[bp]
+		cmp	ax, INTIN
+		jge	dqt_name4
+
+dqt_name2:				; CODE XREF: cseg:34A4j
+		push	word ptr 16[bp]
+		push	word ptr 14[bp]
+		call	get_font_id
+		mov	sp, bp
+		les	si, 14[bp]
+		push	es:word ptr 56h[si]
+		push	es:word ptr 54h[si]
+		mov	0[bp],	ax
+		call	get_font_id
+		mov	sp, bp
+		mov	bx, 0[bp]
+		cmp	bx, ax
+		jnz	dqt_name3
+		les	si, 14[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	16[bp], ax
+		mov	14[bp], bx
+		jmps	dqt_name2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_name3:				; CODE XREF: cseg:3491j
+		inc	word ptr 08[bp]
+		les	si, 14[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	16[bp], ax
+		mov	14[bp], bx
+		jmps	dqt_name1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_name4:				; CODE XREF: cseg:346Cj
+		push	word ptr 16[bp]
+		push	word ptr 14[bp]
+		call	get_font_id
+		mov	sp, bp
+		mov	word ptr 8[bp], 1
+		mov	bx, 16[bp]
+		mov	cx, 14[bp]
+		add	cx, 4
+		mov	INTOUT,	ax
+		mov	10[bp], cx
+		mov	12[bp], bx
+
+dqt_name5:				; CODE XREF: cseg:34F9j
+		mov	ax, 8[bp]
+		inc	word ptr 8[bp]
+		shl	ax, 1
+		mov	si, ax
+		les	di, 10[bp]
+		inc	word ptr 10[bp]
+		mov	al, es:[di]
+		xor	ah, ah
+		mov	INTOUT[si], ax
+		test	ax, ax
+		jnz	dqt_name5
+
+dqt_name6:				; CODE XREF: cseg:3513j
+		mov	ax, 21h
+		mov	bx, 8[bp]
+		cmp	ax, bx
+		mov	CONTRL+8, ax
+		jle	dqt_name7
+		inc	word ptr 8[bp]
+		shl	bx, 1
+		mov	INTOUT[bx], 0
+		jmps	dqt_name6
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_name7:				; CODE XREF: cseg:3506j
+		add	sp, 12h
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+
+dqt_fontinfo:				; DATA XREF: dseg:01A6o
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	INTOUT,	20h
+		mov	INTOUT+2, 0FFh
+		mov	ax, fi_mx_ce
+		mov	bx, fi_botto
+		mov	cx, fi_desce
+		mov	dx, fi_half
+		mov	word ptr PTSOUT, ax
+		mov	ax, fi_ascen
+		mov	word ptr PTSOUT+0Eh, ax
+		mov	ax, f_i_top
+		mov	word ptr PTSOUT+12h, ax
+		mov	ax, fi_flags
+		and	ax, 8
+		mov	word ptr PTSOUT+6, cx
+		mov	word ptr PTSOUT+0Ah, dx
+		mov	word ptr PTSOUT+2, bx
+		jnz	dqt_fontinfo1
+		mov	ax, WEIGHT
+		mov	word ptr PTSOUT+4, ax
+		jmps	dqt_fontinfo2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dqt_fontinfo1:				; CODE XREF: cseg:355Cj
+		mov	word ptr PTSOUT+4, 0
+
+dqt_fontinfo2:				; CODE XREF: cseg:3564j
+		mov	ax, R_OFF
+		mov	bx, L_OFF
+		mov	CONTRL+4, 5
+		mov	CONTRL+8, 2
+		mov	FLIP_Y, 1
+		mov	word ptr PTSOUT+0Ch, ax
+		mov	word ptr PTSOUT+8, bx
+		add	sp, 2
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dt_loadfont:				; DATA XREF: dseg:018Eo
+		push	bp
+		sub	sp, 0Eh
+		mov	bp, sp
+		mov	ax, CONTRL+10h
+		xor	bx, bx
+		mov	cx, CONTRL+12h
+		sar	cx, 1
+		mov	dx, CONTRL+14h
+		mov	word ptr buff_ptr+2, ax
+		mov	ax, CONTRL+0Ah
+		mov	word ptr ftmgradd+2, ax
+		mov	ax, CONTRL+0Eh
+		mov	8[bp],	ax
+		mov	txbuf2,	cx
+		mov	word ptr ftmgradd, dx
+		mov	6[bp],	bx
+		mov	txbuf1,	bx
+		call	v_nop
+		mov	ax, word ptr first+2
+		mov	bx, word ptr first
+		mov	12[bp], ax
+		mov	10[bp], bx
+
+dt_loadfont1:				; CODE XREF: cseg:3602j
+		les	si, 10[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		or	ax, bx
+		jz	dt_loadfont3
+		mov	ax, es:56h[si]
+		cmp	ax, 8[bp]
+		jnz	dt_loadfont2
+		cmp	bx, 6[bp]
+
+dt_loadfont2:				; CODE XREF: cseg:35EAj
+		jz	dt_loadfont3
+		les	si, 10[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	12[bp], ax
+		mov	10[bp], bx
+		jmps	dt_loadfont1
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dt_loadfont3:				; CODE XREF: cseg:35E1j cseg:35EFj
+		mov	CONTRL+8, 1
+		mov	INTOUT,	0
+		les	si, 10[bp]
+		mov	ax, es:56h[si]
+		or	ax, es:54h[si]
+		jnz	dt_loadfont5
+		mov	ax, 8[bp]
+		mov	bx, 6[bp]
+		mov	es:56h[si], ax
+		mov	es:54h[si], bx
+		push	es
+		push	si
+		call	get_font_id
+		mov	sp, bp
+		mov	2[bp],	ax
+
+dt_loadfont4:				; CODE XREF: cseg:3656j cseg:366Aj
+		les	si, 10[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	12[bp], ax
+		mov	10[bp], bx
+		or	ax, bx
+		jz	dt_loadfont5
+		push	word ptr 12[bp]
+		push	bx
+		call	get_font_id
+		mov	sp, bp
+		cmp	ax, 2[bp]
+		jz	dt_loadfont4
+		push	word ptr 12[bp]
+		push	word ptr 10[bp]
+		call	get_font_id
+		mov	sp, bp
+		inc	INTOUT
+		mov	2[bp],	ax
+		jmps	dt_loadfont4
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dt_loadfont5:				; CODE XREF: cseg:361Bj cseg:3648j
+		mov	ax, INTOUT
+		add	DEV_TAB+14h, ax
+		mov	loaded,	1
+		add	sp, 0Eh
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dt_unloadfont:				; DATA XREF: dseg:0190o
+		push	bp
+		sub	sp, 0Eh
+		mov	bp, sp
+		cmp	CONTRL+0Eh, 0
+		jnz	dt_unloadfont1
+		add	sp, 0Eh
+		pop	bp
+		retn	
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dt_unloadfont1:				; CODE XREF: cseg:3689j
+		mov	word ptr 2[bp], 0
+		mov	ax, CONTRL+0Eh
+		mov	4[bp],	ax
+		call	v_nop
+		mov	ax, word ptr first+2
+		mov	bx, word ptr first
+		mov	12[bp], ax
+		mov	10[bp], bx
+
+dt_unloadfont2:				; CODE XREF: cseg:36D9j
+		les	si, 10[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		or	ax, bx
+		jz	dt_unloadfont4
+		mov	ax, es:56h[si]
+		cmp	ax, 4[bp]
+		jnz	dt_unloadfont3
+		cmp	bx, 2[bp]
+
+dt_unloadfont3:				; CODE XREF: cseg:36C1j
+		jz	dt_unloadfont4
+		les	si, 10[bp]
+		mov	ax, es:56h[si]
+		mov	bx, es:54h[si]
+		mov	12[bp], ax
+		mov	10[bp], bx
+		jmps	dt_unloadfont2
+;컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴컴
+
+dt_unloadfont4:				; CODE XREF: cseg:36B8j cseg:36C6j
+		les	si, 10[bp]
+		mov	ax, es:56h[si]
+		or	ax, es:54h[si]
+		jz	dt_unloadfont5
+		mov	es:word ptr 56h[si], 0
+		mov	es:word ptr 54h[si], 0
+
+dt_unloadfont5:				; CODE XREF: cseg:36E6j
+		mov	ax, ds
+		mov	bx, offset def_buf
+		mov	8[bp],	ax
+		mov	6[bp],	bx
+		call	v_nop
+		mov	ax, 8[bp]
+		mov	bx, sav_buf1
+		mov	cx, sav_buf2
+		mov	dx, word ptr first+2
+		mov	word ptr buff_ptr+2, ax
+		mov	ax, word ptr first
+		mov	word ptr cur_font, ax
+		mov	txbuf2,	cx
+		mov	word ptr cur_font+2, dx
+		mov	txbuf1,	bx
+		call	cpy_head
+		mov	ax, ini_font_count
+		mov	loaded,	0
+		mov	DEV_TAB+14h, ax
+		add	sp, 0Eh
+		pop	bp
+		retn	
+
+		endif
+
+		dseg
+T_SCLSTS	dw 0			; DATA XREF: sel_font+B6w
+					; sub_0_60E5r ...
+MONO_STA	dw 0			; DATA XREF: d_gtext+1DFr text_init+1C3w
+					; ...
+DESTX		dw 0			; DATA XREF: d_gtext+177w d_gtext+18Dw
+					; ...
+DESTY		dw 0			; DATA XREF: d_gtext+17Aw d_gtext+190w
+					; ...
+ACTDELY		dw 0			; DATA XREF: d_gtext+154r d_gtext+22Br
+					; ...
+CHR_HT		dw 0			; DATA XREF: text_init+1ABw
+					; cseg:29BCr ...
+SPECIAL		dw 0			; DATA XREF: d_gtext+1D8r d_gtext+1F0r
+					; ...
+WEIGHT		dw 0			; DATA XREF: text_init+1B7w
+					; sel_font+F5w ...
+R_OFF		dw 0			; DATA XREF: d_gtext+86r d_gtext+BDr
+					; ...
+L_OFF		dw 0			; DATA XREF: d_gtext+6Dr d_gtext+9Cr
+					; ...
+CHAR_DEL	dw 0			; DATA XREF: text_init+1B3w
+					; sel_font+F1w ...
+TEXT_BP		dw 0			; DATA XREF: d_gtext+38Fr d_gtext+39Bw
+					; ...
+XACC_DDA	dw 0			; DATA XREF: d_gtext+389w TEXT_BLT+9Bw
+					; ...
+DDA_INC		dw 0			; DATA XREF: make_header+16r
+					; sel_font+B0w ...
+text_color	dw 0			; DATA XREF: text_init+165w
+					; cseg:3157w ...
+rot_case	dw 0			; DATA XREF: d_gtext+165r d_gtext+218r
+					; ...
+h_align		dw 0			; DATA XREF: d_gtext+23r d_gtext+42r
+					; ...
+v_align		dw 0			; DATA XREF: d_gtext+62r text_init+181w
+					; ...
+width		dw 0			; DATA XREF: d_gtext+49r d_gtext+50r
+					; ...
+height		dw 0			; DATA XREF: dqt_extent+10Aw
+					; dqt_extent+12Cr ...
+rq_type		dw 0			; DATA XREF: text_init+1A2w
+					; cseg:29A7w ...
+rq_font		dw 0			; DATA XREF: text_init+1A8w
+					; cseg:2BBDw ...
+rq_attr		db 0			; DATA XREF: text_init+18Ew
+					; dst_style+Cw	...
+rq_size		dw 0			; DATA XREF: text_init+1A5w
+					; cseg:299Cw ...
+dbl		dw 0			; DATA XREF: text_init+1CBw
+					; sel_size+12Ew ...
+loaded		dw 0			; DATA XREF: text_init+1C7w
+					; cseg:3673w ...
+ini_font_count	dw 0			; DATA XREF: text_init+64w
+					; text_init+96w ...
+		db 0
+cur_font	rd 1			; DATA XREF: text_init+55w
+					; text_init+6Dr ...
+act_font	rd 1			; DATA XREF: check_ade_sub+3r
+					; check_ade+39w ...
+act_sys8x16_hdr	rd 1			; DATA XREF: check_ade+9r
+					; check_ade+61r ...
+cur_head	rd 1			; DATA XREF: text_init+19w
+					; make_header+CCr ...
+first		dd system6x6_hdr	; DATA XREF: text_init+40r
+					; sel_font+9r ...
+		end
+

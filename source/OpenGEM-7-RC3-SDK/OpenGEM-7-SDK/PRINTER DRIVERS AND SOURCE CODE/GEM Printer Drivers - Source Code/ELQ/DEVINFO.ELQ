@@ -1,0 +1,10 @@
+; Short name must be 13 chars long, long name 81 chars, both NULL terminated
+
+		db	'zyxg'
+vp_port		db	0
+		db	'EPSON LQ'
+		db	0,0,0,0,0
+		db	'Epson LQ Series Printers (180 x 180 dots/inch)'
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		end

@@ -1,0 +1,383 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Import: MOVREG_ (macro.mac), TESTREG_ (macro.mac)
+; Export: block_, break_, breakif_,
+;	  if_, elif_, else_,
+;	  loop_, while_, until_,
+;	  countloop_, countloop?, end_
+
+;------------------------------------------------------------------------
+
+; Additional mnemonics for conditional jumps
+
+jnnae		equ jae
+jnnb		equ jb
+jnnc		equ jc
+jnna		equ ja
+jnnbe		equ jbe
+jnne		equ je
+jnnz		equ jz
+jnng		equ jg
+jnnle		equ jle
+jnns		equ js
+jnnge		equ jge
+jnnl		equ jl
+jnno		equ jo
+jnnp		equ jp
+jnpo		equ jpe
+jnnpo		equ jpo
+jnpe		equ jpo
+jnnpe		equ jpe
+jnncxz		equ jcxz
+jnnecxz		equ jecxz
+jeq		equ je
+jneq		equ jne
+jgt		equ jg
+jngt		equ jng
+jlt		equ jl
+jnlt		equ jnl
+jzf		equ jz
+jnzf		equ jnz
+jsf		equ js
+jnsf		equ jns
+jcf		equ jc
+jncf		equ jnc
+jof		equ jo
+jnof		equ jno
+jzero		equ jz
+jnzero		equ jnz
+jsign		equ js
+jnsign		equ jns
+jcarry		equ jc
+jncarry		equ jnc
+joverflow	equ jo
+jnoverflow	equ jno
+jabove		equ ja
+jnabove		equ jna
+jbelow		equ jb
+jnbelow		equ jnb
+jodd		equ jpo
+jnodd		equ jpe
+jeven		equ jpe
+jneven		equ jpo
+
+
+;========================================================================
+
+; High level language (HLL)-like statements:
+;
+; block_ ... end_ [block]
+;
+; if_ <condition> {... andif_ <condition>} ...
+;	{elif_ <condition> {... andif_ <condition>} ...}
+;	{else_ {... andif_ <condition>} ...}
+;	[else_ ...] end_ [if]
+;
+; loop_ {... while_ <condition>} ... end_ [loop]
+;
+; loop_ {... while_ <condition>} ... until_ <condition>
+;
+; countloop_ [<value>],[<var>] {... while_ <condition>} ... end_ [countloop]
+;
+; countloop? [<value>],[<var>] {... while_ <condition>} ... end_ [countloop]
+;
+; break_
+; breakif_ <condition>
+
+; Notes:
+; - most statements accepts as additional argument distance for jumps
+;   (<short> or <near>).
+; - break_ terminates block_ execution like for loops.
+; - while_ similar to <breakif_ not>, but can't be nested in other statements.
+; - until_ terminates loop when <condition> is true.
+;
+; - if <var> for countloop_/countloop? is empty, then CX is assumed.
+; - <var> or <value> for countloop_/countloop? should be a register.
+; - countloop? checks if <value> or <var> is nonzero before loop (for zero
+;   value, loop skipped and <var> not necessarily will be zeroed); for
+;   countloop_ <value>=0 means 65536 iterations.
+; - if <value> for countloop_/countloop? is equal to 1, then <var> will not
+;   be initialized and end_ generates no jumps.
+
+??HLLlevel	= 0
+??HLLlabel	equ <0>
+
+??HLLrestore	equ <>
+??HLLname	equ <>
+??HLLbreak	equ <>
+??HLLifend	equ <>
+??HLLelse	equ <>
+??HLLtop	equ <>
+??HLLloopi	equ <>
+
+??HLLpush	macro	level:req,namelist:vararg
+	ideal ;;!!! TASM bugfix for EQU substitution
+	irp n,<restore,name,namelist>
+		??HLL&&n&&level equ ??HLL&&n
+	endm
+	masm
+	??HLLrestore equ <namelist>
+	??HLLlevel = ??HLLlevel + 1
+endm
+
+??HLLpop	macro	level:req,namelist:vararg
+	??HLLlevel = level
+	ideal ;;!!! TASM bugfix for EQU substitution
+	irp n,<namelist,name,restore>
+		??HLL&&n equ ??HLL&&n&&level
+	endm
+	masm
+endm
+
+??HLLjump	macro	n,cond,dist,label:vararg
+	local next
+	ifb <cond>
+		jmp	dist ??HLL&label
+	elseifdifi <dist>,<near>
+		j&n&cond	dist ??HLL&label
+	else
+	  ifb <n>
+		jn&cond	next
+	  else
+		j&cond	next
+	  endif
+		jmp	??HLL&label
+next:
+	endif
+endm
+
+;------------------------------------------------------------------------
+
+block_		macro
+	??HLLpush %??HLLlevel,break
+	??HLLname equ <block>
+	??HLLbreak equ <*>
+endm
+
+break_		macro	dist:vararg
+%	ifb <??HLLbreak>
+		err "No matching BLOCK or LOOP for BREAK"
+		exitm
+	endif
+%	ifidni <??HLLbreak>,<*>
+		??HLLlabel equ % ??HLLlabel+1
+		??HLLbreak equ % ??HLLlabel
+	endif
+%		jmp	dist ??HLL&&??HLLbreak
+endm
+
+breakif_	macro	cond:req,dist:vararg
+%	ifb <??HLLbreak>
+		err "No matching BLOCK or LOOP for BREAK"
+		exitm
+	endif
+%	ifidni <??HLLbreak>,<*>
+		??HLLlabel equ % ??HLLlabel+1
+		??HLLbreak equ % ??HLLlabel
+	endif
+	??HLLjump ,<cond>,<dist>,%??HLLbreak
+endm
+
+;------------------------------------------------------------------------
+
+if_		macro	cond:req,dist:vararg
+	??HLLpush %??HLLlevel,ifend,else
+	??HLLname equ <if>
+	??HLLifend equ <>
+	??HLLlabel equ % ??HLLlabel+1
+	??HLLelse equ % ??HLLlabel
+	??HLLjump n,<cond>,<dist>,%??HLLelse
+endm
+
+andif_		macro	cond:req,dist:vararg
+%	ifdifi <??HLLname>,<if>
+		err "No matching IF/ELIF/ELSE for ANDIF"
+		exitm
+	endif
+%	ifb <??HLLelse>
+		??HLLlabel equ % ??HLLlabel+1
+		??HLLelse equ % ??HLLlabel
+	endif
+	??HLLjump n,<cond>,<dist>,%??HLLelse
+endm
+
+elif_		macro	cond:req,dist:vararg
+	else_ <dist>
+	??HLLlabel equ % ??HLLlabel+1
+	??HLLelse equ % ??HLLlabel
+	??HLLjump n,<cond>,<dist>,%??HLLelse
+endm
+
+else_		macro	dist:vararg
+%	ifidni <??HLLname>,<if>
+%	ifnb <??HLLelse>
+%	  ifb <??HLLifend>
+		??HLLlabel equ % ??HLLlabel+1
+		??HLLifend equ % ??HLLlabel
+	  endif
+%		jmp	dist ??HLL&&??HLLifend
+% ??HLL&&??HLLelse:
+	  ??HLLelse equ <>
+	  exitm
+	endif
+	endif
+	err "No matching IF/ELIF for ELSE"
+endm
+
+;------------------------------------------------------------------------
+
+loop_		macro
+	??HLLpush %??HLLlevel,top,break
+	??HLLname equ <loop>
+	??HLLbreak equ <*>
+	??HLLlabel equ % ??HLLlabel+1
+	??HLLtop equ % ??HLLlabel
+% ??HLL&&??HLLtop:
+endm
+
+while_		macro	cond:req,dist:vararg
+%	ifdifi <??HLLname>,<loop>
+%	ifdifi <??HLLname>,<countloop>
+		err "No matching LOOP for WHILE"
+		exitm
+	endif
+	endif
+%	ifidni <??HLLbreak>,<*>
+		??HLLlabel equ % ??HLLlabel+1
+		??HLLbreak equ % ??HLLlabel
+	endif
+	??HLLjump n,<cond>,<dist>,%??HLLbreak
+endm
+
+until_		macro	cond:req,dist:vararg
+%	ifdifi <??HLLname>,<loop>
+		err "No matching LOOP for UNTIL"
+		exitm
+	endif
+	??HLLjump n,<cond>,<dist>,%??HLLtop
+%	ifdifi <??HLLbreak>,<*>
+% ??HLL&&??HLLbreak:
+	endif
+	??HLLpop %??HLLlevel-1,%??HLLrestore
+endm
+
+;------------------------------------------------------------------------
+
+countloop_	macro	val,var:=<cx>,misc:vararg
+	??HLLpush %??HLLlevel,top,break,loopi
+	??HLLname equ <countloop>
+	??HLLbreak equ <*>
+	ifnb <val>
+	if ((.type val) and 00100100b) eq 00100100b
+	;; symbol is defined and expression is a constant value
+	if val eq 1
+		??HLLtop equ <>
+		??HLLloopi equ <>
+		exitm
+	endif
+	endif
+	endif
+	??HLLlabel equ % ??HLLlabel+1
+	??HLLtop equ % ??HLLlabel
+	??HLLloopi equ <var&misc>
+	MOVREG_	<var&misc>,<val>
+% ??HLL&&??HLLtop:
+endm
+
+countloop?	macro	val,var:=<cx>,dist:vararg
+	??HLLpush %??HLLlevel,top,break,loopi
+	??HLLname equ <countloop>
+	??HLLbreak equ <*>
+	??HLLtop equ <>
+	??HLLloopi equ <var>
+	ifidni <val>,<cx>
+		breakif_ cxz,<dist>
+		??HLLloopi equ <>
+	elseifnb <val>
+	  if ((.type val) and 00100100b) eq 00100100b
+	    ;; symbol is defined and expression is a constant value
+	    if val eq 0
+		break_	<dist>
+	    endif
+	    if val le 1
+		exitm
+	    endif
+	    ??HLLloopi equ <>
+	  elseifdifi <var>,<cx>
+	    irp r,<al,ah,cl,ch,dl,dh,bl,bh,ax,dx,bx,sp,bp,si,di,eax,ecx,edx,ebx,esp,ebp,esi,edi>
+	      ifidni <val>,<r>
+		TESTREG_ <val>
+		breakif_ zero,<dist>
+		??HLLloopi equ <>
+		exitm
+	      endif
+	    endm
+	  endif
+	endif
+	??HLLlabel equ % ??HLLlabel+1
+	??HLLtop equ % ??HLLlabel
+	MOVREG_	<var>,<val>
+%	ifidni <??HLLloopi>,<cx>
+		breakif_ cxz,<dist>
+%	elseifnb <??HLLloopi>
+		TESTREG_ <var>
+		breakif_ zero,<dist>
+	endif
+	??HLLloopi equ <var>
+% ??HLL&&??HLLtop:
+endm
+
+;------------------------------------------------------------------------
+
+end_		macro	name,dist:vararg
+	if ??HLLlevel eq 0
+		err "No matching HLL statement for END"
+		exitm
+	endif
+	ifnb <name>
+%	ifdifi <name>,<??HLLname>
+		err "Unmatched END type"
+	endif
+	endif
+%	ifidni <??HLLname>,<if>
+%	  ifnb <??HLLelse>
+% ??HLL&&??HLLelse:
+	  endif
+%	  ifnb <??HLLifend>
+% ??HLL&&??HLLifend:
+	  endif
+%	elseifidni <??HLLname>,<loop>
+%		jmp	dist ??HLL&&??HLLtop
+%	elseifidni <??HLLname>,<countloop>
+%	  ifnb <??HLLtop>
+%	    ifidni <??HLLloopi>,<cx>
+%		loop	dist ??HLL&&??HLLtop
+	    else
+%		dec	??HLLloopi
+%		jnz	dist ??HLL&&??HLLtop
+	    endif
+	  endif
+	endif
+%	ifdifi <??HLLname>,<if>
+%	ifdifi <??HLLbreak>,<*>
+% ??HLL&&??HLLbreak:
+	endif
+	endif
+	??HLLpop %??HLLlevel-1,%??HLLrestore
+endm

@@ -1,0 +1,21 @@
+sdw649.vga = entry,
+w64_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+w64_drv,
+w6pttxt1,
+w6pttxt2,
+w6ptdraw,
+w64mblit,
+w64blit,
+w64pat,
+enddseg, 
+vgacp, 
+vgafont[nop]
+                                                                    
+                                                                    

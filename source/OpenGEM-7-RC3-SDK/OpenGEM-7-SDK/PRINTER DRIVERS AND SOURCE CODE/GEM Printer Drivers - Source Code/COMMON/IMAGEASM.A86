@@ -1,0 +1,349 @@
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        * 
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;************************************************************************
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;*  Compact model file operation routines.				*
+;************************************************************************
+
+CGROUP	GROUP	CODE
+		cseg
+
+		public	f_open
+		public	f_close
+		public	f_read
+		public	f_seek
+		public	allo_mem
+		public	free_mem
+		
+		public	b_move
+		public	b_stuff
+		public	b_or
+		public	b_shl1or
+		public	b_shl2or
+		public	b_xlat
+
+DOS		equ	21h		; DOS interrupt
+OPEN_FILE	equ	3dh		; DOS "open file"
+CLOSE_FILE	equ	3eh		; DOS "close file"
+READ_FILE	equ	3fh		; DOS "read file"
+SEEK_FILE	equ	42h		; DOS "seek file"
+ALLOCATE	equ	48h		; DOS "allocate memory"
+FREE		equ	49h		; DOS "free memory"
+
+
+;************************************************************************
+;*  Open a file with read only access.  Return handle = 0 on failure.	*
+;*	WORD status = f_open(ADDR:filename, WORD*:handle)		*
+;************************************************************************
+f_open:
+		push	bp
+		mov	bp, sp
+		push	ds
+		push	es
+
+		lds	dx, 4[bp]		; ds:dx -> file name
+		les	bx, 8[bp]		; es:bx -> handle
+		mov	es:[bx], word ptr 0	; assume failure
+		xor	al, al			; read-only access mode
+		mov	ah, OPEN_FILE
+		int	DOS
+		jc	open_failed		; ax = error code on failure
+		mov	es:[bx], ax		; return handle
+		xor	ax, ax			; return status = success
+open_failed:
+		pop	es
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Close a file.							*
+;*	WORD status = f_close(WORD:handle)				*
+;************************************************************************
+f_close:
+		push	bp
+		mov	bp, sp
+		mov	bx, 4[bp]		; bx = file handle
+		cmp	bx, 0
+		je	zero_handle		; don't close zero handle!
+		mov	ah, CLOSE_FILE
+		int	DOS			
+		jc	zero_handle		; ax = error code on failure
+		xor	ax, ax			; return status = success
+zero_handle:
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Read "count" bytes from the file associated with the handle into	*
+;*   the buffer.  Return # bytes actually read.				*
+;*	WORD:status = f_read(WORD:handle, ADDR:buffer, WORD:count,	*
+;*						      WORD*:bytes_read)	*
+;************************************************************************
+f_read:
+		push	bp
+		mov	bp, sp
+		push	ds
+		push	es
+		push	si
+
+		mov	bx, 4[bp]		; bx = file handle
+		lds	dx, 6[bp]		; ds:dx -> buffer
+		mov	cx, 10[bp]		; cx = count
+		les	si, 12[bp]		; es:si -> bytes_read
+		mov	es:[si], word ptr 0	; assume no bytes read
+		mov	ah, READ_FILE
+		int	DOS
+		jc	read_failed		; ax = error code on failure
+		mov	es:[si], ax		; return # bytes read
+		xor	ax, ax			; return status = success
+read_failed:
+		pop	si
+		pop	es
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Set file pointer location relative to given point in file.  Return	*
+;*  new location of file pointer.					*
+;*	WORD status = f_seek(WORD:handle, BYTE:type, ULONG:move_bytes,  *
+;*						   ULONG*:new_location) *
+;*	type:  0 = from file beginning, 1 = from current location	*
+;*	       2 = from file end					*
+;************************************************************************
+f_seek:
+		push	bp
+		mov	bp, sp
+		push	ds
+		push	si
+
+		mov	bx, 4[bp]		; file handle
+		mov	al, 6[bp]		; al = seek type
+		mov	dx, 8[bp]		; cx:dx = distance to move
+		mov	cx, 10[bp]
+		lds	si, 12[bp]		; ds:si -> new location
+		mov	ah, SEEK_FILE
+		int	DOS			; move to appropriate location
+		jc	seek_failed		; ax = error code on failure
+		mov	ds:[si], ax     	; return new location LSW
+		mov	ds:2[si], dx		; return new location MSW
+		xor	ax, ax			; return status = success
+
+seek_failed:
+		pop	si
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Allocate memory.  Return pointer to allocated block, or amount	*
+;*   of memory available if unable to allocate requested size.		*
+;*	WORD:status = allo_mem(WORD:paragraphs, ADDR*:allocated_block, 	*
+;*						      WORD*:avail_mem)	*
+;************************************************************************
+allo_mem:
+		push	bp
+		mov	bp, sp
+		push	ds
+		push	di
+		push	es
+		push	si
+
+		mov	bx, 4[bp]		; bx = paragraphs to allocate
+		lds	di, 6[bp]		; ds:di -> allocated block
+		les	si, 10[bp]		; es:si -> available memory
+		mov	ah, ALLOCATE
+		int	DOS			
+		jc	allo_failed		; ax = error code on failure
+		mov	ds:[di], word ptr 0	; return offset = 0
+		mov	ds:2[di], ax		; return new location segment
+		xor	ax, ax			; return status = success
+		jmp	end_allo_mem
+
+allo_failed:
+		mov	es:[si], bx		; return size of available mem
+
+end_allo_mem:
+		pop	si
+		pop	es
+		pop	di
+		pop	ds
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Free memory.							*
+;*	WORD:status = free_mem(ADDR:release_block)			*
+;************************************************************************
+free_mem:
+		push	bp
+		mov	bp, sp
+		mov	es, 6[bp]		; segment of block to release
+		mov	ah, FREE
+		int	DOS
+		jc	free_failed		; ax = error code on failure
+		xor	ax, ax			; return status = success
+free_failed:
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Set the requested number of bytes starting at the given location in	*
+;*   in memory to the requested value.					*
+;*	VOID b_stuff(ADDR:pointer, WORD:count, BYTE:value);		*
+;************************************************************************
+b_stuff:
+		push	bp
+		mov	bp, sp
+		push	es
+
+		les	di, 4[bp]		; es:di = destination address
+		mov	cx, 8[bp]		; cx = count
+		mov	al, 10[bp]		; al = value to set
+		rep	stosb			; stuff
+
+; Restore and exit.
+		pop	es
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Move the requested number of bytes from source to destination.	*
+;*      VOID b_move(ADDR:from, WORD:count, ADDR:to);			*
+;************************************************************************
+b_move:
+		push	bp
+		mov	bp, sp
+		push	es
+		push	ds
+
+		lds	si, 4[bp]		; ds:si = address of source
+		mov	cx, 8[bp]		; count
+		les	di, 10[bp]		; es:di = address of dest
+		rep	movsb			; move bytes
+
+		pop	ds
+		pop	es
+		pop	bp
+		ret
+
+;************************************************************************
+;*  Or the source into the destination.					*
+;*      VOID b_or(ADDR:from, WORD:count, ADDR:to);			*
+;************************************************************************
+b_or:
+		push	bp
+		mov	bp, sp
+		push	es
+		push	ds
+
+		lds	si, 4[bp]		; ds:si = address of source
+		mov	cx, 8[bp]		; count
+		les	di, 10[bp]		; es:di = address of dest
+
+orthem:		lodsb
+		mov	ah,es:[di]
+		or	al,ah
+		stosb
+		loop	orthem
+
+		pop	ds
+		pop	es
+		pop	bp
+		ret
+
+;************************************************************************
+;*
+;*      VOID b_shl1or(ADDR:from, WORD:count, ADDR:to);			*
+;************************************************************************ 
+b_shl1or:
+		push	bp
+		mov	bp, sp
+		push	es
+		push	ds
+
+		lds	si, 4[bp]		; ds:si = address of source
+		mov	cx, 8[bp]		; count
+		les	di, 10[bp]		; es:di = address of dest
+
+orthem1:	lodsb
+		shl	al,1
+		mov	ah,es:[di]
+		or	al,ah
+		stosb
+		loop	orthem1
+
+		pop	ds
+		pop	es
+		pop	bp
+		ret
+
+;************************************************************************
+;*
+;*      VOID b_shl2or(ADDR:from, WORD:count, ADDR:to);			*
+;************************************************************************ 
+b_shl2or:
+		push	bp
+		mov	bp, sp
+		push	es
+		push	ds
+
+		lds	si, 4[bp]		; ds:si = address of source
+		mov	cx, 8[bp]		; count
+		les	di, 10[bp]		; es:di = address of dest
+
+orthem2:	lodsb
+		shl	al,1
+		shl	al,1
+		mov	ah,es:[di]
+		or	al,ah
+		stosb
+		loop	orthem2
+
+		pop	ds
+		pop	es
+		pop	bp
+		ret
+
+;************************************************************************
+;*  data, n, table
+;*	VOID b_xlat(ADDR:  , WORD:count, ADDR:   )			*
+;************************************************************************ 
+b_xlat:
+		push	bp
+		mov	bp, sp
+		push	es
+		push	ds
+
+		les	di, 4[bp]		; es:di = 
+		mov	cx, 8[bp]		; count
+		lds	bx, 10[bp]		; ds:bx = 
+xlat1:
+		mov	al, es:[di]
+		xlat	bx
+		stosb
+		loop	xlat1
+
+		pop	ds
+		pop	es
+		pop	bp
+		ret
+
+
+		end
+

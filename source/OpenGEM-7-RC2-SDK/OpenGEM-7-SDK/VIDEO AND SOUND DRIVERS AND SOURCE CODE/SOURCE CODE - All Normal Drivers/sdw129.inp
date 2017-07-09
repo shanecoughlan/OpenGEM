@@ -1,0 +1,21 @@
+sdw129.vga = entry,
+w12_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+w12_drv,
+w2pttxt1,
+w2pttxt2,
+w2ptdraw,
+w12mblit,
+w12blit,
+w12pat,
+enddseg, 
+vgacp, 
+vgafont[nop]
+                                                                    
+                                                                    

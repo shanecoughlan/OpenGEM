@@ -1,0 +1,354 @@
+;/*		DATA.A86	1/29/87 - 4/9/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public data.
+		public	all_loaded
+		public	aside_block
+		public	assign_seg
+		public	best_double
+		public	best_double_del
+		public	best_double_off
+		public	best_double_seg
+		public	best_normal
+		public	best_normal_del
+		public	best_normal_off
+		public	best_normal_seg
+		public	copy_contrl
+		public	copy_intin
+		public	cur_absize
+		public	cur_face
+		public	cur_point
+		public	driver_count
+		public	driver_head
+		public	driver_off
+		public	driver_seg
+		public	driver_size
+		public	eff_size
+		public	entries
+		public	fb_free_off
+		public	fb_free_seg
+		public	fb_free_size
+		public	fb_seg
+		public	fb_size
+		public	fhdr_count
+		public	file_count
+		public	file_handle
+		public	first_font_seg
+		public	flip
+		public	font_block_seg
+		public	font_count
+		public	font_loaded
+		public	font_val
+		public	header_offset
+		public	header_segment
+		public	header_space
+		public	incomplete_load
+		public	last_font_off
+		public	last_font_seg
+		public	load_successful
+		public	lruhi
+		public	lrulo
+		public	mfuhi
+		public	mfulo
+		public	multi_id
+		public	opcode
+		public	pblock
+		public	phdr_count
+		public	phdr_low
+		public	psp_base
+		public	save_count
+		public	save_end
+		public	save_start
+		public	screen_font
+		public	selmode
+		public	step_aside
+		public	str_handle
+		public	str_index
+		public	text_buffer_size
+		public	this_font_off
+		public	this_font_seg
+		public	work_identifier
+		public	ws_absize
+		public	ws_chead
+		public	ws_coff
+		public	ws_cseg
+		public	ws_dseg
+		public	ws_dsize
+		public	ws_face
+		public	ws_flags
+		public	ws_font_block
+		public	ws_font_seg
+		public	ws_id
+		public	ws_index
+		public	ws_lruhi
+		public	ws_lrulo
+		public	ws_phdr_count
+		public	ws_phdr_low
+		public	ws_point
+		public	ws_root
+		public	ws_selmode
+		public	ws_size
+		public	ws_texbuf
+		public	ws_xform
+		public	ws_xres
+		public	ws_yres
+
+		public	contrl
+		public	driver_offset
+		public	fb_free_addr
+		public	intin
+		public	intout
+		public	last_font_addr
+		public	ptsin
+		public	ptsout
+		public	save_contrl
+		public	save_dta
+		public	this_font_addr
+
+		public	app_name
+		public	aside_com_line
+		public	aside_error
+		public	aside_file
+		public	aside_msg
+		public	attr_val
+		public	bad_driver
+		public	best_double_pts
+		public	best_normal_pts
+		public	command_error
+		public	dyna_suppress
+		public	font_path
+		public	font_suffix
+		public	gdos_drive
+		public	gdos_dta
+		public	gdos_path
+		public	info_file
+		public	info_path
+		public	location_info
+		public	mouse_valid
+		public	mouse_1
+		public	mouse_2
+		public	not_installed_msg
+		public	pd_font
+		public	phdr_buf
+		public	rd_name
+		public	resident_driver
+		public	resident_valid
+		public	save_block
+		public	save_tail_len
+		public	saved_drive
+		public	saved_path
+		public	sb_end
+		public	sd_font
+		public	sd_name
+		public	str_buf
+		public	str_suffix
+		public	work_table_full
+
+
+; Dynamic font loading suppression flag.
+			db	'zyxg'
+dyna_suppress		db	0		; default:  don't suppress
+
+; Parameter block.
+save_start		rw	0		; start of critical data
+contrl			rd	1		; pointer to control array
+intin			rd	1		; pointer to intin array
+ptsin			rd	1		; pointer to ptsin array
+intout			rd	1		; pointer to intout array
+ptsout			rd	1		; pointer to ptsout array
+
+; Other pointers.
+save_contrl		rd	1		; pointer to original contrl
+driver_offset		rd	1		; offset/segment of driver
+
+; Parameter copy arrays.
+copy_contrl		rw	12		; copy area for control array
+copy_intin		rw	128		; copy area for intin array
+
+; Workstation table.
+ws_index		rw	1		; workstation table index
+ws_id			rw	WS_ENTRIES	; workstation identifier
+ws_xres			rw	WS_ENTRIES	; x resolution
+ws_yres			rw	WS_ENTRIES	; y resolution
+ws_size			rw	WS_ENTRIES	; size of driver
+ws_coff			rw	WS_ENTRIES	; starting offset of driver
+ws_cseg			rw	WS_ENTRIES	; starting segment of driver
+ws_chead		rw	WS_ENTRIES	; driver header location
+ws_xform		rw	WS_ENTRIES	; transformation mode
+ws_flags		rw	WS_ENTRIES	; flags:  resident, open
+ws_dseg			rw	WS_ENTRIES	; data segment address
+ws_dsize		rw	WS_ENTRIES	; data segment size
+ws_root			rw	WS_ENTRIES	; root handle
+ws_font_seg		rw	WS_ENTRIES	; first external font segment
+ws_font_block		rw	WS_ENTRIES	; lowest external font segment
+ws_texbuf		rw	WS_ENTRIES	; text buffer segment address
+ws_phdr_low		rw	WS_ENTRIES	; paged headers pointer
+ws_phdr_count		rw	WS_ENTRIES	; count of paged headers
+ws_face			rw	WS_ENTRIES	; current face
+ws_point		rw	WS_ENTRIES	; current point size
+ws_absize		rw	WS_ENTRIES	; current absolute size
+ws_selmode		rw	WS_ENTRIES	; current size selection mode
+ws_lrulo		rw	WS_ENTRIES	; header low LRU value
+ws_lruhi		rw	WS_ENTRIES	; header high LRU value
+
+; Font block processing variables.
+fb_free_addr		rd	0		; MUST BE ADJACENT TO NEXT TWO
+fb_free_off		rw	1		; free block start offset
+fb_free_seg		rw	1		; free block start segment
+fb_free_size		rw	1		; font block free chain size
+fb_seg			rw	1		; font block segment
+fb_size			rw	1		; font block size
+last_font_addr		rd	0		; MUST BE ADJACENT TO NEXT TWO
+last_font_off		rw	1		; last loaded header offset
+last_font_seg		rw	1		; last loaded header segment
+this_font_addr		rd	0		; MUST BE ADJACENT TO NEXT TWO
+this_font_off		rw	1		; current header offset
+this_font_seg		rw	1		; current header segment
+
+; Other globals.
+all_loaded		rw	1		; all fonts loaded flag
+assign_seg		rw	1		; segment of assign table
+driver_count		rw	1		; driver count in assign.sys
+driver_head		rw	1		; driver header location
+driver_off		rw	1		; driver starting offset
+driver_seg		rw	1		; driver starting segment
+driver_size		rw	1		; size of driver
+file_handle		dw	0		; DOS 2.0 file handle
+flip			rw	1		; flip y flag
+font_count		rw	1		; number of fonts left to load
+font_loaded		rw	1		; flag:  did a font load?
+load_successful		rw	1		; successful driver load flag
+opcode			rw	1		; current opcode
+psp_base		rw	1		; segment address for GDOS PSP
+text_buffer_size	rw	1		; size of dynamic text buffer
+work_identifier		rw	1		; saved workstation identifier
+save_end		rw	0		; end of critical data
+
+; Limited re-entrancy support variables.
+entries			dw	-1		; re-entrancy flag
+save_count		dw	save_end - save_start	; save block size
+save_block		rb	0		; variable save block
+work_table_full		db	'Too many resident drivers$'
+resident_driver		db	'Resident driver at '
+location_info		rb	4
+			db	':0000',CR,LF,'$'
+bad_driver		db	'Corrupted driver file$'
+not_installed_msg	db	CR, LF, 'Execution terminated.', CR, LF, '$'
+sb_end			rb	0
+save_size		equ	save_end - save_start
+data_size		equ	sb_end - save_block
+			rb	save_size - data_size
+
+; Step-aside support variables.
+aside_block		dw	0		; environment string segment
+			dd	aside_com_line	; command line
+			dw	5ch		; first default FCB offset
+			rw	1		; first default FCB segment
+			dw	6ch		; second default FCB offset
+			rw	1		; second default FCB segment
+aside_error		db	CR, LF
+aside_msg		db	'Unable to load application program$'
+			rb	5
+aside_file		rb	64		; prog to exec in step-aside
+step_aside		dw	0		; full step-aside flag
+
+; Temporaries:
+file_count		rw	1
+header_offset		rw	1
+header_segment		rw	1
+header_space		rw	1
+multi_id		rw	1
+
+; Disk environment.  Note that the step-aside command tail area and the
+; saved path area share the same memory.
+saved_drive		rb	1		; storage for caller's drive
+saved_path		db	'\'		; storage area for path
+aside_com_line		rb	80		; shared with step-aside
+
+; The following two globals have to remain in the order given.
+gdos_drive		rb	1		; drive number for GDOS
+gdos_path		db	'\'		; path for GDOS
+			rb	64
+
+font_path		db	'..\fonts',0	; font file path relative to
+			rb	64-9		;  GDOS directory
+
+; Loader globals.
+command_error	db	'Command line error$'
+pblock		dw	0			; environment string segment
+		rw	1			; command line offset
+		rw	1			; command line segment
+		rw	1			; first default FCB offset
+		rw	1			; first default FCB segment
+		rw	1			; second default FCB offset
+		rw	1			; second default FCB segment
+save_tail_len	rb	1			; command tail size
+app_name	db	'GEM.EXE',0,0,0,0,0,0	; application file name
+
+; Command parameter validity globals.
+mouse_valid	db	0			; mouse patch valid
+resident_valid	db	0			; resident driver name valid
+
+; Mouse patch globals.
+mouse_1		rb	1			; first mouse patch byte
+mouse_2		rb	1			; second mouse patch byte
+
+; Screen driver and resident driver strings.
+sd_name		db	'SD*.*'			; screen driver name
+		db	0, 0, 0, 0, 0, 0, 0, 0
+rd_name		rb	13			; resident driver name
+sd_font		db	'*.FNT', 0		; screen driver font name
+pd_font		db	'*.FNT', 0		; printer driver font name
+
+; Font header file and string file information.
+fhdr_count	rw	1			; count of headers
+str_handle	rw	1			; string file handle
+str_index	rw	1			; string file record index
+font_suffix	db	'FHDR.INF', 0		; font header file suffix
+str_suffix	db	'FSTR.INF', 0		; font string file suffix
+info_file	rb	66			; font file path
+info_path	rb	66			; information file path
+str_buf		rb	STR_BUFSIZ		; string file data buffer
+
+; Paged header information.
+phdr_low	rw	1			; first paged header item
+phdr_count	rw	1			; number of paged header items
+phdr_buf	rb	PGHD_LENGTH		; paged header buffer
+
+; Font management variables.
+attr_val	rw	1			; current attribute value
+best_double	rw	1			; size approximation global
+best_double_del	rw	1			; size approximation global
+best_double_off	rw	1			; size approximation global
+best_double_seg	rw	1			; size approximation global
+best_double_pts	rb	1			; size approximation global
+best_normal	rw	1			; size approximation global
+best_normal_del	rw	1			; size approximation global
+best_normal_off	rw	1			; size approximation global
+best_normal_seg	rw	1			; size approximation global
+best_normal_pts	rb	1			; size approximation global
+cur_absize	rw	1			; current absolute size
+cur_face	rw	1			; current face
+cur_point	rw	1			; current point size
+selmode		rw	1			; size selection mode
+font_block_seg	rw	1			; font block segment
+font_val	rw	1			; current full font id
+first_font_seg	rw	1			; first font segment
+lrulo		rw	1			; header LRU value (low)
+lruhi		rw	1			; header LRU value (high)
+mfulo		rw	1			; MFU temporary (low)
+mfuhi		rw	1			; MFU temporary (high)
+screen_font	rw	1			; set to 1 for screen
+
+; Miscellaneous font loading variables.
+eff_size	rw	1			; effects buffer size (bytes)
+incomplete_load	rw	1			; incomplete loading flag
+
+; DTA used by the GDOS and the location to save the current DTA in.
+save_dta	rd	1			; saved DTA
+gdos_dta	rb	50			; GDOS DTA
+
+		end

@@ -1,0 +1,45 @@
+Desk Accessories on DJGPP GEM
+=============================
+
+  Desk Accessories compiled with DJGPP do not work properly:
+
+* GEM terminates without giving a 32-bit Desk Accessory a chance to do a
+ clean shutdown; as a result, the system will be unstable after GEM has
+ terminated.
+
+* At least under CWSDPMI and the DRDOS DPMI host, a protected-mode GEM
+ application will crash if there is a protected-mode DA loaded.
+
+  Having said all that, the files in SRC\STUB can be used to write a
+protected-mode DA, even if it then won't run. For a DA, the stub (.ACC) and
+the main program (.EXE) must be separate files.
+
+  The sequence of events is:
+
+1. Make a copy of ACCSTUB.ACC (in the LIB directory).
+
+     copy ..\lib\accstub.acc myacc.acc
+
+     NOTE: The .ACC file and the .EXE file _must_ have different names. In
+   this example, I have used MYACC.ACC and MYEXE.EXE respectively.
+
+2. Use STUBEDIT to set the runfile to your EXE file.
+
+     stubedit myacc.acc runfile=myexe
+
+   NOTE: The .ACC file and the .EXE file _must_ have different names.
+
+3. Use STUB2ACC to make the .acc file loadable by GEM. This has to be done
+  _after_ the STUBEDIT, because it overwrites the "magic number" in the DA.
+
+     stub2acc myacc.acc
+
+4. Copy MYACC.ACC and MYACCEXE.EXE to the DA directory (\GEMBOOT,
+   \GEMAPPS\GEMSYS, \DRDOS etc.)
+
+  The transfer buffer (__tb) is 4k long in DAs. You must not use STUBEDIT
+to increase it; if you want a bigger transfer buffer, you will need to
+edit ACCSTUB.ASM.
+
+  You only need to do this the first time you create a DA. The .ACC file
+will not change subsequently, so you can just update the .EXE file.

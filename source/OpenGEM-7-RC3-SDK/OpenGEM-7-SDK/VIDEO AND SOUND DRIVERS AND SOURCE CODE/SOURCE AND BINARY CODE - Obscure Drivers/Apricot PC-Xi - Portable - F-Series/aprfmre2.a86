@@ -1,0 +1,1768 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+;History
+;Fix #	Name	Date	Description
+;1	DH	5/29/85	Line shortening routine in Tennis used wrong polarity
+;			for LSTLIN flag
+;2	DH	5/29/85	Added line shortening into xline
+;	n = vec_len(delta_x, delta_y);
+;
+;****************************************************************
+;Subroutine	abline						*
+;    Entry:	X1-coordinate					* 
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		Y2-coordinate					*
+;    Purpose:							*
+;		This routine will draw a line from (x1,y1) to	*
+;		(x2,y2) using Bresenham's algorithm.		*
+;								*
+;								*
+;    Variables: for Bresenham's algorithm defined for		*
+;		delta y > delta x after label "ckslope".	*
+;		delta y <= delta x				*
+;****************************************************************
+ABLINE:	push	bp
+	if	manual_update
+	 call	touch_x1y1
+	endif
+	call	do_line
+	mov	LN_MASK,ax		;restore the mask
+	pop	bp
+	ret
+do_line: 
+	mov	line_deltax, 0
+	mov	line_deltay, 0
+	mov	cx, 2		;X step
+	mov	dx, bytes_line
+	mov	ax, X2
+	mov	bx, X1
+	sub	ax, bx
+	jnz	do_line_1
+	mov	line_deltax, -1
+do_line_1:
+	jge	do_line_2
+	neg	cx		;X step
+	neg	ax		;X total
+do_line_2:
+	cmp	ax, 10h
+	jl	do_line_3
+	mov	line_deltay, -1
+do_line_3:
+	mov	ax, Y2
+	mov	bx, Y1
+	cmp	ax, bx
+	jnz	do_line_4
+	cmp	line_deltay, 0
+	jz	do_line_4
+	jmp	XLINE
+;
+do_line_4:
+	jg	do_line_5
+	neg	dx
+do_line_5:
+	sub	ax, bx
+	cmp	ax, 0
+	jge	do_line_6
+	neg	ax
+do_line_6:
+	mov	bx, X2
+	mov	si, X1
+	sub	bx, si
+	cmp	bx, 0
+	jge	do_line_7
+	neg	bx
+do_line_7:
+	mov	line_flg1, 0
+	cmp	ax, bx
+	jc	do_line_8
+	xchg	ax, bx
+	xchg	cx, dx
+	mov	line_flg1, 1
+do_line_8:
+	mov	line_nextrow, cx
+	mov	line_step, dx
+	inc	bx
+if num_planes gt 2
+	mov	line_deltac, bx
+else
+	mov	cx, bx
+	call	tennis
+	mov	line_deltac, cx
+endif
+	dec	bx
+	mov	dl, 0
+	cmp	bx, 0Fh
+	jl	do_line_9
+	mov	dl, 1
+do_line_9:
+	mov	line_initjump, dl
+	mov	si, bx
+	neg	si
+	mov	line_dxparam, si
+	shl	bx, 1
+	shl	ax, 1
+	mov	line_add_dx, ax
+	mov	line_nadd_dx, bx
+	cmp	line_initjump, 0
+	jz	do_line_10
+	shr	bx, 1
+if num_planes lt 3
+	inc	bx
+	mov	cx, bx
+	call	tennis
+	mov	bx, cx
+endif
+	mov	ax, bx
+	and	bx, 3
+	neg	bx
+	add	bx, 4
+	and	bx, 3
+	mov	line_flg3, bl
+	shr	ax, 1
+	shr	ax, 1
+	mov	line_deltac, ax
+do_line_10:
+	mov	ax, Y1
+	mov	bx, X1
+	call	concat
+	mov	bl, ortbl[bx]
+	mov	bh, bl
+	mov	line_ormask, bx
+	mov	line_drawaddr, di
+	mov	bx, WRT_MODE
+if num_planes lt 3
+	inc	bx
+endif
+	shl	bx, 1
+	shl	bx, 1
+	mov	ax, line_prefixes[bx]
+	mov	line_prefix, ax
+	mov	ax, line_draws[bx]
+	mov	line_draw, ax
+	mov	ax, line_argp[bx]
+	mov	line_arg_offset, ax
+if num_planes gt 2
+	mov	ax, line_argp+2[bx]
+	mov	line_arg2_offset, ax
+endif
+	sub	sp, 100h	;Now generate a custom line drawing routine
+	mov	di, sp		;on the stack (hairy stuff!)
+if num_planes gt 2
+	mov	ax, FG_BP_1
+	xor	bx, bx		;Not sure why the order of these 2 lines is swapped
+else
+	xor	bx, bx
+	mov	ax, FG_BP_1
+endif
+	cmp	WRT_MODE, 2
+	jnz	do_line_11
+	mov	ax, 0FFFFh
+do_line_11:
+	ror	ax, 1
+	jnc	do_line_12
+	not	bl
+do_line_12:
+	ror	ax, 1
+	jnc	do_line_13
+	not	bh
+do_line_13:	
+	mov	box_pattern, bx
+if num_planes gt 2
+	xor	bx, bx
+	ror	ax, 1
+	jnc	do_line_14
+	not	bl
+do_line_14:
+	ror	ax, 1
+	jnc	do_line_15
+	not	bh
+do_line_15:
+	mov	box_pattern2, bx
+endif
+	call	line_gencode
+	mov	bx, line_ormask
+	mov	dx, line_dxparam
+	mov	cx, line_deltac
+	mov	di, line_drawaddr
+	mov	bp, LN_MASK
+	push	ds
+	mov	ax, ds
+	mov	es, ax
+	mov	ax, graph_plane
+	mov	ds, ax
+if num_planes gt 2
+	mov	ax, graph_plane_high
+endif
+	callf	es:dword ptr line_drawcode
+	pop	ds
+if num_planes gt 2
+	add	sp, 100h
+	mov	ax, bp
+else
+	mov	ax, bp
+	add	sp, 100h
+endif
+	ret
+;
+; Generate a custom line-drawing subroutine
+;
+line_gencode:
+	mov	dx, ss
+	mov	es, dx
+	xor	cx, cx
+	mov	word ptr line_drawcode, di
+	mov	word ptr line_drawcode+2, dx
+if num_planes gt 2
+	mov	ax, 0C08Eh	;MOV ES, AX
+	stosw
+endif
+	cmp	line_initjump, 0
+	jz	line_gencode1
+	mov	al, 0E9h	;JMP
+	stosb
+	xor	ax, ax		;0
+	stosw
+line_gencode1:
+	mov	si, line_prefix
+	or	si, si
+	jz	line_gencode2	;No prefix provided?
+	mov	bx, ds
+	mov	ax, cs
+	mov	ds, ax
+	lodsb			;Length of prefix
+	mov	cl, al
+	rep	movsb		;Copy prefix in
+	mov	ds, bx
+line_gencode2:
+	cmp	LN_MASK, 0FFFFh	;Any mask?
+	jz	line_gencode3
+	mov	ax, 0C5D1h	;ROL BP, 1
+	stosw
+	mov	al, 73h		;JNC <somewhere>
+	stosb		
+	push	di		;Remember address of jump target byte
+	inc	di		;and step past it
+line_gencode3:
+	mov	si, line_draw
+	mov	bx, ds
+	mov	ax, cs
+	mov	ds, ax
+	lodsb			;Length of main line drawing routine
+	mov	cl, al
+	rep	movsb
+	mov	ds, bx
+	mov	bx, line_arg_offset
+	mov	ax, box_pattern
+	mov	es:[bx+di],ax	;Store box pattern in generated code
+if num_planes gt 2
+	mov	bx, line_arg2_offset
+	mov	ax, box_pattern2
+	mov	es:[bx+di],ax
+endif
+	cmp	LN_MASK, 0FFFFh
+	jz	line_gencode4
+	pop	si	
+	mov	ax, si		;Calculate offset for masked jump (above)
+	neg	ax
+	add	ax, di
+	dec	ax
+	mov	es:[si], al
+line_gencode4:
+	cmp	line_flg1, 0
+	jnz	line_gencode8
+	mov	ax, 0CBD1h	;ROR BX, 1
+	cmp	line_nextrow, 0
+	jge	line_gencode5
+	mov	ax, 0C3D1h	;ROL BX, 1
+line_gencode5:
+	stosw
+	mov	al, 73h		;JNC +4
+if num_planes lt 3
+	cmp	WRT_MODE, 3
+	jnz	line_gencode6
+	mov	al, 72h		;JC +4
+line_gencode6:
+endif
+	mov	ah, 4
+	stosw
+	mov	ax, 0C781h	;ADD DI, line_nextrow
+	stosw
+	mov	ax, line_nextrow
+	stosw
+	mov	ax, 0C281h	;ADD DX, nnnn
+	stosw
+	mov	ax, line_add_dx
+	stosw
+if next_plane gt 0
+	mov	al, 7Eh		;JLE +0Eh
+	mov	ah, 0Eh
+else
+	mov	al, 7Eh		;JLE +8
+	mov	ah, 8
+endif
+	stosw
+	mov	ax, 0C281h	;ADD DX, nnnn
+	stosw
+	mov	ax, line_nadd_dx
+	neg	ax
+	stosw
+if next_plane gt 0
+	mov	ax, 0C781h	;ADD DI, nnnn
+	cmp	line_step, 0
+	jge	line_gencode6a
+	mov	ax, 0EF81h	;SUB DI, nnnn
+line_gencode6a:
+	stosw
+	mov	ax, next_plane
+	stosw
+	mov	al, 73h		;JNC +4
+	mov	ah, 4		
+	stosw
+endif
+	mov	ax, 0C781h	;ADD DI, nnnn
+	stosw
+	mov	ax, line_step
+	stosw
+	cmp	line_initjump, 0
+	jz	line_gencode7
+	jmp	line_gencode13
+;
+line_gencode7:
+	jmp	line_gencode12
+;
+line_gencode8:
+if next_plane gt 0
+	mov	ax, 0C781h	;ADD DI, nnnn
+	cmp	line_nextrow, 0
+	jge	line_gencode8a
+	mov	ax, 0EF81h	;SUB DI, nnnn
+line_gencode8a:
+	stosw
+	mov	ax, next_plane
+	stosw
+	mov	al, 73h		;JNC +4
+	mov	ah, 4		
+	stosw
+endif
+	mov	ax, 0C781h	;ADD DI, line_nextrow
+	stosw
+	mov	ax, line_nextrow
+	stosw
+	cmp	line_deltax, 0
+	jnz	line_gencode11
+	mov	ax, 0C281h	;ADD DX, nnnn
+	stosw
+	mov	ax, line_add_dx
+	stosw
+	mov	al, 7Eh		;JLE +0C
+	mov	ah, 0Ch
+	stosw 
+	mov	ax, 0C281h	;ADD DX, nnnn
+	stosw
+	mov	ax, line_nadd_dx
+	neg	ax
+	stosw
+	mov	ax, 0CBD1h	;ROR BX, 1
+	cmp	line_step, 0
+	jge	line_gencode9
+	mov	ax, 0C3D1h	;ROL BX, 1
+line_gencode9:
+	stosw
+	mov	al, 73h		;JNC +4
+if num_planes lt 3
+	cmp	WRT_MODE, 3
+	jnz	line_gencode10
+	mov	al, 72h		;JC +4
+endif
+line_gencode10:
+	mov	ah, 4
+	stosw
+	mov	ax, 0C781h	;ADD DI, line_step
+	stosw
+	mov	ax, line_step
+	stosw
+line_gencode11:
+	cmp	line_initjump, 0
+	jz	line_gencode12
+	jmp	line_gencode13
+;
+line_gencode12:
+	mov	si, word ptr line_drawcode
+if num_planes gt 2
+	add	si, 2		;For the MOV ES,AX
+endif
+	sub	si, di
+	dec	si
+	dec	si
+	mov	ax, si
+	mov	ah, al
+	mov	al, 0E2h	;LOOP top
+	stosw
+	mov	al, 0CBh	;RETF
+	stosb			
+	ret
+;
+line_gencode13:
+	mov	si, word ptr line_drawcode
+if num_planes gt 2
+	add	si, 5	;Skip initial jump
+else
+	add	si, 3	;Skip initial jump
+endif
+	mov	cx, di
+	sub	cx, si	;Length of what we just generated
+	mov	bl, 0
+	mov	bh, line_flg3
+	dec	bh
+	mov	ax, cx
+	push	ds
+	mov	dx, es
+	mov	ds, dx
+	xor	dx, dx
+line_gencode14:
+	mov	cx, ax	;Make a copy of it
+	cmp	bh, bl
+	jnz	line_gencode15
+	mov	dx, di
+line_gencode15:
+	inc	bl
+	test	cx, 1
+	jz	line_gencode16
+	movsb
+line_gencode16:
+	shr	cx, 1
+	rep	movsw
+	cmp	bl, 3
+	jnz	line_gencode14
+	pop	ds
+	or	dx, dx
+	jz	line_gencode17
+	inc	line_deltac
+	mov	ax, word ptr line_drawcode
+if num_planes gt 2
+	add	ax, 5	;Skip initial jump
+else
+	add	ax, 3	;Skip initial jump
+endif
+	mov	si, ax
+	sub	dx, ax
+	sub	si, 2
+	mov	es:[si], dx
+	add	si, 2
+line_gencode17:
+	mov	al, 49h	;DEC CX
+	stosb
+	mov	al, 74h
+	mov	ah, 3
+	stosw		;JZ +3
+	mov	si, word ptr line_drawcode
+if num_planes gt 2
+	add	si, 5	;Skip initial jump
+else
+	add	si, 3	;Skip initial jump
+endif
+
+	sub	si, di
+	dec	si
+	dec	si
+	dec	si
+	mov	al, 0E9h ;JMP line_drawcode+3 (?)
+	stosb
+	mov	ax, si
+	stosw
+	mov	al, 0CBh; RETF
+	stosb
+	ret
+;
+line_prefix_rep	db	offset line_draw_rep - offset line_prefix_rep - 1
+	not	bx
+	and	[di], bx
+if num_planes eq 3
+	and	es:1[di], bl
+endif
+if num_planes eq 4
+	and	es:[di], bx
+endif
+	not	bx
+;
+line_draw_rep	db offset line_draw_tran - offset line_draw_rep - 1
+	mov	ax, 0FFFFh	
+	and	ax, bx
+	or	[di], ax
+if num_planes gt 2
+	mov	ax, 0FFFFh
+	and	ax, bx
+if num_planes eq 3
+	or	es:1[di], al
+endif
+if num_planes eq 4
+	or	es:[di], ax
+endif
+endif	;num_planes gt 2
+
+line_draw_tran	db	offset line_draw_xor - offset line_draw_tran - 1
+	not	bx
+	and	[di], bx
+if num_planes eq 3
+	and	es:1[di], bl
+endif
+if num_planes eq 4
+	and	es:[di], bx
+endif
+	not	bx
+	mov	ax, 0FFFFh
+	and	ax, bx
+	or	[di], ax
+if num_planes gt 2
+	mov	ax, 0FFFFh
+	and	ax, bx
+if num_planes eq 3
+	or	es:1[di], al
+endif
+if num_planes eq 4
+	or	es:[di], ax
+endif
+endif	;num_planes gt 2
+
+line_draw_xor	db	offset fp_mouse_fixup - offset line_draw_xor - 1
+if num_planes lt 3
+	mov	ax, 0FFFFh
+	and	ax, bx
+	xor	[di], ax
+endif
+if num_planes eq 3
+	xor	[di], bx
+	xor	es:1[di], bl
+endif
+if num_planes eq 4
+	xor	[di], bx
+	xor	es:[di], bx
+endif
+EJECT
+
+fp_mouse_fixup:
+	mov	si, offset mmask
+	mov	di, offset mptrbuf1
+	mov	bl, 0
+	call	fp_mouse_fix1
+	mov	bl, 0
+	mov	fp_mouse_rot0, bl
+fp_mouse_fix1:
+	mov	cx, 16		;16 rows
+fp_mouse_fix2:
+	lodsw
+	xchg	ah, al
+	stosw
+	mov	al, bl
+	stosb
+	loop	fp_mouse_fix2
+	ret
+;
+XLINE:
+	push	X1
+	push	X2
+	mov	bx, X1
+	cmp	bx, X2
+	jle	xline_noswap
+	xchg	bx, X2
+	xchg	bx, X1
+xline_noswap:
+if f1_colour
+	cmp	WRT_MODE, 2	;Moved up from xline_noinc below, to before
+	jnz	xline_noxor	;the concat. Bugfix?
+	cmp	LSTLIN, 0
+	jnz	xline_noxor
+	inc	X1
+xline_noxor:
+endif
+	mov	bx, X1
+	mov	ax, Y1
+	call	concat
+	and	di, 0FFFCh
+	push	patmsk
+	push	patptr
+	mov	patptr, offset LN_MASK
+	mov	patmsk, 0
+	push	NEXT_PAT
+	mov	NEXT_PAT, 0
+if not f1_colour
+	cmp	WRT_MODE, 2
+	jnz	xline_noinc
+	cmp	LSTLIN, 0
+	jnz	xline_noinc
+	inc	X1
+xline_noinc:
+endif
+	mov	cx, 1
+	call	box_fill_1
+	pop	NEXT_PAT
+	pop	patptr
+	pop	patmsk
+	mov	ax, LN_MASK
+	pop	X2
+	pop	X1
+	ret
+;
+EJECT
+;****************************************************************
+;DIS_CUR display the cursor					*
+;	Turn the cursor on for first time			*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+DIS_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli				;turn off interrupts while drawing first
+	mov	ax, HIDE_CNT
+	mov	bx, seg	HIDE_CNT	;load up the other segment
+	mov	ds, bx
+	mov	HIDE_CNT, ax
+	dec	HIDE_CNT
+	jg	dis_cur_1
+	mov	HIDE_CNT, 0		; don't allow negative
+	mov	mouse_lock, 1
+	popf
+	call	mouson			;draw new x,y
+	pushf
+	cli
+	mov	mouse_lock, 0
+dis_cur_1:
+	mov	ax, HIDE_CNT
+	popf	
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+;****************************************************************
+;HIDE_CUR turn off the cursor					*
+;	Turn the cursor off					*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+HIDE_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli
+	mov	ax, HIDE_CNT
+	mov	bx, SEG HIDE_CNT
+	mov	ds, bx
+	mov	HIDE_CNT, ax
+	inc	HIDE_CNT
+	cmp	HIDE_CNT,1		;is cursor on
+	jnz	hide_cur_1
+;
+; New in ViewMAX: KBD_MOUSE_STS toggles pointer visibility for 
+; keyboard-only mouse
+;
+	cmp	mouse_type,0
+	jnz	hide_cur_0
+	test	KBD_MOUSE_STS, 0FFh
+	jz	dis_cur_1		;I think this is a typo for 
+					;hide_cur_1, but the code at
+					;the two labels is the same.
+hide_cur_0:
+;
+; End of ViewMAX new bit
+;
+	mov	mouse_lock, 1
+	popf
+	call	mousoff			;turn cursor off
+	pushf
+	cli
+	mov	mouse_lock, 0
+hide_cur_1:
+	mov	ax, HIDE_CNT
+	popf
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+;****************************************************************
+;move_cross							*
+;	Undraw old cross hair					*
+;								*
+;	Draw new cross hair					*	
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;		bx,cx are new x,y				*
+;	Exit	none						*
+;								*
+;****************************************************************
+MOV_CUR:
+	push	bp
+	push	ds
+;
+; This will be called from interrupt code, so enable all planes explicitly.
+;
+if num_planes eq 4
+	push	si
+	xor	ax, ax
+	mov	ds, ax
+	mov	si, REG_COPY_TABLE
+	lds	si, [si]
+	add	si, 8
+	mov	ax, [si]
+	push	ax		;Original value
+	or	al, 60h		;Enable all 4 planes
+	mov	[si], ax
+	out	2Eh, ax
+endif
+	mov	ax,seg HIDE_CNT
+	mov	ds,ax
+	push	bx
+	push	cx			;save new x,y
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_1
+	call	mousoff			;undraw old x,y
+mov_cur_1:
+	pop	cx
+	pop	bx
+curon:
+	mov	gcurx,bx
+	mov	gcury,cx
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_2
+	call	mouson			;draw new x,y
+mov_cur_2:
+if num_planes eq 4
+	xor	ax, ax
+	mov	ds, ax
+	mov	si, REG_COPY_TABLE
+	lds	si, [si]
+	add	si, 8
+	pop	ax		;Original value
+	mov	[si], ax
+	out	2Eh, ax
+	pop	si
+endif
+	pop	ds
+	pop	bp
+	retf
+EJECT
+;****************************************************************
+;clip_cross							*
+;	Routine will clip the x,y location to the current	*
+;	addressable space					*
+;								*
+;	Entry	reg pair bx = new cursor x			*
+;		reg pair cx = new cursor y			*
+;	Exit	none						*
+;								*
+;****************************************************************
+clip_cross:
+	mov	al, bh
+	rcl	al, 1			; test if new x is < 0.
+	jnc	clipx1
+	xor	bx, bx			;   yes, then clip at 0
+	jmps	clipy
+clipx1:
+	mov	ax, XRESMX
+	sub	ax, bx
+	jnc	clipy			; if newx <= xresmax then clip newy
+	mov	bx, XRESMX		;   else newx = XRESMX
+clipy:
+	mov	al, ch
+	rcl	al, 1			; test if new y is < 0.
+	jnc	clipy1			; if newy >= 0 then test if < yresmx
+	xor	cx, cx			;   else clip y at 0.
+	jmp	clipdn
+clipy1:
+	mov	ax, true_yresmx
+	sub	ax, cx
+	jnc	clipdn			; if newy <= yresmax then exit
+	mov	cx, true_yresmx		;   else newy = yresmx
+clipdn:
+	ret
+;
+mouson:
+	push	ds
+	pop	es
+	mov	ax, true_yresmx
+	add	ax, 20h
+	mov	fp_mouse_maxy, ax
+	mov	bx, gcurx
+	sub	bx, mxhot
+	mov	fp_mouse_x0, bx
+	mov	ax, gcury
+	sub	ax, myhot
+	mov	fp_mouse_y0, ax
+	and	bl, 0F8h
+	mov	dx, bx
+	add	dx, 27h
+	mov	cx, ax
+	add	cx, 1Eh
+	call	mdlp
+	call	msave
+	call	rot_mouse
+	call	mdraw
+	call	cur_to_scr
+	mov	ax, gcurx
+	mov	last_gcurx, ax
+	mov	ax, gcury
+	mov	last_gcury, ax
+mouson_ret:
+	ret	
+;
+mousoff:
+	cld
+	cmp	fp_mouse_shown, 0FFh
+	jnz	mouson_ret
+	mov	fp_mouse_shown, 0
+mousoff_1:
+	push	ds
+	pop	es
+	cld
+	mov	di, offset fp_mouse_buf1
+	mov	ax, fp_mouse_x1	; For a centred cursor, this is 316
+	mov	si, fp_mouse_y1	; For a centred cursor, this is 98
+	push	fp_mouse_plane
+	mov	cx, 1
+	push	cx
+	push	si	;Hang on. SI is a Y-coord, and it sets fp_mouse_plane
+	push	ax	;to SI. This does not make sense.
+if next_plane gt 0
+	call	X4FE4		;Returns AX = byte offset within line
+else
+	call	mouse_concat
+endif
+	mov	cx, fp_mouse_y1
+	xchg	si, di
+	mov	cx, 3
+	mov	fp_mouse_vstep, 48
+	mov	bp, 16
+	jmp	X4C26	
+;
+mdraw:	mov	ax, fp_mouse_x0
+	mov	si, fp_mouse_y0
+	call	mouse_gcat
+	mov	di, offset mptrbuf1
+	xchg	si, di
+	mov	dh, 0
+	mov	bl, mous_col_map
+	mov	mous_col, bl
+mdraw1:
+	push	di
+	xor	bx, bx
+	mov	dl, mous_col
+	mov	bl, dl
+	shr	dl, 1	
+	shr	dl, 1	
+	mov	mous_col, dl
+	and	bl, 3
+	shl	bl, 1
+	call	mous_jmp_tbl[bx]
+	pop	di
+	inc	dh
+	cmp	dh, num_planes
+	jz	mdraw2
+	add	di, bytes_line - 5
+	mov	si, offset mptrbuf1
+	mov	cx, 10h
+	jmp	mdraw1
+;
+mdraw2:	ret
+;
+mous_to_00:
+	lodsw
+	mov	bx, 46[si]
+	not	ax
+	and	ax, [di]
+	not	bx
+	and	ax, bx
+	mov	[di], ax
+	lodsb
+	mov	bl, 47[si]
+	not	al
+	and	al, 2[di]
+	not	bl
+	and	al, bl
+	mov	2[di], al
+	add	di, 5
+	loop	mous_to_00
+	ret
+;
+mous_to_01:
+	lodsw
+	mov	bx, 46[si]
+	or	ax, [di]
+	not	bx
+	and	ax, bx
+	mov	[di], ax
+	lodsb
+	mov	bl, 47[si]
+	or	al, 2[di]
+	not	bl
+	and	al, bl
+	mov	2[di], al
+	add	di, 5
+	loop	mous_to_01
+	ret
+;
+mous_to_10:
+	lodsw
+	mov	bx, 46[si]
+	not	ax
+	and	ax, [di]
+	or	ax, bx
+	mov	[di], ax
+	lodsb
+	mov	bl, 47[si]
+	not	al
+	and	al, 2[di]
+	or	al, bl
+	mov	2[di], al
+	add	di, 5
+	loop	mous_to_10
+	ret
+;
+mous_to_11:
+	lodsw
+	mov	bx, 46[si]
+	or	ax, [di]
+	or	ax, bx
+	mov	[di], ax
+	lodsb
+	mov	bl, 47[si]
+	or	al, 2[di]
+	or	al, bl
+	mov	2[di], al
+	add	di, 5
+	loop	mous_to_11
+	ret
+	
+rot_mouse:
+	mov	bl, 7
+	mov	al, byte ptr fp_mouse_x0
+	and	al, bl
+	and	bl, fp_mouse_rot0
+	mov	fp_mouse_rot0, al
+	sub	al, bl
+	jz	rot_mouse2
+	jl	rot_mouse1
+	mov	si, offset mptrbuf1
+	call	mouse_rr
+	mov	si, offset mptrbuf2
+	jmp	mouse_rr
+;
+rot_mouse1:
+	neg	al
+	mov	si, offset mptrbuf1
+	call	mouse_rl
+	mov	si, offset mptrbuf2
+	jmp	mouse_rl
+;
+rot_mouse2:
+	ret
+;
+mouse_rr:	
+	mov	bl, al
+mouse_rr1:
+	mov	di, si
+	mov	cx, 48
+mouse_rr2:
+	rcr	byte ptr [di], 1
+	inc	di
+	loop	mouse_rr2
+	jc	mouse_rr3
+	and	byte ptr [si], 7Fh
+	jmp	mouse_rr4
+;
+mouse_rr3:
+	or	byte ptr [si], 80h
+mouse_rr4:
+	dec	bl
+	jnz	mouse_rr1
+	ret
+;
+mouse_rl:
+	mov	bl, al
+mouse_rl1:
+	mov	di, si
+	mov	cx, 48
+	add	di, cx
+mouse_rl2:
+	dec	di
+	rcl	byte ptr [di], 1
+	loop	mouse_rl2
+	jc	mouse_rl3
+	and	byte ptr 47[si], 0FEh
+	jmp	mouse_rl4
+;
+mouse_rl3:
+	or	byte ptr 47[si], 1
+mouse_rl4:
+	dec	bl
+	jnz	mouse_rl1
+	ret
+;
+msave:	push	ds
+	pop	es
+	mov	di, offset fp_mouse_buf1
+	mov	ax, fp_mouse_x0
+	mov	si, fp_mouse_y0
+	mov	fp_mouse_x1, ax
+	mov	fp_mouse_y1, si
+	mov	fp_mouse_shown, 0FFh
+	call	mouse_gcat
+	push	dx
+	xor	dx, dx
+msave1:	push	si
+msave2:	movsb
+	movsw
+	add	si, 2
+	loop	msave2
+	pop	si
+	inc	dl
+	cmp	dl, num_planes
+	jz	msave3
+	add	si, next_line - 5
+	mov	cx, 16
+	jmps	msave1
+;
+msave3:	pop	dx
+	ret
+;
+mrestore:
+	mov	di, offset fp_mouse_buf1
+	mov	ax, fp_mouse_x1
+	mov	si, fp_mouse_y1
+	call	mouse_gcat
+	xchg	si, di
+	push	dx
+	xor	dx, dx
+mrestore1:
+	push	di
+mrestore2:
+	movsb
+	movsw
+	add	di, 2
+	loop	mrestore2
+	pop	di
+	inc	dl
+	cmp	dl, num_planes
+	jz	mrestore3
+	add	di, next_line - 5
+	mov	cx, 16
+	jmp	mrestore1
+;
+mrestore3:	
+	pop	dx
+	ret
+;
+mouse_gcat:
+	sub	ax, fp_gcur_x
+	sar	ax, 1
+	sar	ax, 1
+	sar	ax, 1
+	sub	si, fp_gcur_y
+	mov	cx, si
+	shl	si, 1	;*2
+	shl	si, 1	;*4
+	add	si, cx	;*5
+	add	si, ax	;+x
+	add	si, offset fp_gcur_row
+	mov	cx, 16
+	ret
+	
+cur_to_scr:
+	mov	si, offset fp_gcur_row
+	mov	di, fp_mouse_dest
+	mov	cx, 5			;Form width, bytes
+	mov	fp_mouse_vstep, bytes_line - 5
+	mov	bp, mouse_cur_rows	;Rows in bitmap?
+	mov	dx, 0
+	push	dx
+	push	fp_gcur_y
+	push	fp_gcur_x
+X4C26:	jmp	X4CBA
+;
+mdlp:	call	X4C4D
+	mov	al, 0
+	mov	bx, offset fp_mouse_shown
+	cmp	[bx], al
+	jz	mdlp1
+	mov	[bx], al
+	or	bp, bp
+	jz	mdlp2
+	call	mousoff_1
+mdlp1:	call	c_mouseblit
+	ret
+;
+mdlp2:	call	c_mouseblit
+	call	mrestore
+	ret
+;
+c_mouseblit:
+	call	mouse_blit
+	ret
+;
+X4C4D:	xor	bp, bp
+	cmp	fp_mouse_shown, 0
+	jz	X4C86
+	mov	ax, fp_mouse_x0
+	mov	bx, fp_mouse_x1
+	cmp	ax, bx
+	jge	X4C62
+	xchg	ax, bx
+X4C62:	and	bl, 0F8h
+	sub	ax, bx
+	cmp	ax, 18h
+	jge	X4C86
+	mov	fp_gcur_x, bx
+	mov	ax, fp_mouse_y0
+	mov	bx, fp_mouse_y1
+	sub	ax, bx
+	jge	X4C81
+	neg	ax
+	mov	bx, fp_mouse_y0
+X4C81:	cmp	ax, 0Fh	
+	jle	X4C9C
+X4C86:	mov	ax, fp_mouse_x0
+	and	al, 0F8h
+	mov	fp_gcur_x, ax
+	mov	ax, fp_mouse_y0
+	mov	fp_gcur_y, ax
+	mov	ax, 10h
+	not	bp
+	jmps	X4CA3
+;
+X4C9C:	mov	fp_gcur_y, bx
+	add	ax, 10h
+X4CA3:	mov	mouse_cur_rows, ax
+	mov	ax, fp_gcur_x
+	push	ax
+	mov	si, fp_gcur_y
+if next_plane gt 0
+	call	X4FE4
+else
+	call	mouse_concat
+endif
+	mov	fp_mouse_dest, si
+	pop	ax
+	mov	fp_mouse_ea8, ax
+	ret
+;
+X4CBA:	mov	dx, bp		;Height, rows
+	mov	dh, cl		;Width, bytes
+	mov	fp_mfwidth, cx
+	mov	fp_mfheight, bp
+	xor	bp, bp
+	pop	cx		;Mouse X
+	sar	cx, 1
+	sar	cx, 1
+	sar	cx, 1		;/ 8
+	or	cx, cx
+	jge	X4CDF		;No clipping at left
+	neg	cx
+	add	si, cx
+if next_plane gt 0
+	shl	cx, 1
+	add	di, cx
+	shr	cx, 1
+	jmp	X4CE9
+else
+	push	cx
+	shl	cx, 1
+	add	di, cx
+	pop	cx
+	jmps	X4CE9
+
+endif
+;
+X4CDF:	add	cx, fp_mfwidth	;Width of mouse form to draw
+if next_plane gt 0
+	sub	cx, bytes_line / 2	;Compare to line width
+else
+	sub	cx, fp_mouse_e96
+endif
+	jle	X4CF2			;No clipping at right
+X4CE9:	sub	dh, cl			;DH = form width
+	jg	X4CF0
+	jmp	X4D5E			;Clipped completely out
+;
+X4CF0:	mov	bp, cx			;BP = right clip
+X4CF2:	pop	cx			;CX = Y coord
+	or	cx, cx
+	jge	X4D12			;No clipping at top
+	neg	cx
+	push	dx
+	push	cx
+	push	cx
+X4CFC:	add	si, fp_mfwidth
+	loop	X4CFC
+	pop	cx
+	mov	dl, dh
+	xor	dh, dh
+X4D07:
+if next_plane gt 0
+	cmp	fp_mouse_np, 1
+	jz	X4E89
+	inc	fp_mouse_plane
+	jmp	X4E8D
+endif
+X4E89:	add	di, bytes_line
+X4E8D:	loop	X4D07
+	pop	cx
+	pop	dx
+	jmp	X4D1C
+;
+X4D12:	add	cx, fp_mfheight		;Mouse form height
+	dec	cx
+	sub	cx, true_yresmx		;Max Y
+	jle	X4D20			;No clipping at bottom
+X4D1C:	sub	dl, cl
+	jle	X4D5F
+X4D20:	mov	ax, graph_plane
+	mov	es, ax
+	xor	ch, ch
+if next_plane gt 0
+	cmp	fp_mouse_np, 1
+	jz	X4EB3
+	call	mouse_concat
+X4EB3:
+endif
+	mov	ax, di		;ES:DI -> target  DS:SI -> source
+				;For centred pointer, ES:DI = D000:8F4E. 
+				;Hmm. It's using fp_mouse_plane to set the top
+				;2 bits of DI.  
+	mov	bh, dl		;BH = rows
+	mov	bl, 0
+mblit_plane:
+	push	di		;On successive iterations, ES:DI = D000:8F4E
+				;				   D000:8F4F
+				; (no E000:8F4E)
+				;				   E000:8F4F
+
+				;The 4-plane version has ES:DI = D000:8F4E
+				;				 D000:8F4F
+				; so we need a DEC DI here, or when flipping
+				; planes.
+				;				 E000:8F4F
+				;				 E000:8F50
+	push	si
+X4D2F:	mov	cl, dh		;CX = columns
+X4D31:	movsb			;Write to screen,
+	inc	di		;skipping every other byte.
+	loop	X4D31		;Inner loop: Copy 1 row of bytes
+	mov	di, ax		;Restore original DI
+if next_plane gt 0
+	cmp	fp_mouse_np, 1	; Changing these two lines to the two below
+	jz	X4ED0		; will break the 3-plane driver!
+;;;	test	fp_mouse_np, 1  ;
+;;;	jnz	X4ED0		; 
+	add	di, next_plane	
+	jnc	X4ED4
+endif
+X4ED0:	add	di, bytes_line	;Next row, dest
+X4ED4:	mov	ax, di
+	add	si, bp		;Next row, source
+	dec	dl
+	jnz	X4D2F
+	pop	si
+	add	si, fp_mouse_vstep	;Next plane, source?
+	pop	di
+	mov	dl, bh
+	inc	bl
+	cmp	bl, fp_mouse_np	;Count of planes?
+	jz	X4D59
+if next_plane gt 0
+	test	bl, 1			;On an even-numbered plane?
+	jz	mflip_dest		;If so, flip memory segments
+endif
+	inc	di
+	mov	ax, di
+	jmp	mblit_plane
+;
+if next_plane gt 0
+mflip_dest:
+	mov	ax, es
+	xor	ax, 3000h
+	mov	es, ax
+;
+; The 3-plane driver skips the DEC DI, because it uses planes 0, 1 and 3.
+;
+if num_planes eq 3
+	cmp	fp_mouse_np, num_planes
+	jz	mflip_dest_1
+endif
+	dec	di
+mflip_dest_1:
+	mov	ax, di
+	jmp	mblit_plane
+endif
+;
+X4D59:	push	ds
+	pop	es
+	jmp	X4D5F
+;
+X4D5E:	pop	ax
+X4D5F:	pop	ax
+	or	ax, ax
+	jz	X4D68
+	pop	fp_mouse_plane
+X4D68:	ret
+;
+
+;
+mouse_blit:
+if next_plane gt 0
+	xor	bx, bx
+	mov	cx, mouse_cur_rows
+	mov	bp, cx
+	mov	si, fp_mouse_dest
+	xor	di, di
+	cmp	fp_mouse_np, 1
+	jz	X4F85
+	cmp	fp_mouse_ea8, 0
+	jge	X4F47
+	mov	si, 0
+	mov	ax, fp_mouse_ea8
+	neg	ax
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	add	di, ax
+X4F47:	cmp	fp_mouse_plane, 0
+	jge	X4F72
+	mov	ax, fp_mouse_plane
+	add	bp, ax
+	add	cx, ax
+	neg	ax
+	mov	dx, ax
+	shl	ax, 1
+	shl	ax, 1
+	add	ax, dx
+	add	di, ax
+	mov	bx, 1
+	push	fp_mouse_plane
+	mov	fp_mouse_plane, 0
+	push	di
+	jmp	X4F73
+;
+X4F72:	push	di
+X4F73:	mov	di, si
+	call	mouse_concat
+	mov	si, di
+	pop	di
+	test	bx, 1
+	jz	X4F85
+	pop	fp_mouse_plane
+X4F85:	mov	dx, graph_plane
+	mov	ds, dx
+	add	di, offset fp_gcur_row
+else
+	mov	cx, mouse_cur_rows
+	inc	cx
+	sar	cx, 1
+	mov	bp, cx
+	mov	ax, graph_plane
+	mov	si, fp_mouse_dest
+	mov	ds, ax
+	mov	di, offset fp_gcur_row
+endif
+
+	xor	dx, dx
+X4D80:	push	si
+	push	di
+X4D82:	push	si
+	movsb
+	inc	si
+	movsb
+	inc	si
+	movsb
+	inc	si	
+	movsb
+	inc	si
+	movsb
+	pop	si
+if next_plane gt 0
+	cmp	es:fp_mouse_np, 1
+	jz	X4FAB
+	add	si, next_plane
+	jnc	X4FAF
+else
+	add	si, bytes_line
+	push	si
+	movsb
+	inc	si
+	movsb
+	inc	si
+	movsb
+	inc	si	
+	movsb
+	inc	si
+	movsb
+	pop	si
+endif
+X4FAB:	add	si, bytes_line
+X4FAF:	loop	X4D82
+	pop	di
+	add	di, bytes_line - 5
+	pop	si
+	inc	dl
+	cmp	dl, es:fp_mouse_np
+	jz	mouse_blit_end
+if next_plane gt 0
+	test	dx, 1
+	jz	mflip_source
+endif
+	mov	cx, bp
+	inc	si
+	jmp	X4D80	
+;
+if next_plane eq 0
+mouse_blit_end:	
+	push	es
+	pop	ds
+	ret
+endif
+;
+if next_plane gt 0
+mflip_source:
+	mov	ax, ds
+	xor	ax, 3000h
+	mov	ds, ax
+;
+; The 3-plane driver skips the DEC SI, because it uses planes 0, 1 and 3.
+; 
+if num_planes eq 3
+	cmp	es:fp_mouse_np, num_planes
+	jz	mflip_source_1
+endif
+	dec	si
+mflip_source_1:
+	mov	cx, bp
+	jmp	X4D80
+;
+mouse_blit_end:	
+	push	es
+	pop	ds
+	ret
+;
+X4FE4:	mov	fp_mouse_plane, si
+	mov	cx, si
+	sar	ax, 1
+	sar	ax, 1
+	and	ax, 0FFFEh
+	mov	si, ax
+	ret
+;
+mouse_concat:
+	push	bx
+	mov	ax, fp_mouse_plane
+	push	ax
+	sar	ax, 1	;/2
+	sar	ax, 1	;/4
+	shl	ax, 1	;*2
+	mov	bx, ax
+	shl	ax, 1	;*4
+	shl	ax, 1	;*8
+	add	ax, bx	;*10
+	shl	ax, 1	;*20
+	shl	ax, 1	;*40
+	shl	ax, 1	;*60
+	shl	ax, 1	;*80
+	add	di, ax
+	pop	ax
+	ror	ax, 1
+	ror	ax, 1
+	and	ax, 0C000h
+	add	di, ax
+	pop	bx
+	ret	
+else
+mouse_concat:
+	mov	cx, si
+	shl	si, 1	;*2
+	mov	bx, si
+	shl	si, 1	;*4
+	shl	si, 1	;*8
+	add	si, bx	;*10
+	shl	si, 1	;*20
+	shl	si, 1	;*40
+	shl	si, 1	;*80
+	shl	si, 1	;*160
+	sar	ax, 1
+	sar	ax, 1
+	and	ax, 0FFFEh
+	add	si, ax
+	ret
+endif
+;
+;
+EJECT
+dseg
+;******************************************************************************
+;*				DATA TO BE REASSEMBLED			      *
+;*			contains device dependent information		      *
+;******************************************************************************
+	public	Y1,Y2,X1,X2
+	public	LSTLIN
+	public	LN_MASK
+	public	FG_BP_1
+	public	txt_blt_mode
+	public	TMP_FG_BP
+	public	plane_loop_count
+if (num_planes gt 1 ) and (not segment_access )
+	public	plane_port_tbl
+	public	plane_read_tbl
+endif
+	public	WRT_MODE
+	public	GCURX,GCURY
+	public	HIDE_CNT
+	public	WORD_MASK_TABLE
+	public	plygn_bez, plygn_rrot, flit_bez, flit_bez_off
+
+	extrn	contrl_ptr:dword	;pointer to the users contrl array
+;	extrn	chrptr:word		;pointer to the character pattern
+	extrn	patptr:word		;pointer to pattern fill style
+	extrn	patmsk:word		;the mask for the pattern fills in y
+	extrn	fill_int:word
+;;;	extrn	y:word			;Not used
+	extrn	mous_ci_mask:word
+	extrn	mous_ci_data:word
+	extrn	mous_col_map:byte
+	extrn	mous_col:byte
+	extrn	mxhot:word
+	extrn	myhot:word
+	extrn	mmask:word
+	extrn	udpt_np:word
+	extrn	ud_patrn:word
+	extrn   NEXT_PAT:word
+	extrn	hollow:word
+	extrn	solid:word
+;
+if num_planes gt 2
+line_prefixes	dw	offset line_prefix_rep
+line_draws	dw	offset line_draw_rep
+		dw	0
+		dw	offset line_draw_tran
+		dw	0
+		dw	offset line_draw_xor
+		dw	0
+		dw	offset line_draw_tran
+
+if num_planes eq 4
+line_argp	dw	0FFF2h, 0FFF9h
+		dw	0FFF2h, 0FFF9h
+		dw	0, 0
+		dw	0FFF2h, 0FFF9h
+else
+line_argp	dw	0FFF1h, 0FFF8h
+		dw	0FFF1h, 0FFF8h
+		dw	0, 0
+		dw	0FFF1h, 0FFF8h
+if num_planes lt 3
+		dw	0FFF1h, 0FFF8h
+endif
+endif
+endif
+
+
+
+if msb_first
+		db	128		; 'or' mask table in stpixl
+		db	64
+		db	32
+		db	16
+		db	8
+		db	4
+		db	2
+		db	1
+else
+		db	1
+		db	2
+		db	4
+		db	8
+		db	16
+		db	32
+		db	64
+		db	128
+endif
+;
+
+if byte_swap
+word_mask_table	dw	0ffffh
+		dw	0ff7fh
+		dw	0ff3fh
+		dw	0ff1fh
+		dw	0ff0fh
+		dw	0ff07h
+		dw	0ff03h
+		dw	0ff01h
+		dw	0ff00h
+		dw	07f00h
+		dw	03f00h
+		dw	01f00h
+		dw	00f00h
+		dw	00700h
+		dw	00300h
+		dw	00100h
+		dw	0
+else
+word_mask_table	dw	0ffffh
+		dw	07fffh
+		dw	03fffh
+		dw	01fffh
+		dw	00fffh
+		dw	007ffh
+		dw	003ffh
+		dw	001ffh
+		dw	000ffh
+		dw	0007fh
+		dw	0003fh
+		dw	0001fh
+		dw	0000fh
+		dw	00007h
+		dw	00003h
+		dw	00001h
+		dw	0
+endif
+if mono_port or mono_mem
+	port_dir	db	0
+endif
+left_word_mask	dw	0
+right_word_mask	dw	0
+patcnt		dw	0	
+BOX_MODE	dw	0	
+;			
+	
+gcurx	dw	xresmx / 2		;current cursor X-coordinate
+gcury	dw	yresmx / 2		;current cursor Y-coordinate
+HIDE_CNT	dw	1
+;
+;variables used in abline
+; 
+WRT_MODE	dw	0
+LSTLIN		dw	0		;flag for last line of polline
+LN_MASK		dw	0ffffh		;line style
+TMP_FG_BP	dw	0
+txt_blt_mode	dw	0
+FG_BP_1		dw	0
+;
+wrap_around	dw	0
+yinc		dw	0
+					;0ffh for last line
+					; 0   not last line
+;
+X1	dw	0		;variables used in line drawing routine
+Y1	dw	0
+X2	dw	0
+Y2	dw	0
+;
+
+;
+;;oldbank		db	0
+if mono_multisegs or mono_xrxfp
+oldulseg	dw	0		; old mouse segment address
+endif
+mheight		dw	16		; default mouse height = 16 scanlines
+mshft		dw	0		; mouse form and mask bit alignment shift count
+mht		dw	16		; default mouse height = 16 lines
+
+oldul		dw	0		; old mouse upper left byte address
+oldmht		dw	16		; old mouse height
+ratht		dw	16		; mouse display loop count = mht
+mclip		dw	0		; mouse clipped flag
+					; 0 = not clipped, -1 = neg. clipped
+yclip		dw	0		; no. of mouse rows clipped (y < 0) 
+fp_mouse_np	db	num_planes
+fp_mouse_vstep	dw	0
+fp_mouse_dest	dw	0	
+fp_mouse_e96	dw	bytes_line/2
+		dw	16, 8, 16, 8, 0
+
+fp_mouse_maxy	dw	0
+		dw	xresmx
+		dw	yresmx
+fp_mouse_ea8	dw	0
+fp_mouse_plane	dw	0
+		dw	0, 0, 0
+fp_mouse_rot0	db	0
+		dw	0
+		dw	0
+fp_mouse_shown	db	0
+fp_mouse_x1	dw	0
+fp_mouse_y1	dw	0
+last_gcurx	dw	0
+last_gcury	dw	0
+fp_mouse_buf1	rb	48 * num_planes
+fp_gcur_x	dw	0
+fp_gcur_y	dw	0
+mouse_cur_rows	dw	1Fh
+	if num_planes eq 3
+fp_gcur_row	rb	bytes_line * num_planes - 5	;No, I don't know either
+	else
+	if num_planes gt 1 
+fp_gcur_row	rb	bytes_line * num_planes
+	else
+fp_gcur_row	rb	bytes_line + 5
+	endif
+	endif
+fp_mfwidth	dw	0
+fp_mfheight	dw	0
+fp_mouse_x0	dw	0
+fp_mouse_y0	dw	0
+mptrbuf1	rb	48
+mptrbuf2	rb	48
+mous_jmp_tbl	dw	offset	mous_to_00
+		dw	offset	mous_to_01
+		dw	offset	mous_to_10
+		dw	offset	mous_to_11
+vec_len_high		dw	1
+vec_len_low		dw	1
+plane_loop_count	db	num_planes
+if (num_planes gt 1) and (not segment_access)
+plane_port_tbl		db	plane_1_port_val	;0
+			db	plane_1_port_val	;1
+			db	plane_2_port_val	;2
+			db	plane_2_port_val	;3
+			db	plane_3_port_val	;4
+			db	plane_3_port_val	;5
+			db	plane_3_port_val	;6
+			db	plane_3_port_val	;7
+			db	plane_4_port_val	;8
+plane_read_tbl		db	plane_1_read_val	;0
+			db	plane_1_read_val	;1
+			db	plane_2_read_val	;2
+			db	plane_2_read_val	;3
+			db	plane_3_read_val	;4
+			db	plane_3_read_val	;5
+			db	plane_3_read_val	;6
+			db	plane_3_read_val	;7
+			db	plane_4_read_val	;8
+endif
+
+plygn_bez       dw 0
+flit_bez        dw 0
+flit_bez_off    dw 0
+plygn_rrot      db 0
+

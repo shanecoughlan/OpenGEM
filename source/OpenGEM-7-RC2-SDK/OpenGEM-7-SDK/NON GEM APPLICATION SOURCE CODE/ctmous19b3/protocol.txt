@@ -1,0 +1,128 @@
+Mouse reset
+-----------
+
+  1: Set UART to 'break line' state (set bit 6 in the LCR).
+  2: Clear the RTS and DTR (bits 0-1) in the MCR, wait a while.
+  3: Set the RTS and DTR bits again.
+
+
+Mouse detection (identification bytes before optional PNP data)
+---------------------------------------------------------------
+
+  Microsoft mice send 'M' after dropping and raising RTS.
+  Logitech mice send 'M3' after dropping and raising RTS.
+  Microsoft Wheel/Intellimouse mice send 'MZ@',0,0,0 after
+	dropping and raising RTS.
+
+
+===========================================================================
+Mouse Systems mode: 1200 bps, 8 data bits, 1 stop bit, no parity
+
+	      1st byte		2nd byte	  3rd byte
+	 +---------------+ +---------------+ +---------------+
+	 |1|0|0|0|0|L|M|R| |X|X|X|X|X|X|X|X| |Y|Y|Y|Y|Y|Y|Y|Y|
+	 +---------------+ +---------------+ +---------------+
+		    | | |     Xa increment      Ya increment
+		    | | |
+		    | | |       4th byte 	 5th byte
+  Left Button ------+ | |  +---------------+ +---------------+
+Middle Button --------+ |  |X|X|X|X|X|X|X|X| |Y|Y|Y|Y|Y|Y|Y|Y|
+ Right Button ----------+  +---------------+ +---------------+
+(0 if pressed)		      Xb increment      Yb increment
+			
+
+Note: Mouse Systems mouse sends two independent bytes for each direction
+in each packet.
+
+Xa/Ya - movement of the mouse since last packet (negative values - left/down).
+Xb/Yb - movement of the mouse since Xa/Ya.
+
+
+===========================================================================
+Microsoft mode: 1200 bps, 7 data bits, 1 stop bit, no parity
+
+	      1st byte		2nd byte	  3rd byte
+	 +---------------+ +---------------+ +---------------+
+	 |0|1|L|R|Y|Y|X|X| |0|0|X|X|X|X|X|X| |0|0|Y|Y|Y|Y|Y|Y|
+	 +---------------+ +---------------+ +---------------+
+	      | | \ / \ /	\----+----/	  \----+----/
+	      | |  |   |	     |		       |
+	      | |  +---|-------------|---------+       |
+	      | |      +-----+	     |	       |       |
+	      | |	    / \ /----+----\   / \ /----+----\
+	      | |	   +---------------+ +---------------+
+ Left Button -+ |	   | | | | | | | | | | | | | | | | | |
+Right Button ---+	   +---------------+ +---------------+
+(1 if pressed)		      X increment	Y increment
+
+The X and Y increment values are in 2's complement signed byte format.
+
+
+===========================================================================
+Logitech mode: 1200 bps, 7 data bits, 1 stop bit, no parity
+
+	      1st byte		2nd byte	  3rd byte
+	 +---------------+ +---------------+ +---------------+
+	 |0|1|L|R|Y|Y|X|X| |0|0|X|X|X|X|X|X| |0|0|Y|Y|Y|Y|Y|Y|
+	 +---------------+ +---------------+ +---------------+
+	      | | \ / \ /	\----+----/	  \----+----/
+	      | |  |   |	     |		       |
+	      | |  +---|-------------|---------+       |
+	      | |      +-----+	     |	       |       |
+	      | |	    / \ /----+----\   / \ /----+----\
+	      | |	   +---------------+ +---------------+
+ Left Button -+ |	   | | | | | | | | | | | | | | | | | |
+Right Button ---+	   +---------------+ +---------------+
+(1 if pressed)		      X increment	Y increment
+
+The extra byte (when middle button is pressed)
+----------------------------------------------
+
+	     4th byte
+	+---------------+
+	|0|0|M|0|0|0|0|0|
+	+---------------+
+	     |
+	Middle Button
+
+
+===========================================================================
+Serial IntelliMouse: 1200 bps, 7 data bits, 1 stop bit, no parity
+
+	      1st byte		2nd byte	  3rd byte	    4th byte
+	 +---------------+ +---------------+ +---------------+ +---------------+
+	 |0|1|L|R|Y|Y|X|X| |0|0|X|X|X|X|X|X| |0|0|Y|Y|Y|Y|Y|Y| |0|0|0|M|w|w|w|w|
+	 +---------------+ +---------------+ +---------------+ +---------------+
+	      | | \ / \ /	\----+----/	  \----+----/	      | \--+--/
+	      | |  |   |	     |		       |	      |	   |
+	      | |  +---|-------------|---------+       |      Middle -+	   |
+	      | |      +-----+	     |	       |       |      Button	   |
+	      | |	    / \ /----+----\   / \ /----+----\		   |
+	      | |	   +---------------+ +---------------+	  Wheel ---+
+ Left Button -+ |	   | | | | | | | | | | | | | | | | | |	 Movement
+Right Button ---+	   +---------------+ +---------------+
+(1 if pressed)		      X increment	Y increment
+
+The X and Y increment values are in 2's complement signed byte format.
+
+
+===========================================================================
+PS/2 IntelliMouse:
+
+	      1st byte		2nd byte	  3rd byte	    4th byte
+	 +---------------+ +---------------+ +---------------+ +---------------+
+	 |?|?|Y|X|1|M|R|L| |X|X|X|X|X|X|X|X| |Y|Y|Y|Y|Y|Y|Y|Y| |w|w|w|w|w|w|w|w|
+	 +---------------+ +---------------+ +---------------+ +---------------+
+	      | |   | | |   \------+------/   \------+------/	\-------+-----/
+	      | |   | | |	   |		     |			|
+	      +-|---|-|-|----------|-----------+     |			|
+		+---|-|-|--+	   |	       |     |			|
+		    | | |  | /-----+-------\   | /---+---------\	|
+Middle Button ------+ | | +-----------------+ +-----------------+	|
+ Right Button --------+ | | | | | | | | | | | | | | | | | | | |	|	|
+  Left Button ----------+ +-----------------+ +-----------------+     Wheel
+(1 if pressed)		      X increment	  Y increment	     Movement
+
+The X and Y increment values are in 2's complement signed byte format.
+The wheel movemement are in 2's complement signed byte format (negative
+values - move up) and usually limited by -8..+7 range.

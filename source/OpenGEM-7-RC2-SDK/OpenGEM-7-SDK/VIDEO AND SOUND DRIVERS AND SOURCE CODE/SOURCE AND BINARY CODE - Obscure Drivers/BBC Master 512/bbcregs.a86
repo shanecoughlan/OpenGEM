@@ -1,0 +1,162 @@
+false		equ	0
+true		equ	not false
+val_inc_big	equ	10			;maximum valuator increment
+val_inc_small	equ	1			;minimum valuator increment
+EJECT
+;
+;****************************************************************
+;		screen coordinate equates			*
+;   these must be changed to the values for specific machines	*
+;****************************************************************
+;
+xresmx		equ	639			;X - Maximum resolution.
+yresmx		equ	255			;Y - Maximum resolution.
+xsize		equ	429			;size of pixel in microns
+ysize		equ	858			;
+; In the BBC mono driver, graph_plane is a variable in dseg
+; graph_plane	equ	0b800h			;start of graphics plane(s) in paragraphs
+plane_size	equ	05000h			;size of a single graphics plane in bytes
+;the following equate determines the number of planes for the driver
+num_planes	equ	2			;number of planes (number in range of 1-4 typically
+num_colors	equ	4			;number of colors on screen (2-16)
+;
+mouse_bigarea	equ	false
+manual_update	equ	true			;Screen areas must be updated
+						;manually?
+;
+;The following equates define the type of memory architecture the display uses.
+;
+;Monochrome Displays with more than 64k in total bitmap. This requires banks
+;of memory to be mapped into the address space. Three techniqes are currently
+;supported memory selected banks, io port selected banks and segment selected
+;banks.
+		if	GSX
+zero_white	equ	true
+else
+zero_white	equ	false
+		endif
+wy700		equ	false		;true if a wy700 display
+prosync		equ	false
+mono_mem	equ	false		;true if bitmap banks are mapped
+ 					;in using a memory location.
+					;num_segs is used to indicate scanline
+					;maping within each bank
+mono_mem_off	equ	0		;offset used for selecting the bank
+;
+mono_port	equ	false		;true if bitmap banks are mapped in 
+					;using io port. The port is specified
+					;using plane_sel_port. The addressing
+					;is assumed to be contiguous with 
+					;num_segs=1
+;
+mono_xrxfp	equ	false		;true if bitmap has two banks mapped in
+					;using segment register as base. The 
+					;segments are selected using graph_plane
+					;and graph_plane_high. The scan line 
+					;length is NOT a binary number and 
+					;the scans are not contiguous in ram.
+					;next_line is the distance between scans
+graph_plane_high equ	0
+;
+mono_multisegs	equ	false		;true if bitmap has two banks mapped in
+					;using segment register as base. The 
+					;segments are selected using seg_low,
+					;seg_high. The scan line length is a 
+					;binary number i.e. 512, 1024, 2048
+					;the scans are contiguous in ram
+seg_low		equ	0
+seg_high	equ	0
+
+;Color Display with segment based access to multiple planes
+segment_access	equ	true			; true if color and multi 8086 segments for planes
+next_plane	equ	500h			;distance from one plane to the next in paragraphs
+;
+;the following equates are for a color driver with the planes overlayed 
+;  upon one segment in the 8086 address space. Their are equates provided for
+;  the port address, and four values pertaining to up to four plane selects
+;  to be loaded into the port. Only use as many as necessary as num_planes
+;  sets the number actually used. If the driver does not need this approach
+;  simply skip this section and proceed to the next one.
+;
+plane_sel_port	equ	0				; port used to select plane
+plane_1_port_val equ    0
+plane_2_port_val equ    0
+plane_3_port_val equ    0
+plane_4_port_val equ    0
+;
+;
+;the following equates are used to further define the memory layout of the
+;  physical bitmap
+;
+msb_first	equ	true			;true if most sig bit is left most on screen
+byte_swap	equ	false			;true if bytes are swapped (normally false)
+multiseg	equ	false			;true if screen is vertically non contiguous
+num_segs	equ	1			;number of vertical graphics segments
+bytes_line	equ	80			;total number of bytes per scan line which may be greater than (xresmx+1)/8
+;
+;the following equates define the character mode of the display typically 80x25
+;
+chars_line	equ	80			;number of characters per line
+lines_page	equ	32			;lines per alpha screen
+;
+;the following equates define the last Standard Escape function 
+;  and the last escape
+last_escape	equ	60			;last escape function id
+last_dri_escape equ	19			;last dri defined escape
+;
+;the following equate specifies whether a mouse driver is to be included
+;  normally (true).
+;
+mouse		equ	true			;mouse driver to be included
+;
+;the following equte specifies whether the driver will be black on white (true)
+;  or white on black (false).
+;
+		if	GSX
+rev_vid		equ	false
+		else
+rev_vid		equ	true
+		endif
+;
+;
+;****************************************************************
+;		    device dependent equates			*
+;   these may or may not be necessary depending on hardware	*
+;****************************************************************
+;
+if multiseg
+next_line	equ	plane_size / num_segs	;offset to get to next segment
+else
+next_line	equ	bytes_line
+endif
+neg_next_line	equ	0-next_line
+move_to_first	equ	0-plane_size+bytes_line
+move_to_last	equ	plane_size-bytes_line	;from before first to last
+cur_mot_max_x	equ	8			;how far cursor moves fast in x
+cur_mot_max_y	equ	8			;how far cursor moves fast in y
+cur_mot_min_x	equ	1			;how far cursor moves slow in x
+cur_mot_min_y	equ	1			;how far cursor moves slow in y
+;
+;
+;****************************************************************
+;		   text font buffer equates			*
+;   these must be changed to the values for specific machines	*
+;****************************************************************
+;
+left_offset	equ	0
+right_offset	equ	3
+max_cell_wd	equ	8
+cell_wd		equ	(left_offset + right_offset + max_cell_wd + 15)/8
+cell_ht		equ	8
+cell_size	equ	cell_ht*cell_wd
+;
+true_yresmx	equ	yresmx
+true_ysize	equ	ysize
+true_planes	equ	num_planes
+true_to_first	equ	move_to_first
+true_to_last	equ	move_to_last
+true_plane_size	equ	plane_size
+;
+offscreen_size	equ	8000h	;Size of offscreen backing buffer
+offscreen_seg	equ	0B800h	;Segment of offscreen backing buffer
+

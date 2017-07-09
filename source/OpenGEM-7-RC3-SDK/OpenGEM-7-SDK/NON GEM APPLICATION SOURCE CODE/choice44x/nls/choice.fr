@@ -1,0 +1,15 @@
+#Translated by Mateusz Viste "Fox" / the.killer@wp.pl
+#
+0.0:Attend que l'utilisateur appuis sur une touche … partir d'une liste de choix
+0.1:choix
+0.2:texte
+0.3:Sp‚cifie les touches disponibles.  Par d‚faut:
+0.4:N'affiche pas les choix … la fin de la question
+0.5:Diff‚rencie les majuscule
+0.6:Choisi automatiquement la touche c aprŠs nn secondes
+0.7:Le texte … afficher
+0.8:Produit un beep sonore aprŠs la question
+3.0:on
+
+0.9:Syntax de d‚lai incorrecte. La forme attendue est Tc,nn ou T:c,nn
+0.10:Le d‚lai de d‚faut n'est pas dans les choix sp‚cifi‚s.

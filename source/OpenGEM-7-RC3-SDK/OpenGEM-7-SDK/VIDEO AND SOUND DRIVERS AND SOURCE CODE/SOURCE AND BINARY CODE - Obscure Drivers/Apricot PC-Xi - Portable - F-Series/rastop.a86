@@ -1,0 +1,1736 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+; Offsets from BP in the COPY_RFM code generator
+;
+UPWARD		equ	  3	;Start at the bottom and work up
+RAPIDFLAG	equ	  6	;Special rapid blit (no shifts or raster ops)
+SRC_SCREEN	equ	  8
+SOURCE_NEXT	equ	 10
+DST_SCREEN	equ	 12
+DEST_NEXT	equ	 14
+LEFTMASK	equ	 16	;Left mask in rapid blit
+RIGHTMASK	equ	 18	;Right mask in rapid blit
+SRC_DELTA	equ	 22	;Offset/function to inc/dec source
+DST_DELTA	equ	 24	;Offset/function to inc/dec destination
+S_OFF		equ	 26	;Source address, offset
+S_SEG		equ	 28	;Source address, segment
+D_OFF		equ	 30	;Dest address, offset
+D_SEG		equ	 32	;Dest address, segment
+TRAMPOLINE	equ	 40	;DWORD pointer to generated code
+BLIT_WIDTH	equ	 80
+BLIT_RASTOP	equ	 84	;Writing mode
+if next_plane gt 0
+SRC_NEXT_OFF	equ	 94
+SRC_NEXT_SEG	equ	 96
+DEST_NEXT_OFF	equ	 98
+DEST_NEXT_SEG	equ	100
+else
+SRC_NEXT_OFF	equ	 96	;Not sure why these are the other way round
+SRC_NEXT_SEG	equ	 94	;between F1COL+PORTLCD, and PORTCOL.
+DEST_NEXT_OFF	equ	100
+DEST_NEXT_SEG	equ	 98
+endif
+
+		dseg
+		extrn	CONTRL:word
+		extrn	PTSIN:word
+		extrn	INTIN:word
+		extrn	line_offsets:word
+		extrn	patmsk:word
+		extrn	patptr:word
+		extrn	NEXT_PAT:word
+		extrn	X1:word, Y1:word
+		extrn	X2:word, Y2:word
+		extrn	hollow:word, solid:word
+		extrn	WRT_MODE:word
+		extrn	FG_BP_1:word
+		public	tran_blt_map
+		public	tran_blt_tbl
+		cseg
+		extrn	BOX_FILL:near
+
+;
+; Code snippets for the COPY_RFM code generator
+;
+crfm_rop0	db	offset crfm_ropa - offset crfm_rop0 - 1
+		mov	al, es:[di]
+		and	al, cl
+		stosb
+;
+crfm_ropa	db	offset crfm_ropf - offset crfm_ropa - 1
+		mov	al, es:[di]
+		xor	al, ch
+		stosb
+;
+crfm_ropf	db	offset crfm_rop3 - offset crfm_ropf - 1	
+		mov	al, es:[di]
+		or	al, ch
+		stosb
+;
+crfm_rop3	db	offset crfm_rop2 - offset crfm_rop3 - 1
+		mov	ah, es:[di]
+		and	al, ch
+		and	ah, cl
+		or	al, ah
+		stosb
+;
+crfm_rop2	db	offset crfm_rop1 - offset crfm_rop2 - 1
+;
+; This is rather longer than the original code -- but it works, which the
+; original didn't.
+;
+		mov	ah, es:[di]	;Existing pattern
+		xor	ah, ch		;Flip those bits we're applying the
+		and	al, ah		;operation to
+		and	al, ch		;and mask AL down to those bits.
+		and	ah, cl		;Now OR in the ones we're not touching.
+		or	al, ah
+		stosb
+;
+crfm_rop1	db	offset crfm_rop6 - offset crfm_rop1 - 1
+		or	al, cl
+		and	al, es:[di]
+		stosb
+;
+crfm_rop6	db	offset crfm_rop7 - offset crfm_rop6 - 1
+		and	al, ch
+		xor	al, es:[di]
+		stosb
+;
+crfm_rop7	db	offset crfm_rope - offset crfm_rop7 - 1
+		and	al, ch
+		or	al, es:[di]
+		stosb
+;
+crfm_rope	db	offset crfm_rop9 - offset crfm_rope - 1
+		or	al, cl
+		and	al, es:[di]
+		xor	al, ch
+		stosb
+;
+crfm_rop9	db	offset crfm_ropb - offset crfm_rop9 - 1	
+		and	al, ch
+		xor	al, es:[di]
+		xor	al, ch
+		stosb
+
+crfm_ropb	db	offset crfm_rop8 - offset crfm_ropb - 1
+		and	al, ch
+		mov	ah, es:[di]
+		xor	ah, ch
+		or	al, ah
+		stosb
+
+crfm_rop8	db	offset crfm_trn0 - offset crfm_rop8 - 1
+		and	al, ch
+		or	al, es:[di]
+		xor	al, ch
+		stosb
+
+crfm_trn0	db	offset crfm_trna - offset crfm_trn0 - 1
+		xor	al, al
+		stosb
+
+crfm_trna	db	offset crfm_trnf - offset crfm_trna - 1
+		mov	al, es:[di]
+		not	al
+		stosb
+
+crfm_trnf	db	offset crfm_trn3 - offset crfm_trnf - 1
+		mov	al, 0FFh
+		stosw			;Why STOS_W_?
+
+crfm_trn3	db	offset crfm_trn2 - offset crfm_trn3 - 1
+		stosb
+
+crfm_trn2	db	offset crfm_trn1 - offset crfm_trn2 - 1
+		mov	ah, es:[di]
+		not	ah
+		and	al, ah
+		stosb
+
+crfm_trn1	db	offset crfm_trn6 - offset crfm_trn1 - 1
+		and	al, es:[di]
+		stosb
+
+crfm_trn6	db	offset crfm_trn7 - offset crfm_trn6 - 1
+		xor	al, es:[di]
+		stosb
+
+crfm_trn7	db	offset crfm_trne - offset crfm_trn7 - 1
+		or	al, es:[di]
+		stosb
+
+crfm_trne	db	offset crfm_trn9 - offset crfm_trne - 1
+		and	al, es:[di]
+		not	al
+		stosb
+
+crfm_trn9	db	offset crfm_trnb - offset crfm_trn9 - 1
+		xor	al, es:[di]
+		not	al
+		stosb
+
+crfm_trnb	db	offset crfm_trn8 - offset crfm_trnb - 1
+		mov	ah, es:[di]
+		not	ah
+		or	al, ah
+		stosb
+
+crfm_trn8	db	offset snip1     - offset crfm_trn8 - 1
+		or	al, es:[di]
+		not	al
+		stosb
+
+snip1:		mov	ah, al
+		and	ax, dx
+		or	al, bh
+		mov	bh, ah
+snip1e:
+
+if next_plane gt 0
+si_dline:	sub	si, next_plane
+		jnc	si_dline1
+		sub	si, bytes_line
+si_dline1:
+si_iline:	add	si, next_plane
+		jnc	si_iline1
+		add	si, bytes_line
+si_iline1:
+di_dline:	sub	di, next_plane
+		jnc	di_dline1
+		sub	di, bytes_line
+di_dline1:
+di_iline:	add	di, next_plane
+		jnc	di_iline1
+		add	di, bytes_line
+di_iline1:
+
+else
+si_dline:	sub	si, bytes_line
+si_iline:	add	si, bytes_line
+di_dline:	sub	di, bytes_line
+di_iline:	add	di, bytes_line
+endif
+
+snip2:		dec	bp
+		db	74h, 3	;JZ $+5
+		db	0E9h	;JMP
+
+snip3		db	offset snip3e - offset snip3 - 1
+		mov	bx, es:[di]
+		and	bx, dx
+		not	dx
+		and	ax, dx
+		or	ax, bx
+		stosw
+snip3e:
+
+if num_planes gt 2
+
+snip4		db	offset snip4e - offset snip4 - 1
+		mov	ax, es
+		xor	ax, 3000h
+		mov	es, ax
+		mov	ds, ax
+		cmp	ax, graph_plane
+		db	74h, 3	;JZ $+4
+snip4e:
+endif
+
+
+rfm_genfetch:	
+	cmp	byte ptr 36[bp], 2	;Need to load source?
+	jz	rfm_genfetch_end
+	mov	al, 0ACh		;LODSB
+	stosb
+	mov	al, 36[bp]
+	cmp	al, 1			;Inverting source?
+	jnz	rfm_genfetch_1
+	mov	ax, 0D0F6h		;NOT AL
+	stosw
+rfm_genfetch_1:	
+	mov	cl, 0[bp]		;Rotate?
+	or	cl, cl
+	jz	rfm_genfetch_end
+	mov	ax, 0C0D0h		;ROL AL, 1
+	cmp	cl, 5
+	jc	rfm_genfetch_2
+	neg	cl
+	add	cl, 8
+	mov	ax, 0C8D0h		;ROR AL, 1
+rfm_genfetch_2:	
+	rep	stosw
+	mov	si, offset snip1
+	mov	cx, 8
+	shr	cx, 1
+	rep	movsw
+rfm_genfetch_end:	
+	ret
+;
+rfm_mkcode:
+	mov	ax, cs
+	mov	ds, ax	;DS -> source for code fragments
+	mov	dx, ss
+	mov	es, dx	;ES -> code being generated
+	xor	cx, cx
+	mov	TRAMPOLINE[bp], di
+	mov	TRAMPOLINE+2[bp], dx
+	mov	ax, 0E98Bh	;MOVE BP, CX
+	stosw
+	mov	ax, 5657h	;PUSH DI ! PUSH SI
+	stosw
+	mov	al, RAPIDFLAG[bp]
+	test	al, 1
+	jz	rfm_mkcode1
+	jmp	rfm_mkrapid
+;
+rfm_mkcode1:
+if num_planes gt 1
+	cmp	word ptr 52[bp], 0
+	jnz	rfm_mkcode1b
+	test	word ptr DST_SCREEN[bp], 1
+	jnz	rfm_mkcode1a
+if num_planes gt 2
+	mov	ax, 6		;PUSH ES
+else
+	mov	al, 6		;PUSH ES
+endif
+	stosb
+rfm_mkcode1a:
+	test	word ptr SRC_SCREEN[bp], 1
+	jnz	rfm_mkcode1b
+	mov	al, 1Eh		;PUSH DS
+	stosb
+rfm_mkcode1b:
+	cmp	word ptr 52[bp], 2
+	jz	rfm_mkcode1c
+if num_planes gt 2
+	cmp	word ptr 52[bp], 1
+	jz	rfm_mkcode1w
+	mov	ax, DST_SCREEN[bp]
+	or	ax, SRC_SCREEN[bp]
+	jz	rfm_mkcode1w
+	mov	al, 0B8h	;MOX AX,
+	stosb
+	mov	ax, graph_plane
+	stosw
+	test	word ptr DST_SCREEN[bp], 1
+	jz	rfm_mkcode1v
+	mov	ax, 0C08Eh	;MOV ES, AX
+	stosw
+rfm_mkcode1v:
+	test	word ptr SRC_SCREEN[bp], 1
+	jz	rfm_mkcode1w
+	mov	ax, 0D88Eh	;MOV DS, AX
+	stosw
+rfm_mkcode1w:
+	mov	al, 0B9h	;MOV CX,
+	stosb
+	mov	ax, num_planes
+	cmp	word ptr 52[bp], 1
+	jnz	rfm_mkcode1x
+	mov	ax, 2
+rfm_mkcode1x:
+else
+	mov	al, 0B9h	;MOV CX,
+	stosb
+	mov	ax, num_planes	;num_planes
+endif
+	stosw
+	push	di
+	mov	al, 51h		;PUSH CX
+	stosb
+	mov	ax, 5657h	;PUSH DI ! PUSH SI
+	stosw
+rfm_mkcode1c:
+endif ;num_planes gt 1
+	mov	al, 0BAh	;MOV DX,
+	stosb
+	mov	ax, 20[bp]
+	stosw
+	mov	ax, 0FF32h	;PUSH [BP+SI]
+	stosw
+	call	rfm_genfetch
+	cmp	byte ptr 4[bp], 1
+	jnz	rfm_mkcode3
+	cmp	byte ptr 58[bp], 0
+	jz	rfm_mkcode2
+	cmp	word ptr SRC_SCREEN[bp], 0
+	jz	rfm_mkcode2
+	mov	ax, 50[bp]
+	stosb
+rfm_mkcode2:
+	call	rfm_genfetch
+rfm_mkcode3:
+	mov	al, 0B9h	;MOV CX,
+	stosb
+	mov	ax, LEFTMASK[bp]
+	stosw
+	xor	bx, bx
+	mov	bl, 37[bp]
+	shl	bx, 1
+	mov	si, cs:crfm_rop[bx]
+	mov	bx, cs:crfm_trn[bx]
+	push	si
+	lodsb
+	test	al, 1
+	jz	rfm_mkcode4
+	movsb
+rfm_mkcode4:
+	mov	ch, 0
+	mov	cl, al
+	shr	cx, 1
+	jcxz	rfm_mkcode5
+	rep	movsw
+rfm_mkcode5:
+	mov	dx, 44[bp]
+	or	dx, dx
+	jz	rfm_mkcode6
+	mov	al, 0[bp]
+	or	al, BLIT_RASTOP[bp]
+	jmp	rfm_mkcode7
+;
+rfm_mkcode6:
+	mov	dh, 56[bp]
+	mov	dl, 57[bp]
+	jmp	rfm_mkcode16
+;
+rfm_mkcode7:
+	mov	byte ptr RAPIDFLAG[bp], 0
+	cmp	dx, 4
+	jbe	rfm_mkcode8
+	mov	byte ptr RAPIDFLAG[bp], 1
+	mov	al, 0B9h	;MOV CX,
+	stosb
+	mov	ax, dx
+	shr	ax, 1
+	shr	ax, 1		;Words
+	and	dx, 3		;Bits
+	stosw
+	mov	cl, dl
+	mov	dx, 4
+	or	cl, cl
+	jz	rfm_mkcode8
+	or	byte ptr RAPIDFLAG[bp], 2
+	mov	al, 0EBh	;JMPS
+	stosb
+	inc	es:word ptr -3[di]
+	inc	di		;Jump offset
+rfm_mkcode8:
+	push	di
+	mov	cx, dx
+	mov	dh, 56[bp]
+	mov	dl, 57[bp]
+	xor	ax, ax
+rfm_mkcode9:
+	cmp	al, 54[bp]
+	jnz	rfm_mkcode10
+	push	di
+rfm_mkcode10:
+	inc	ax
+	push	ax
+	push	cx
+	ror	dh, 1
+	jnc	rfm_mkcode11
+	mov	ax, 50[bp]
+	stosb
+rfm_mkcode11:
+	push	dx
+	call	rfm_genfetch
+	pop	dx
+	ror	dl, 1
+	jnc	rfm_mkcode12
+	mov	ax, 48[bp]
+	stosb
+rfm_mkcode12:
+	mov	si, bx
+	lodsb
+	test	al, 1
+	jz	rfm_mkcode13
+	movsb
+rfm_mkcode13:
+if num_planes gt 2
+	xor	ch, ch	;Um, okay.
+else
+	mov	ch, 0
+endif
+	mov	cl, al
+	shr	cx, 1
+	jcxz	rfm_mkcode14
+	rep	movsw
+rfm_mkcode14:
+	pop	cx
+	pop	ax
+	loop	rfm_mkcode9
+	pop	ax
+	pop	si
+	ror	byte ptr RAPIDFLAG[bp], 1
+	jnc	rfm_mkcode16
+	ror	byte ptr RAPIDFLAG[bp], 1
+	jnc	rfm_mkcode15
+	sub	ax, si
+	mov	es:byte ptr -1[si],al
+rfm_mkcode15:
+	sub	si, di
+	dec	si
+	dec	si
+	mov	ax, si
+	mov	ah, al
+	mov	al, 0E2h
+	stosw		;LOOP (si-di)
+rfm_mkcode16:
+	pop	bx
+	cmp	byte ptr 7[bp], 0
+	jnz	rfm_mkcode17
+	jmp	rfm_mkcode21
+;
+rfm_mkcode17:
+	ror	dh, 1
+	jnc	rfm_mkcode18
+	mov	ax, 50[bp]
+	stosb
+rfm_mkcode18:
+	push	dx
+	call	rfm_genfetch
+	pop	dx
+	mov	al, 0B9h	;MOV CX
+	stosb
+	mov	ax, RIGHTMASK[bp]
+	stosw
+	ror	dl, 1
+	jnc	rfm_mkcode19
+	mov	ax, 48[bp]
+	stosb
+rfm_mkcode19:
+	mov	si, bx
+	lodsb
+	test	al, 1
+	jz	rfm_mkcode20
+	movsb
+rfm_mkcode20:
+if num_planes gt 2
+	xor	ch, ch	;Um, okay.
+else
+	mov	ch, 0
+endif
+	mov	cl, al
+	shr	cx, 1
+	jcxz	rfm_mkcode21
+	rep	movsw
+rfm_mkcode21:
+if num_planes gt 2
+	cmp	word ptr 52[bp], 2
+	jnz	rfm_mkcode21a
+	jmp	rfm_mkcode21z
+rfm_mkcode21a:
+	cmp	word ptr 52[bp], 0
+	jz	rfm_mkcode21b
+	mov	ax, 5F5Eh	;POP SI ! POP DI
+	stosw
+	mov	al, 59h		;POP CX
+	stosb
+	mov	ax, 47h		;INC DL
+	stosb
+	jmp	rfm_mkcode21j
+;
+rfm_mkcode21b:
+	mov	ax, 5F5Eh	;POP SI ! POP DI
+	stosw
+	mov	al, 59h		;POP CX
+	stosb
+	mov	ax, DST_SCREEN[bp]
+	or	ax, SRC_SCREEN[bp]
+	jnz	rfm_mkcode21c	
+	jmp	rfm_mkcode21h	
+;
+rfm_mkcode21c:
+	mov	ax, 0C1F6h
+	stosw
+	mov	al, 1		;TEST CL, 1	
+	stosb
+	mov	al, 74h
+	stosb			;JZ xxx
+	inc	di
+	push	di
+	test	word ptr DST_SCREEN[bp], 1
+	jz	rfm_mkcode21d
+	mov	ax, 0F781h	;XOR DI, 1
+	stosw
+	mov	ax, 1
+	stosw
+rfm_mkcode21d:
+	test	word ptr SRC_SCREEN[bp], 1
+	jz	rfm_mkcode21e
+	mov	ax, 0F681h	;XOR SI, 1
+	stosw
+	mov	ax, 1
+	stosw
+rfm_mkcode21e:
+	mov	al, 0EBh	;JMPS
+	stosb
+	inc	di
+	push	di
+	test	word ptr DST_SCREEN[bp], 1
+	jz	rfm_mkcode21f
+	mov	ax, 0C08Ch	;MOV AX, ES
+	stosw
+	mov	al, 35h		;XOR AX,
+	stosb
+	mov	ax, 3000h	;3000h
+	stosw
+	mov	ax, 0C08Eh	;MOV ES, AX
+	stosw
+rfm_mkcode21f:
+	test	word ptr SRC_SCREEN[bp], 1
+	jz	rfm_mkcode21g
+	mov	ax, 0D88Ch	;MOV AX, DS
+	stosw
+	mov	al, 35h		;XOR AX,
+	stosb
+	mov	ax, 3000h	;3000h
+	stosw
+	mov	ax, 0D88Eh
+	stosw
+rfm_mkcode21g:
+	pop	si
+	mov	ax, di
+	mov	cx, si
+	sub	ax, si
+	mov	es:byte ptr -1[si], al
+	pop	si
+	sub	cx, si
+	mov	es:byte ptr -1[si], cl
+rfm_mkcode21h:
+	test 	word ptr DST_SCREEN[bp], 1
+	jnz	rfm_mkcode21i
+	mov	ax, 0C781h	;ADD DI,
+	stosw
+	mov	ax, DEST_NEXT_OFF[bp]
+	stosw
+	mov	ax, 0C08Ch	;MOV AX, ES
+	stosw
+	mov	ax, 5		;ADD AX, 
+	stosb
+	mov	ax, DEST_NEXT_SEG[bp]
+	stosw
+	mov	ax, 0C08Eh	;MOV ES, AX
+	stosw
+rfm_mkcode21i:
+	test	word ptr SRC_SCREEN[bp], 1
+	jnz	rfm_mkcode21j
+	mov	ax, 0C681h	;ADD SI,
+	stosw
+	mov	ax, SRC_NEXT_OFF[bp]
+	stosw
+	mov	ax, 0D88Ch	;MOV AX, DS
+	stosw
+	mov	ax, 5		;ADD AX,
+	stosb
+	mov	ax, SRC_NEXT_SEG[bp]
+	stosw
+	mov	ax, 0D88Eh	;MOV ES, AX
+	stosw
+rfm_mkcode21j:
+	mov	al, 49h		;DEC CX
+	stosb
+	mov	al, 74h
+	mov	ah, 3		;JZ +3
+	stosw
+	mov	al, 0E9h	;JMP
+	stosb
+	pop	si
+	sub	si, di
+	sub	si, 2
+	mov	ax, si
+	stosw			;target
+rfm_mkcode21z:
+	cmp	word ptr 52[bp], 0
+	jnz	rfm_mkcode21m
+	test	word ptr SRC_SCREEN[bp], 1
+	jnz	rfm_mkcode21l
+	mov	al, 1Fh		;POP DS
+	stosb
+rfm_mkcode21l:
+	test	word ptr DST_SCREEN[bp], 1
+	jnz	rfm_mkcode21m
+	mov	al, 7		;POP DS
+	stosb
+rfm_mkcode21m:
+else 			;num_planes gt 2
+if num_planes gt 1
+	cmp	word ptr 52[bp], 2
+	jz	rfm_mkcode21z
+	mov	ax, 5F5Eh	;POP SI ! POP DI
+	stosw
+	mov	al, 59h		;POP CX
+	stosb
+	test	word ptr DST_SCREEN[bp], 1
+	jnz	rfm_mkcode21a
+	mov	ax, 0C781h	;ADD DI,
+	stosw
+	mov	ax, DEST_NEXT_OFF[bp]
+	stosw
+	mov	ax, 0C08Ch	;MOV AX, ES
+	stosw
+	mov	ax, 5		;ADD AX, 
+	stosb
+	mov	ax, DEST_NEXT_SEG[bp]
+	stosw
+	mov	ax, 0C08Eh	;MOV ES, AX
+	stosw
+	jmps	rfm_mkcode21b
+;
+rfm_mkcode21a:
+	mov	al, 47h		;INC DI
+	stosb
+rfm_mkcode21b:
+	test	word ptr SRC_SCREEN[bp], 1
+	jnz	rfm_mkcode21c
+	cmp	word ptr 52[bp], 1
+	jz	rfm_mkcode21d
+	mov	ax, 0C681h	;ADD SI,
+	stosw
+	mov	ax, SRC_NEXT_OFF[bp]
+	stosw
+	mov	ax, 0D88Ch	;MOV AX, DS
+	stosw
+	mov	ax, 5		;ADD AX,
+	stosb
+	mov	ax, SRC_NEXT_SEG[bp]
+	stosw
+	mov	ax, 0D88Eh	;MOV ES, AX
+	stosw
+	jmps	rfm_mkcode21d
+;
+rfm_mkcode21c:
+	mov	al, 46h		;INC SI
+	stosb
+rfm_mkcode21d:
+	mov	ax, 0E9D1h	;SHR CX, 1
+	stosw
+	mov	al, 74h
+	mov	ah, 3		;JZ +3
+	stosw
+	mov	al, 0E9h	;JMP
+	stosb
+	pop	si
+	sub	si, di
+	sub	si, 2
+	mov	ax, si
+	stosw			;target
+rfm_mkcode21z:
+	cmp	word ptr 52[bp], 0
+	jnz	rfm_mkcode21g
+	test	word ptr SRC_SCREEN[bp], 1
+	jnz	rfm_mkcode21f
+	mov	al, 1Fh		;POP DS
+	stosb
+rfm_mkcode21f:
+	test	word ptr DST_SCREEN[bp], 1
+	jnz	rfm_mkcode21g
+	mov	al, 7		;POP ES
+	stosb
+rfm_mkcode21g:
+else			;num_planes gt 1
+rfm_mkcode21z:
+endif			;num_planes gt 1
+endif			;num_planes gt 2
+	mov	al, 5Eh		;POP SI
+	stosb
+	test	word ptr SRC_SCREEN[bp], 1	;Source is screen
+	jnz	rfm_mkcode22
+	mov	ax, 0C681h		;ADD SI,
+	stosw
+	mov	ax, SRC_DELTA[bp]	;src_offset
+	stosw
+	jmps	rfm_mkcode23
+;
+rfm_mkcode22:
+	mov	si, SRC_DELTA[bp]	;Screen src inc/dec function
+	movsw
+	movsw
+if next_plane gt 0
+	movsw
+	movsw
+	movsw
+endif
+rfm_mkcode23:
+	mov	al, 5Fh			;POP DI
+	stosb
+	test	word ptr DST_SCREEN[bp], 1	;Dest is screen
+	jnz	rfm_mkcode24
+	mov	ax, 0C781h		;ADD DI,
+	stosw
+	mov	ax, DST_DELTA[bp]	;dst_offset
+	stosw
+	jmps	rfm_mkcode25
+;
+rfm_mkcode24:
+	mov	si, DST_DELTA[bp]	;Screen dest inc/dec function
+	movsw
+	movsw
+if next_plane gt 0
+	movsw
+	movsw
+	movsw
+endif
+rfm_mkcode25:
+	mov	si, offset snip2
+	movsw
+	movsw
+	mov	ax, TRAMPOLINE[bp]
+	sub	ax, di
+	stosw
+	mov	al, 0CBh		;RETF
+	stosb
+	lds	si, S_OFF[bp]
+	les	di, D_OFF[bp]
+	mov	cx, 46[bp]
+	cld
+	cmp	byte ptr 5[bp], 1
+	jz	rfm_mkcode26
+	std
+rfm_mkcode26:
+	ret	
+;
+rfm_rapid:
+	mov	byte ptr RAPIDFLAG[bp], 0
+	xor	ax, ax
+	mov	bx, DST_SCREEN[bp]
+	and	bx, SRC_SCREEN[bp]
+	jz	rfm_rapid_no
+	cmp	byte ptr 0[bp], 0
+	jnz	rfm_rapid_no
+	cmp	word ptr BLIT_RASTOP[bp], 3
+	jnz	rfm_rapid_no
+if num_planes lt 3
+	mov	bx, PTSIN		;Copying from X=0 to X=0?
+	or	bx, word ptr PTSIN+8
+	jnz	rfm_rapid_yes
+	cmp	word ptr BLIT_WIDTH[bp], xresmx	;And copying the whole screen?
+	jnz	rfm_rapid_yes
+	call	s_to_s_blit	;Scrolling the entire screen has its own
+	mov	ax, -1		;special optimisation for 1- and 2-plane cases.
+	ret
+endif
+;
+rfm_rapid_yes:
+	or	byte ptr RAPIDFLAG[bp], 1
+rfm_rapid_no:
+	ret
+;
+; Generate the specialised code for a 'rapid' transfer: no raster ops,
+; and no memory<-->screen transformations. Just a straightforward copy of
+; bytes, perhaps with fringing.
+;
+rfm_mkrapid:
+	mov	al, 55h		;PUSH BP
+	stosb
+if num_planes gt 2
+	push	di
+	mov	ax, 5657h	;PUSH DI ! PUSH SI
+	stosw
+endif
+	mov	al, 0BAh	;MOV DX,
+	stosb
+	mov	ax, LEFTMASK[bp]
+	mov	ah, al
+	stosw
+	mov	al, 0BDh	;MOV BP,
+	stosb
+	mov	ax, RIGHTMASK[bp]
+	mov	ah, al
+	stosw
+	mov	al, 0ADh	;LODSW
+	stosb
+	mov	si, offset snip3
+	lodsb
+	mov	ch, 0
+	mov	cl, al
+if num_planes gt 2
+	rep	movsb
+else
+	shr	cx, 1
+	rep	movsw
+endif
+	mov	al, 0B9h	;MOV CX,
+	stosb
+	mov	ax, 44[bp]
+	stosw
+	mov	al, 0F3h	;REP
+	mov	ah, 0A5h	;MOVSW
+	stosw
+	mov	ax, 0EA89h	;MOV DX,BP
+	stosw
+	mov	al, 0ADh	;LODSW
+	stosb
+	mov	si, offset snip3
+	lodsb
+	mov	ch, 0
+	mov	cl, al
+	rep	movsb
+if num_planes gt 2
+	mov	ax, 5F5Eh	;POP SI ! POP DI
+	stosw
+	mov	si, offset snip4
+	lodsb
+	mov	ch, 0
+	mov	cl, al
+	rep	movsb
+	mov	al, 0E9h	;JMP
+	stosb
+	pop	ax
+	sub	ax, di
+	dec	ax
+	dec	ax
+	stosw
+endif
+	mov	al, 5Dh		;POP BP
+	stosb
+	jmp	rfm_mkcode21z
+
+;
+if num_planes lt 3	;No special screen->screen blit for 3- or 4-plane modes
+s_to_s_blit:
+	mov	ax, PTSIN+2
+	mov	byte ptr UPWARD[bp], 1
+	mov	bx, PTSIN+10
+	cmp	ax, bx
+	jl	s_to_s_blit1
+	mov	byte ptr UPWARD[bp], 0
+s_to_s_blit1:
+	shl	bx, 1
+	mov	di, line_offsets[bx]
+	mov	bx, ax
+	shl	bx, 1
+	mov	si, line_offsets[bx]
+	mov	ax, 82[bp]
+	shl	ax, 1
+	mov	bx, ax
+	shl	ax, 1
+	shl	ax, 1
+	add	ax, bx
+	shl	ax, 1	
+	shl	ax, 1	
+	shl	ax, 1	
+	mov	cx, ax
+	mov	dx, ax
+	cmp	byte ptr UPWARD[bp], 0
+	jz	s_to_s_blit2
+	cld
+	jmp	s_to_s_blit3
+;
+s_to_s_blit2:
+	std
+	shl	dx, 1
+	sub	dx, 2	;Going backward; point SI and DI at the ends
+	add	si, dx	;of the buffers
+	add	di, dx
+s_to_s_blit3:
+	mov	ax, graph_plane
+	mov	es, ax
+	mov	ds, ax
+	rep	movsw
+	cld
+	ret
+endif
+;
+rfm_forward:
+	mov	byte ptr 5[bp], 1
+	mov	ch, rfm_bmask_l[bx]
+	mov	byte ptr 4[bp], 1
+	sub	al, bl
+	ja	rfm_forward_1
+	add	al, 8
+	and	al, 7
+	mov	byte ptr 4[bp], 0
+rfm_forward_1:
+	add	bx, dx
+	mov	dx, bx
+	and	bx, 7
+	mov	cl, rfm_bmask_r[bx]
+	mov	bl, al
+	add	bx, bx
+	mov	bx, rfm_wmask[bx]
+	ret
+;
+rfm_backward:
+	mov	byte ptr 5[bp], 0
+	mov	cl, rfm_bmask_l[bx]
+	add	ax, dx
+	add	bx, dx
+	add	di, dx
+	add	si, dx
+	mov	dx, bx
+	and	ax, 7
+	and	bx, 7
+	mov	ch, rfm_bmask_r[bx]
+	mov	byte ptr 4[bp], 0
+	sub	al, bl
+	jnc	rfm_backward_1
+	add	al, 8
+	and	al, 7
+	mov	byte ptr 4[bp], 1
+rfm_backward_1:
+	mov	ah, cl
+	mov	cl, al
+	mov	bx, 0FFh
+	shl	bx, cl
+	mov	cl, ah
+	ret
+;
+blt_init:
+	mov	byte ptr 54[bp], 0
+	mov	ax, 44[bp]
+	mov	cx, ax
+	shr	ax, 1
+	shr	ax, 1
+	and	cx, 3
+	or	al, al
+	jz	blt_init1
+	or	cl, cl
+	jz	blt_init1
+	mov	ah, 4
+	sub	ah, cl
+	mov	54[bp], ah
+blt_init1:
+	mov	byte ptr 58[bp], 0
+	mov	word ptr 56[bp], 0
+	cmp	word ptr SRC_SCREEN[bp], 0
+	jz	blt_init2
+	mov	byte ptr 56[bp], 0FFh
+	mov	byte ptr 58[bp], 1
+blt_init2:
+	cmp	word ptr DST_SCREEN[bp], 0
+	jz	blt_init3
+	mov	byte ptr 57[bp], 0FFh
+	mov	byte ptr 58[bp], 1
+blt_init3:
+	ret
+;
+
+public	COPY_RFM
+
+;******************************************************************************
+;
+; COPY_RFM
+;
+; Bit block transfer
+;	
+; Inputs:	Source Memory Form Definition Block	
+;		  Source Form Memory pointer (Offset, Segment)
+;		  Source Form Width and Height in Pixels
+;		  Source Form Width in Words
+;		  Source Form Format (0 = Device, 1 = Standard)
+;		  No. of Memory Planes in Source Form
+;		Writing Mode (Intin)
+;		Source Rectangle Upper and Lower X, Y Coordinates (Ptsin)
+;
+;		Ditto for Destination Form
+; Process:	The main process of bitblt does the following:
+;		    { load source (ds:si)
+;		      align bits (with destination bit position)
+;		      apply writing mode
+;		      store into destination (es:di) }
+;		    the process is repeated for the rectangle width (bytes)
+;		        and repeated for the rectangle height (scan lines).
+;    
+;		There are several additional considerations:
+;
+;		1. The start and end bytes (rectangle fringe) need special
+;		   blt mask so that bits outside the copy rectangle are
+;		   NOT altered.
+;
+;		2. A fast fetch and store innerloop blt can be used for
+;		   the words between the first and the last byte.
+;
+;		3. Overlapping source and destination rectangle must be
+;		   handled so source data is not destroyed before copy
+;		   occurs.  Only rectangles (source and detination) that
+;		   are in the same Form (defined by its form address) will
+;		   be checked, rectangles that are in different forms will
+;		   automatically marked as not overlapping.
+;
+;		5. Normal bitblt copies from left to right (x) and from
+;		   top to bottom (y), depending on the overlapping condition,
+;		   copy direction may need to be changed to start from 
+;		   right to left or bottom to top, (but never both backwards).
+;
+;		6. Memory Forms have either a standard format or device
+;		   dependent format or it may be the physical screen (indicated
+;		   by zero address).  The physical address computation module
+;		   need to check the form format flag in order to setup 
+;		   the source (ds:si) and destination address (es:di)
+;
+;		7. When loading the first source byte, depending on the start
+;		   bit position (x), it may be neccessary to load 2 bytes
+;		   for the first copy.  (for example: start copy from source
+;		   bit position 7 into destination bit position 2).
+;
+;******************************************************************************
+;	contrl(7,8)  -	source mfdb ptr  (seg:off)
+;	contrl(9,10)  -  dest. mfdb ptr  (seg:off)
+;	intin(0)     -  writing mode
+;
+;we need device specific stuff for addressing
+if mono_mem
+	public	buff_loop
+endif
+dseg
+if mono_port or mono_mem
+	extrn	current_bank:byte
+endif		
+	extrn	XMN_CLIP:WORD,XMX_CLIP:WORD	;clipping region
+	extrn	YMN_CLIP:WORD,YMX_CLIP:WORD	;
+	extrn	CLIP:WORD      			;clip on or off
+;
+	extrn	WORD_MASK_TABLE:word		;masks for fringes
+	extrn	CONTRL:word
+	extrn	PTSIN:word
+	extrn	INTIN:word
+if (num_planes gt 1) and not ( segment_access )
+	extrn	plane_port_tbl:byte
+	extrn	plane_read_tbl:byte
+endif
+	extrn	plane_loop_count:byte
+	extrn	MAP_COL:word
+	public	COPYTRAN
+; 
+	cseg
+COPY_RFM:
+	push	bp
+	sub	sp, 66h
+	mov	bp, sp
+	push	ds
+	push	es
+	mov	ax, ds
+	mov	PTSIN_SEG, ax		; save the data seg
+	mov	word ptr 52[bp], 0
+	mov	bx, INTIN		; write mode
+	mov	BLIT_RASTOP[bp], bx
+	mov	37[bp], bl
+	cmp	bx, 5
+	jz	blt_done		; mode 5 is a no-op
+	mov	al, rfm_mode_flags[bx]
+	mov	36[bp], al
+	mov	di, offset CONTRL
+	mov	bx, 14[di]	
+	mov	es, 16[di]		;source mfdb
+	mov	ax, es:[bx]		;offset of source form
+	mov	S_OFF[bp], ax
+	mov	cx, es:2[bx]		;segment of source form
+	mov	S_SEG[bp],cx
+	or	ax,cx
+	jnz	calc_source_mfdb_width
+	jmp	source_screen
+calc_source_mfdb_width:
+	mov	ax, es:8[bx]		;form width in words
+	shl	ax,1			;in bytes
+	mov	SOURCE_NEXT[bp], ax
+	mov	SRC_DELTA[bp], ax
+	cmp	COPYTRAN, 0
+	jnz	get_smfdb_tran
+
+	mul 	es: word ptr 6[bx]	; multiply bytes/line * lines
+	mov	dx, ax
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1			; ax = paragraphs
+	mov	SRC_NEXT_SEG[bp], ax
+	and	dx, 0fh
+	mov	SRC_NEXT_OFF[bp], dx
+	mov	word ptr SRC_SCREEN[bp], 0
+	mov	ax, es:12[bx]		;number of planes
+;;;	mov	s_planes,ax
+	cmp	ax, num_planes		;test if a legit xfer
+if num_planes lt 3
+	jz	get_d_mfdb
+else
+	jnz	blt_done
+	jmp	get_d_mfdb
+endif
+blt_done:
+	pop	es
+	pop	ds
+	add	sp, 66h
+	pop	bp
+	ret
+;
+get_smfdb_tran:
+	mov	word ptr SRC_SCREEN[bp], 0
+	mov	word ptr SRC_NEXT_SEG[bp], 0
+	mov	word ptr SRC_NEXT_OFF[bp], 0
+;;	mov	s_planes,1
+	mov	bx, intin+2
+	shl	bx,1
+	mov	ax, MAP_COL[bx]
+	mov	bx, intin+4
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	mov	dx, intin
+	dec	dx
+	mov	ah,dl	
+	and	ah, 3				; make sure mode 0-3
+	mov	cx, 4
+get_tran_bltmap:
+	mov	bh, ah
+	ror	bl, 1
+	rcr	dx, 1
+	ror	al, 1
+	rcr	dx, 1
+	ror	bh, 1
+	rcr	dx, 1
+	ror	bh, 1
+	rcr	dx, 1
+if num_planes eq 3
+	cmp	cx, 3
+	jnz	get_tran_blt1
+	clc
+	rcr	dx, 1	;The 3-plane driver uses planes 0, 1 and 3.
+	rcr	dx, 1	;Skip over plane 2.
+	rcr	dx, 1
+	rcr	dx, 1
+	dec	cx
+endif
+get_tran_blt1:
+	loop	get_tran_bltmap
+	mov	tran_blt_map,dx
+	jmps	get_d_mfdb
+source_screen:
+	mov	word ptr S_SEG[bp], graph_plane
+	mov	word ptr S_OFF[bp], 0
+	mov	word ptr SOURCE_NEXT[bp], bytes_line
+	mov	word ptr SRC_DELTA[bp], bytes_line
+	mov	word ptr SRC_SCREEN[bp], 1
+;
+get_d_mfdb:
+	mov	bx, 18[di]	
+	mov	es, 20[di]		;dest mfdb
+	mov	ax, es:[bx]		;offset of dest form
+	mov	D_OFF[bp],ax
+	mov	cx, es:2[bx]		;segment of dest form
+	mov	D_SEG[bp],cx
+	or	ax,cx
+	jz	dest_screen
+	mov	ax, es:8[bx]		;form width in words
+	shl	ax,1			;in bytes
+	mov	DEST_NEXT[bp], ax
+	mov	DST_DELTA[bp], ax
+	mul 	es: word ptr 6[bx]	; multiply bytes/line * lines
+	mov	dx, ax
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1			; ax = paragraphs
+	mov	DEST_NEXT_SEG[bp], ax
+	and	dx, 0fh
+	mov	DEST_NEXT_OFF[bp], dx
+	mov	word ptr DST_SCREEN[bp], 0
+	mov	ax, es:12[bx]		;number of planes
+	cmp	ax, num_planes
+	jz	rfm_clip
+	jmp	blt_done
+dest_screen:
+	mov	word ptr D_SEG[bp], graph_plane
+	mov	word ptr D_OFF[bp], 0
+	mov	word ptr DEST_NEXT[bp], bytes_line
+	mov	word ptr DST_DELTA[bp], bytes_line
+	mov	word ptr DST_SCREEN[bp], 1
+;
+rfm_clip:
+	cmp	CLIP,FALSE
+	je	copy_rfm_noclip
+	cmp	word ptr D_SEG[bp], graph_plane
+	jne	copy_rfm_noclip		; if dest is not screen then forget it
+	call	clip_rfm
+copy_rfm_noclip:
+	cmp	COPYTRAN, 0
+	jnz	notbox
+	cmp	byte ptr 36[bp], 2
+	jnz	notbox
+	mov	ax, DST_SCREEN[bp]
+	and	ax, SRC_SCREEN[bp]
+	jz	notbox
+	mov	bx, INTIN
+	jmp	as_if_box
+;
+notbox:
+	mov	ax, PTSIN
+	mov	bx, PTSIN + 8
+	mov	dx, PTSIN + 4
+	sub	dx, ax
+	inc	dx
+	mov	BLIT_WIDTH[bp], dx
+	dec	dx
+	mov	si, ax
+	mov	di, bx
+	and	ax, 7
+	and	bx, 7
+	cmp	si, di
+	jl	rfm_isback
+	call	rfm_forward
+	mov	word ptr 50[bp], 46h	;INC SI
+	mov	word ptr 48[bp], 47h	;INC DI
+	jmps	rfm_havemask
+
+rfm_isback:
+	call	rfm_backward
+	mov	word ptr 50[bp], 4Eh	;DEC SI
+	mov	word ptr 48[bp], 4Fh	;DEC DI
+rfm_havemask:
+	and	al, 7
+	mov	0[bp], al
+	mov	20[bp], bx
+	shr	dx, 1
+	shr	dx, 1
+	shr	dx, 1
+	jnz	rfm_notsingle
+	and	ch, cl		;Merge both masks into CH
+	xor	cl, cl
+	inc	dx
+rfm_notsingle:
+	dec	dx
+	mov	44[bp], dx
+	mov	bl, ch
+	mov	ch, cl
+	not	cl
+	mov	18[bp], cx
+	mov	byte ptr 7[bp], 0
+	or	ch, ch
+	jz	rfm_havelmask
+	mov	byte ptr 7[bp], 1
+rfm_havelmask:
+	mov	bh, bl
+	not	bl
+	mov	LEFTMASK[bp], bx
+	mov	ax, SRC_SCREEN[bp]
+	mov	bx, si
+	cmp	ax, 0
+	jz	adj_srcmem
+	shr	bx, 1
+	shr	bx, 1
+	and	bx, 0FFFEh
+	jmps	adj_srcscr
+
+adj_srcmem:
+	shr	bx, 1
+	shr	bx, 1
+	shr	bx, 1
+adj_srcscr:
+	add	S_OFF[bp], bx
+	mov	ax, DST_SCREEN[bp]
+	mov	bx, di
+	cmp	ax, 0
+	jz	adj_dstmem
+	shr	bx, 1
+	shr	bx, 1
+	and	bx, 0FFFEh
+	jmps	adj_dstscr
+;
+adj_dstmem:
+	shr	bx, 1
+	shr	bx, 1
+	shr	bx, 1
+adj_dstscr:
+	add	D_OFF[bp], bx
+	mov	byte ptr RAPIDFLAG[bp], 0
+	cmp	COPYTRAN, 0
+	jnz	rfm_norapid
+	call	rfm_rapid
+	or	ax, ax
+	jz	rfm_norapid
+	jmp	blt_done
+;
+rfm_norapid:
+	mov	cx, PTSIN+2
+	mov	ax, PTSIN+6
+	mov	dx, cx
+	sub	ax, dx
+	inc	ax
+	mov	46[bp], ax
+	mov	bx, PTSIN+10
+	mov	byte ptr UPWARD[bp], 1
+	cmp	cx, bx
+	jge	rfm_calcdoff
+	mov	byte ptr UPWARD[bp], -1
+	dec	ax
+	add	bx, ax
+	add	cx, ax
+rfm_calcdoff:
+	cmp	word ptr DST_SCREEN[bp], 0
+	jz	rfm_calcdoff2
+	shl	bx, 1
+	mov	ax, line_offsets[bx]
+	add	D_OFF[bp], ax
+	cmp	byte ptr UPWARD[bp], 1
+	jz	rfm_calcdoff1
+	mov	word ptr DST_DELTA[bp], offset di_dline
+	jmp	rfm_calcsoff
+;
+rfm_calcdoff1:
+	mov	word ptr DST_DELTA[bp], offset di_iline
+	jmp	rfm_calcsoff
+;
+rfm_calcdoff2:
+	mov	ax, DEST_NEXT[bp]
+	mul	bx
+	add	D_OFF[bp], ax
+	cmp	byte ptr UPWARD[bp], 1
+	jz	rfm_calcsoff
+	neg	word ptr DST_DELTA[bp]
+rfm_calcsoff:
+	cmp	word ptr SRC_SCREEN[bp], 0
+	jz	rfm_calcsoff2
+	mov	bx, cx
+	shl	bx, 1
+	mov	ax, line_offsets[bx]
+	add	S_OFF[bp], ax
+	cmp	byte ptr UPWARD[bp], 1
+	jz	rfm_calcsoff1
+	mov	word ptr SRC_DELTA[bp], offset si_dline
+	jmp	rfm_execute
+;
+rfm_calcsoff1:
+	mov	word ptr SRC_DELTA[bp], offset si_iline
+	jmp	rfm_execute
+;
+rfm_calcsoff2:
+	mov	ax, SOURCE_NEXT[bp]
+	mul	cx
+	add	S_OFF[bp], ax
+	cmp	byte ptr UPWARD[bp], 1
+	jz	rfm_execute
+	neg	word ptr SRC_DELTA[bp]
+rfm_execute:
+	call	blt_init
+	cmp	COPYTRAN, 0
+	jnz	rfm_exec_tran
+X7190:
+	sub	sp, 256
+	mov	di, sp
+	call	rfm_mkcode
+	callf	dword ptr TRAMPOLINE[bp]
+	add	sp, 256
+blt_end:
+	cld
+	pop	ds
+	pop	es
+	add	sp, 66h
+	pop	bp
+	ret
+;
+rfm_exec_tran:
+if num_planes gt 2
+	mov	cx, 2
+rfm_exec_t0:
+	push	cx
+else
+rfm_exec_t0:
+endif
+	mov	ax, tran_blt_map
+if num_planes gt 2
+	xchg	ah, al
+	mov	tran_blt_map, ax
+	xchg	ah, al
+endif
+	mov	bx, ax
+	and	bx, 0Fh
+	mov	cl, tran_blt_tbl[bx]
+if num_planes gt 1
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	and	ax, 0Fh
+	mov	bx, ax
+	mov	ch, tran_blt_tbl[bx]
+	cmp	ch, cl
+	jnz	rfm_exec_t2
+	xor	bx, bx
+	mov	bl, cl
+	mov	37[bp], bl
+	mov	al, rfm_mode_flags[bx]
+if num_planes lt 3
+	cmp	al, 2
+	jnz	rfm_exec_t1
+	cmp	word ptr DST_SCREEN[bp], 1
+	jnz	rfm_exec_t1
+	xor	bh, bh
+	jmp	as_if_box
+endif
+;
+rfm_exec_t1:
+	mov	36[bp], al
+	mov	word ptr 52[bp], 1
+if num_planes gt 2
+	push	ds
+	push	bp
+	sub	sp, 256
+	mov	di, sp
+	call	rfm_mkcode
+	callf	dword ptr TRAMPOLINE[bp]
+	add	sp, 256
+	pop	bp
+	pop	ds
+	mov	word ptr D_SEG[bp], graph_plane_high
+	cld
+	pop	cx
+	loop	rfm_exec_t0
+	jmp	blt_end
+else
+	jmp	X7190
+endif
+;
+rfm_exec_t2:
+	mov	word ptr 52[bp], 2
+	mov	2[bp], ch
+else
+	mov	word ptr 52[bp], 2
+endif
+	xor	bx, bx
+	mov	bl, cl
+	mov	37[bp], bl
+	mov	al, rfm_mode_flags[bx]
+	mov	36[bp], al
+	push	ds
+	push	bp
+	sub	sp, 100h
+	mov	di, sp
+	call	rfm_mkcode
+	callf	dword ptr TRAMPOLINE[bp]
+	add	sp, 100h
+	pop	bp
+	pop	ds
+	cld
+if num_planes gt 1
+	xor	bx, bx
+	mov	bl, 2[bp]
+	mov	37[bp], bl
+	mov	al, rfm_mode_flags[bx]
+	mov	36[bp], al
+	inc	word ptr D_OFF[bp]
+if num_planes gt 2
+	push	ds
+	push	bp
+endif
+	sub	sp, 100h
+	mov	di, sp
+	call	rfm_mkcode
+	callf	dword ptr TRAMPOLINE[bp]
+	add	sp, 100h
+if num_planes gt 2
+	pop	bp
+	pop	ds
+	dec	word ptr D_OFF[bp]
+	mov	word ptr D_SEG[bp], graph_plane_high
+	cld
+	pop	cx
+	dec	cx
+	jz	rfm_exec_t3
+	jmp	rfm_exec_t0
+else
+	cld
+endif
+endif
+rfm_exec_t3:
+	jmp	blt_end
+;
+clip_rfm:
+	mov	ax, PTSIN + 10	; get the miny of dest rect
+	mov	bx, YMN_CLIP
+	mov	cx, PTSIN + 14	; get the maxy of dest rect
+	cmp	ax, bx		; if dest_miny < clip_miny
+	jge	clip_rfm_1
+	cmp	cx, bx		; if dest_maxy >= clip_miny
+	jl	clip_rfm_reject
+	mov	PTSIN + 10, bx  ; dest_miny = clip_miny
+	sub	bx, ax		; find delta of clip top y
+	add	PTSIN + 2, bx	; move the source up properly
+	mov	ax, PTSIN + 10
+clip_rfm_1:
+	mov	bx, YMX_CLIP
+	cmp	cx, bx		; if dest maxy > clip_maxy
+	jle	clip_rfm_2
+	cmp	ax, bx		; if dest mainy <= clip_maxy
+	jg	clip_rfm_reject
+	mov	PTSIN + 14, bx	; dest maxy = clip maxy
+	sub	cx, bx		; get the delta y
+	sub	PTSIN + 6, cx	; adjust the destination properly
+clip_rfm_2:
+	mov	ax, PTSIN + 8	; get the minx of dest rect
+	mov	bx, XMN_CLIP
+	mov	cx, PTSIN + 12
+	cmp	ax, bx		; if dest minx < clip minx
+	jge	clip_rfm_3
+	cmp	cx, bx		; if dest maxx >= clip minx
+	jl	clip_rfm_reject
+	mov	PTSIN + 8, bx	; dest minx = clip minx
+	sub	bx, ax		; find delta of clip top x
+	add	PTSIN, bx	; move the source up properly
+	mov	ax, PTSIN + 8
+clip_rfm_3:
+	mov	bx, XMX_CLIP
+	cmp	cx, bx		; if dest maxx > clip maxx
+	jle	clip_rfm_4
+	cmp	ax, bx		; if dest minx <= clip maxx
+	jg	clip_rfm_reject
+	mov	PTSIN + 12, bx
+	sub	cx, bx
+	sub	PTSIN + 4, cx	; adjust source
+clip_rfm_4:
+	ret
+clip_rfm_reject:
+	pop	ax		;dump return address
+	jmp	blt_done
+;
+as_if_box:
+	push	patmsk
+	push	patptr
+	push	NEXT_PAT
+	mov	ax, PTSIN+8
+	mov	X1, ax
+	mov	ax, PTSIN+10
+	mov	Y1, ax
+	mov	ax, PTSIN+12
+	mov	X2, ax
+	mov	ax, PTSIN+14
+	mov	Y2, ax
+if f1_colour
+	mov	FG_BP_1, 3
+else
+	mov	FG_BP_1, num_planes
+endif
+	cmp	bx, 0
+	jnz	as_if_box_1
+;
+; Blank rectangle -> fill box with background
+;
+	mov	WRT_MODE, 0
+	mov	patmsk, 0
+	mov	NEXT_PAT, 0
+	mov	patptr, offset hollow
+	call	BOX_FILL
+	jmp	as_if_box_end
+;
+; Solid rectangle -> use box fill
+;
+as_if_box_1:
+	cmp	bx, 0Fh
+	jnz	as_if_box_2
+	mov	WRT_MODE, 0
+	mov	patmsk, 0
+	mov	NEXT_PAT, 0
+	mov	patptr, offset solid
+	call	BOX_FILL
+	jmp	as_if_box_end	
+;
+; Invert rectangle -> use box XOR
+;
+as_if_box_2:
+	mov	WRT_MODE, 2
+	mov	patmsk, 0
+	mov	NEXT_PAT, 0
+	mov	patptr, offset solid
+	call	BOX_FILL
+as_if_box_end:
+	pop	NEXT_PAT
+	pop	patptr
+	pop	patmsk
+	jmp	blt_done
+
+crfm_trn	dw	offset crfm_trn0
+		dw	offset crfm_trn1
+		dw	offset crfm_trn2
+		dw	offset crfm_trn3
+		dw	offset crfm_trn1
+		dw	0
+		dw	offset crfm_trn6
+		dw	offset crfm_trn7
+		dw	offset crfm_trn8
+		dw	offset crfm_trn9
+		dw	offset crfm_trna
+		dw	offset crfm_trnb
+		dw	offset crfm_trn3
+		dw	offset crfm_trn7
+		dw	offset crfm_trne
+		dw	offset crfm_trnf
+
+crfm_rop	dw	offset crfm_rop0
+		dw	offset crfm_rop1
+		dw	offset crfm_rop2
+		dw	offset crfm_rop3
+		dw	offset crfm_rop1	;4 = 1
+		dw	0			;5 = noop
+		dw	offset crfm_rop6
+		dw	offset crfm_rop7
+		dw	offset crfm_rop8
+		dw	offset crfm_rop9
+		dw	offset crfm_ropa
+		dw	offset crfm_ropb
+		dw	offset crfm_rop3	;C = 3
+		dw	offset crfm_rop7	;D = 7
+		dw	offset crfm_rope
+		dw	offset crfm_ropf
+
+		dseg
+        public  COPYTRAN
+COPYTRAN        DW      0                       ;TRANSPARENT VS OPAQUE FLAG
+tran_blt_tbl    db      0                       ; replace fg = 0/bg = 0
+                db      0ch                     ;         fg = 1/bg = 0
+                db      3                       ;         fg = 0/bg = 1
+                db      0fh                     ;         fg = 1/bg = 1
+                db      4                       ; trans   fg = 0
+                db      4                       ;         fg = 1
+                db      7
+                db      7
+                db      6                       ; xor
+                db      6
+                db      6
+                db      6
+                db      1                       ; erase   bg = 0
+                db      1
+                db      13                      ;         bg = 1
+                db      13
+;;_sdad		dw	0			;Not used
+;;_ddad		dw	0			;Not used
+;;_yover	dw	0			;Not used
+PTSIN_SEG	dw	0	
+;;_s_off	dw	0			;Not used
+;;_s_seg	dw	0			;Not used
+;;s_planes	dw	0			;Written then ignored
+;;_swrap	dw	0			;Not used
+tran_blt_map	dw	0
+;;_d_off	dw	0			;Not used
+;;_d_seg	dw	0			;Not used
+;;_dest_next	dw	0			;Not used
+;;_d_format	dw	0			;Not used
+;;_d_planes	dw	0			;Not used
+;;_dwrap	dw	0			;Not used
+
+rfm_mode_flags	db	2, 0, 0, 0, 1, 0, 0, 0 
+		db	0, 0, 2, 0, 1, 1, 0, 2
+rfm_bmask_l	db	0FFh, 07Fh, 03Fh, 01Fh, 00Fh, 007h, 003h, 001h
+rfm_bmask_r	db	080h, 0C0h, 0E0h, 0F0h, 0F8h, 0FCh, 0FEh, 0FFh
+rfm_wmask	dw	000FFh, 0FE01h, 0FC03h, 0F807h
+		dw	0F00Fh, 0E01Fh, 0C03Fh, 0807Fh
+	

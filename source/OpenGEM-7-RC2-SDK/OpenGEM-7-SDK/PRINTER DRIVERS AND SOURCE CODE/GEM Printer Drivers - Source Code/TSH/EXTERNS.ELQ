@@ -1,0 +1,27 @@
+;****************************************************************
+;*		     Epson LQ Series Printers			*
+;****************************************************************
+FALSE		equ	0
+TRUE		equ	not FALSE
+
+CONTRL_SIZE	equ	11
+INTIN_SIZE	equ	128
+PTSIN_SIZE	equ	256
+INTOUT_SIZE	equ	45
+PTSOUT_SIZE	equ	12
+
+RES_XMX		equ	2423 			; max resolution in x (-1)
+RES_YMX		equ	32759			; max resolution in y (-1)
+XSIZE		equ	141			; x pixel size in microns
+YSIZE		equ	141			; y pixel size in microns
+XDPI		equ	180			; x dots per inch
+YDPI		equ	180			; y dots per inch
+DOTUNITS	equ	2			; extended dot size units
+XTDXSIZE	equ	14111			; 141.11 microns
+XTDYSIZE	equ	14111			; 141.11 microns
+BYTE_SWAP	equ	FALSE			; IBM PC format
+
+G_SL_HGT	equ	24			; graphics slice height
+A_SL_HGT	equ	30			; alpha text slice height
+NUM_PLANES	equ	1			; number of planes
+

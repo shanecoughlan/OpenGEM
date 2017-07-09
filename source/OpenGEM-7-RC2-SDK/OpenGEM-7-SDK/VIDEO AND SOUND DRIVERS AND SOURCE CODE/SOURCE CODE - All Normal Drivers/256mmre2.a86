@@ -1,0 +1,1102 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+; SD256: This is a stab at a 256-colour driver for GEM, initially based
+; on the disassembled source of SDPSC9.VGA. 
+;
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+vec_len:
+		push	bp
+		mov	bp, sp
+		cmp	word ptr 4[bp], 0
+		jnz	loc_0_4F0A
+		cmp	word ptr 6[bp], 0
+		jnz	loc_0_4F0A
+		xor	bx, bx
+		jmp	loc_0_4F82
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_4F0A:				; CODE XREF: vec_len+7j
+					; vec_len+Dj
+		mov	dx, 4[bp]
+		mov	ax, dx
+		imul	dx
+		mov	vec_len_high, dx
+		mov	vec_len_low, ax
+		mov	dx, 6[bp]
+		mov	ax, dx
+		imul	dx
+		add	vec_len_low, ax
+		adc	vec_len_high, dx
+		cmp	vec_len_high, 0
+		jz	loc_0_4F36
+		mov	ax, vec_len_high
+		mov	cl, 10h
+		jmp	loc_0_4F3B
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_4F36:				; CODE XREF: vec_len+36j
+		mov	ax, vec_len_low
+		sub	cl, cl
+
+loc_0_4F3B:				; CODE XREF: vec_len+3Dj
+					; vec_len+4Ej
+		cmp	ax, 1
+		jz	loc_0_4F47
+		inc	cl
+		shr	ax, 1
+		jmp	loc_0_4F3B
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_4F47:				; CODE XREF: vec_len+48j
+		shr	cl, 1
+		mov	bx, 1
+		shl	bx, cl
+		mov	cx, bx
+		shl	cx, 1
+
+loc_0_4F52:				; CODE XREF: vec_len+84j
+					; vec_len+89j
+		mov	ax, cx
+		sub	ax, bx
+		cmp	ax, 1
+		jle	loc_0_4F82
+		shr	ax, 1
+		add	ax, bx
+		mov	si, ax
+		mul	ax
+		cmp	dx, vec_len_high
+		ja	loc_0_4F78
+		jb	loc_0_4F7D
+		cmp	ax, vec_len_low
+		ja	loc_0_4F78
+		jb	loc_0_4F7D
+		mov	bx, si
+		jmp	loc_0_4F82
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_4F78:				; CODE XREF: vec_len+71j
+					; vec_len+79j
+		mov	cx, si
+		jmp	loc_0_4F52
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_4F7D:				; CODE XREF: vec_len+73j
+					; vec_len+7Bj
+		mov	bx, si
+		jmp	loc_0_4F52
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_4F82:				; CODE XREF: vec_len+11j
+					; vec_len+63j ...
+		mov	ax, bx
+		pop	bp
+		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+SMUL_DIV:
+					; ...
+		push	bp
+		mov	bp, sp
+		mov	ax, 6[bp]
+		mov	bx, 4[bp]
+		imul	bx
+		mov	si, 1
+		and	dx, dx
+		jns	loc_0_4F9A
+		neg	si
+
+loc_0_4F9A:				; CODE XREF: SMUL_DIV+10j
+		mov	bx, 8[bp]
+		idiv	bx
+		pop	bp
+		and	bx, bx
+		jns	loc_0_4FA8
+		neg	si
+		neg	bx
+
+loc_0_4FA8:				; CODE XREF: SMUL_DIV+1Cj
+		and	dx, dx
+		jns	loc_0_4FAE
+		neg	dx
+
+loc_0_4FAE:				; CODE XREF: SMUL_DIV+24j
+		shl	dx, 1
+		cmp	dx, bx
+		jl	locret_0_4FB6
+		add	ax, si
+
+locret_0_4FB6:				; CODE XREF: SMUL_DIV+2Cj
+		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+tennis:
+					; do_line+190p
+		cmp	WRT_MODE, 2
+		jnz	jimmy
+		cmp	LSTLIN,	0
+		jnz	jimmy
+		cmp	cx, 1
+		jz	jimmy
+		dec	cx
+
+jimmy:				; CODE XREF: tennis+5j
+					; tennis+Cj ...
+		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+ABLINE:
+					; pline+BEp ...
+		push	bp
+		call	do_line
+		mov	LN_MASK, bx
+		pop	bp
+		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+do_line:
+		if	VESA_MULTISEG
+		 mov	ax, cs:VID_SEG
+		else
+		 mov	ax, graph_plane
+		endif
+		mov	es, ax
+
+		mov	cx, X2
+		sub	cx, X1
+		jb	swap
+		push	cx
+		mov	bx, X1
+		mov	ax, Y1
+		call	concat
+;
+; Since we're not in a planar mode, there's no such thing as a mask...
+;
+;;;		mov	si, offset ortbl
+;;;		add	si, bx
+;;;		mov	bh, bl
+;;;		mov	bl, [si]
+		pop	cx		;CX = X2
+		mov	dx, Y2
+		sub	dx, Y1
+		jnz	nothor
+		call	xline_noswap
+		mov	bx, LN_MASK
+		retn	
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+swap:				; CODE XREF: do_line+Dj
+		push	cx
+		mov	bx, X2
+		mov	ax, Y2
+		call	concat
+		mov	si, offset ortbl
+		add	si, bx
+		mov	bh, bl
+		mov	bl, [si]
+		pop	cx
+		neg	cx
+		mov	dx, Y1
+		sub	dx, Y2
+		jnz	nothor
+		call	xline_swap
+		mov	bx, LN_MASK
+		retn	
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+nothor:				; CODE XREF: do_line+2Cj
+					; do_line+55j
+		mov	yinc, bytes_line
+		jnb	loc_0_5045
+		neg	dx
+		mov	yinc, -bytes_line
+
+loc_0_5045:				; CODE XREF: do_line+65j
+		cmp	cx, dx
+		jnb	dxgedy
+		jmp	dygtdx
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+dxgedy:				; CODE XREF: do_line+71j
+		mov	ax, cx
+		inc	cx
+		call	tennis
+		shl	dx, 1
+		mov	epsilon1, dx
+		sub	dx, ax
+		mov	si, dx
+		mov	bp, dx
+		sub	bp, ax
+		mov	ax, bx
+		mov	bx, WRT_MODE
+		shl	bx, 1
+		mov	bx, dxgedy_tbl[bx]
+		call	bx
+		retn	
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+;
+; Enter with ES:DI->pixel
+;
+dxgedy_replace:				; DATA XREF: dseg:05AEo
+		mov	al, byte ptr FG_BP_1
+		mov	ah, 1
+		mov	bx, LN_MASK
+		call	line_dxge
+		retn	
+
+dxgedy_tran:
+		mov	al, byte ptr FG_BP_1
+		mov	ah, 0
+		mov	bx, LN_MASK
+		call	line_dxge
+		retn	
+;
+dxgedy_invtran:
+		mov	al, byte ptr FG_BP_1
+		mov	ah, 0
+		mov	bx, LN_MASK
+		not	bx
+		call	line_dxge
+		retn	
+
+dxgedy_xor:			
+		mov	ax, 02FFh	;XOR is always done with 0FFh
+		mov	bx, LN_MASK
+		call	line_dxge
+		retn	
+;
+; On entry:
+; AH = raster op: 0=trans 1=replace 2=xor
+; AL = foreground
+; BX = line mask
+; CX = line count
+; SI = epsilon
+; DI = dest pointer
+; BP = epsilon2
+; epsilon1 = epsilon1
+; yinc= offset to next scan line
+;
+line_dxge:
+line_dxge_loop:	
+		rol	bx,1
+		jnc	line_dxge_set_0
+		cmp	ah,2
+		jnz	line_dxge_paint
+		xor	es:[di],al
+		inc	di
+		jmps	line_dxge_set_2
+
+line_dxge_paint:
+		stosb
+		jmps	line_dxge_set_2
+;
+line_dxge_set_0:
+		cmp	ah,1
+		jnz	line_dxge_set_1
+		mov	es:byte ptr [di],0
+line_dxge_set_1:
+		inc	di
+line_dxge_set_2:
+		cmp	si, 0
+		js	loc_0_515A
+		add	si, bp
+;
+		call	add_yinc
+		loop	line_dxge_loop
+		retn	
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_515A:				; CODE XREF: do_line+179j
+		add	si, epsilon1
+		loop	line_dxge_loop
+		retn	
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+;
+add_yinc:	push	ax
+		mov	ax, yinc
+		cmp	ax, 8000h
+		jc	yplus
+		mov	ax, -1
+		add	di, yinc
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  jnc	sub_wrap
+		 else
+		  jnc	either_wrap
+		 endif
+		endif
+		pop	ax
+		ret
+;
+yplus:		mov	ax,1
+		add	di,yinc
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	di, WINDOW_SIZE
+		  jnc	add_wrap
+		 else
+		  jc	either_wrap
+		 endif
+		endif
+		pop	ax
+		ret
+;
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+
+sub_wrap:	  add	di, WINDOW_SIZE
+		  jmps	either_wrap
+
+add_wrap:	  sub	di, WINDOW_SIZE
+		 endif	;WINDOW_SIZE
+either_wrap:
+		 add	ax,cs:VESA_SLICE
+		 mov	cs:VESA_SLICE,ax
+		 call	setslice
+		endif		;VESA_MULTISEG
+		pop	ax
+		ret
+;
+dygtdx:				; CODE XREF: do_line+73j
+		xchg	cx, dx
+		mov	ax, cx
+		inc	cx
+		call	tennis
+		shl	dx, 1
+		mov	epsilon1, dx
+		sub	dx, ax
+		mov	si, dx
+		mov	bp, dx
+		sub	bp, ax
+		mov	ax, bx
+		mov	bx, WRT_MODE
+		shl	bx, 1
+		mov	bx, dygedx_tbl[bx]
+		call	bx
+;;;
+;;; Appears to be left over from the EGA/VGA driver. Quite dangerous in the
+;;; VESA driver, I should think.
+;;;
+;;;		mov	al, 0FFh
+;;;		out	dx, al
+		retn	
+
+
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+;
+; Enter with ES:DI->pixel
+;
+dygedx_replace:				; DATA XREF: dseg:05AEo
+		mov	al, byte ptr FG_BP_1
+		mov	ah, 1
+		mov	bx, LN_MASK
+		call	line_dyge
+		retn	
+
+dygedx_tran:
+		mov	al,byte ptr FG_BP_1
+		mov	ah,0
+		mov	bx, LN_MASK
+		call	line_dyge
+		retn	
+;
+dygedx_invtran:
+		mov	al, byte ptr FG_BP_1
+		mov	ah, 0
+		mov	bx, LN_MASK
+		not	bx
+		call	line_dyge
+		retn	
+
+dygedx_xor:				; DATA XREF: dseg:05B2o
+		mov	ax, 02FFh
+		mov	bx, LN_MASK
+		call	line_dyge
+		retn	
+;
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+line_dyge:
+line_dyge_loop:
+		rol	bx,1
+		jnc	line_dyge_set_0
+		cmp	ah,2
+		jnz	line_dyge_paint
+		xor	es:[di],al
+		jmps	line_dyge_set_2
+
+line_dyge_paint:
+		mov	es:[di],al
+		jmps	line_dyge_set_2
+;
+line_dyge_set_0:
+		cmp	ah,1
+		jnz	line_dyge_set_2
+		mov	es:byte ptr [di],0
+line_dyge_set_2:
+		call	add_yinc
+		cmp	si,0
+		js	line_dyge_samex
+		if	VESA_SPLITLINE
+		 call	bumpdi1024
+		else
+		 inc	di
+		endif
+		add	si,bp
+		loop	line_dyge_loop
+		ret
+;
+line_dyge_samex:
+		add	si,epsilon1
+		loop	line_dyge_loop
+		retn	
+
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_5278:				; CODE XREF: HLINE_CLIP+7j
+					; HLINE_CLIP+2Ej
+		push	bp
+		push	Y2
+		mov	ax, Y1
+		mov	Y2, ax
+		call	BOX_FILL
+		pop	Y2
+		pop	bp
+		retn	
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+xline_swap:
+;;;		and	di, 0FFFEh	;This is packed-pixel, no word align
+		mov	ax, X1
+		mov	bx, X2
+		mov	X1, bx
+		mov	X2, ax
+		push	X1
+		push	X2
+		push	patmsk
+		push	patptr
+		mov	patptr,	offset LN_MASK
+		mov	patmsk,	0
+		push	NEXT_PAT
+		mov	NEXT_PAT, 0
+		cmp	WRT_MODE, 2
+		jnz	loc_0_52E4
+		cmp	LSTLIN,	0
+		jnz	loc_0_52E4
+		inc	X1
+		mov	bx, X1
+		mov	ax, Y1
+		call	concat
+;;; 		and	di, 0FFFEh	; This is packed-pixel, no word align
+
+loc_0_52E4:				; CODE XREF: xline_swap+3Dj
+					; xline_swap+44j
+		call	BOX_FILL_LINE
+		pop	NEXT_PAT
+		pop	patptr
+		pop	patmsk
+		mov	ax, LN_MASK
+		pop	X1
+		pop	X2
+		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+;
+; Horizontal line.
+;
+xline_noswap:
+;;;		and	di, 0FFFEh	;This is packed-pixel, no word align
+		push	patmsk
+		push	patptr
+		mov	patptr,	offset LN_MASK
+		mov	patmsk,	0
+		push	NEXT_PAT
+		mov	NEXT_PAT, 0
+		push	X2
+		cmp	WRT_MODE, 2
+		jnz	loc_0_5340
+		cmp	LSTLIN,	0
+		jnz	loc_0_5340
+		mov	ax, X1
+		cmp	ax, X2
+		jz	loc_0_5340
+		dec	X2
+
+loc_0_5340:				; CODE XREF: xline_noswap+2Bj
+					; xline_noswap+32j ...
+		call	BOX_FILL_LINE
+		pop	X2
+		pop	NEXT_PAT
+		pop	patptr
+		pop	patmsk
+		mov	ax, LN_MASK
+		retn	
+
+
+;****************************************************************
+;DIS_CUR display the cursor					*
+;	Turn the cursor on for first time			*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+DIS_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli				;turn off interrupts while drawing first
+	mov	ax, HIDE_CNT
+	mov	bx, seg	HIDE_CNT	;load up the other segment
+	mov	ds, bx
+	mov	HIDE_CNT, ax
+	dec	HIDE_CNT
+	jg	dis_cur_1
+	mov	HIDE_CNT, 0		; don't allow negative
+;
+; New in ViewMAX: KBD_MOUSE_STS toggles pointer visibility for 
+; keyboard-only mouse
+;
+	cmp	mouse_type,0
+	jnz	dis_cur_0
+	test	KBD_MOUSE_STS, 0FFh
+	jz	dis_cur_1
+dis_cur_0:
+;
+; End of ViewMAX new bit
+;
+	mov	mouse_lock, 1
+	popf
+	call	mouson			;draw new x,y
+	pushf
+	cli
+	mov	mouse_lock, 0
+dis_cur_1:
+	mov	ax, HIDE_CNT
+	popf	
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+;****************************************************************
+;HIDE_CUR turn off the cursor					*
+;	Turn the cursor off					*
+;								*
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;								*
+;	Exit	none						*
+;								*
+;****************************************************************
+HIDE_CUR:
+	push	bp
+	push	ds
+	pushf
+	cli
+	mov	ax, HIDE_CNT
+	mov	bx, SEG HIDE_CNT
+	mov	ds, bx
+	mov	HIDE_CNT, ax
+	inc	HIDE_CNT
+	cmp	HIDE_CNT,1		;is cursor on
+	jnz	hide_cur_1
+;
+; New in ViewMAX: KBD_MOUSE_STS toggles pointer visibility for 
+; keyboard-only mouse
+;
+	cmp	mouse_type,0
+	jnz	hide_cur_0
+	test	KBD_MOUSE_STS, 0FFh
+	jz	hide_cur_1
+hide_cur_0:
+;
+; End of ViewMAX new bit
+;
+	mov	mouse_lock, 1
+	popf
+	call	mousoff			;turn cursor off
+	pushf
+	cli
+	mov	mouse_lock, 0
+hide_cur_1:
+	mov	ax, HIDE_CNT
+	popf
+	pop	ds
+	mov	HIDE_CNT, ax
+	pop	bp
+	ret
+
+;****************************************************************
+;move_cross							*
+;	Undraw old cross hair					*
+;								*
+;	Draw new cross hair					*	
+;	Entry	gcurx,gcury are current x,y cursor location	*
+;		bx,cx are new x,y				*
+;	Exit	none						*
+;								*
+;****************************************************************
+MOV_CUR:
+	push	bp
+	push	ds
+	mov	ax,seg HIDE_CNT
+	mov	ds,ax
+	push	bx
+	push	cx			;save new x,y
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_1
+	call	mousoff			;undraw old x,y
+mov_cur_1:
+	pop	cx
+	pop	bx
+curon:
+	mov	gcurx,bx
+	mov	gcury,cx
+	cmp	HIDE_CNT,0
+	jnz	mov_cur_2
+	call	mouson			;draw new x,y
+mov_cur_2:
+	pop	ds
+	pop	bp
+	retF
+EJECT
+;****************************************************************
+;clip_cross							*
+;	Routine will clip the x,y location to the current	*
+;	addressable space					*
+;								*
+;	Entry	reg pair bx = new cursor x			*
+;		reg pair cx = new cursor y			*
+;	Exit	none						*
+;								*
+;****************************************************************
+clip_cross:
+	mov	al, bh
+	rcl	al, 1			; test if new x is < 0.
+	jnc	clipx1
+	xor	bx, bx			;   yes, then clip at 0
+	jmps	clipy
+clipx1:
+	mov	ax, XRESMX
+	sub	ax, bx
+	jnc	clipy			; if newx <= xresmax then clip newy
+	mov	bx, XRESMX		;   else newx = XRESMX
+clipy:
+	mov	al, ch
+	rcl	al, 1			; test if new y is < 0.
+	jnc	clipy1			; if newy >= 0 then test if < yresmx
+	xor	cx, cx			;   else clip y at 0.
+	jmp	clipdn
+clipy1:
+	mov	ax, true_yresmx
+	sub	ax, cx
+	jnc	clipdn			; if newy <= yresmax then exit
+	mov	cx, true_yresmx		;   else newy = yresmx
+clipdn:
+	ret
+
+;
+; X-coordinate at which not all the mouse pointer can be drawn
+;
+rmax		dw xresmx - 16			; DATA XREF: mouson+1Er
+
+
+;		S u b r	o u t i	n e
+
+mouson:
+		mov	mwid,16		; assume we're drawing all 16 pixels
+		mov	oldmwid,16
+		mov	mclipx, 0	; assume no clipping
+		mov	mclipy, 0
+		mov	ax, gcurx	; input mouse x-coord
+		sub	ax, mxhot	; new x (ax) = gcurx - mxhot
+		jge	mxbig
+		add	ax, 10h
+		mov	mclipx, -1
+
+mxbig:		cmp	ax, cs:rmax	; Too close to the right-hand edge?
+		jle	mxok
+		mov	mclipx, 1
+		mov	dx, xresmx+1	;Max X-coord
+		sub	dx, ax		;Get distance to RH edge of screen
+		mov	mwid, dx
+		mov	oldmwid, dx
+mxok:				; CODE XREF: mouson+23j
+;
+; We don't have to set a shift alignment because our screen isn't 
+; 8-pixels-per-byte.
+;
+;;;		mov	cx, ax
+;;;		and	cx, 0Fh
+;;;		inc	cx
+;;;		mov	mshft, cx
+
+		mov	dx, gcury
+		sub	dx, myhot
+		jb	myclip
+		mov	bx, 767
+		sub	bx, dx
+		jge	setht
+		mov	bx, 1		;At bottom. Draw one line there.
+		mov	dx, 767
+		jmps	htok
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+setht:				; CODE XREF: mouson+4Dj
+		cmp	bx, mheight
+		jl	htok
+		mov	bx, mheight
+		jmps	htok
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+myclip:				; CODE XREF: mouson+46j
+		mov	cx, mheight
+		add	dx, cx
+		jge	setht1
+		mov	dx, 1
+
+setht1:				; CODE XREF: mouson+69j
+		mov	bx, dx
+		sub	cx, bx
+		shl	cx, 1
+		mov	mclipy, cx
+		xor	dx, dx
+
+htok:		inc	bx		;Number of rows to draw, plus 1
+		mov	mht, bx
+		mov	oldmht, bx
+		mov	bx, ax
+		mov	ax, dx
+		call	concat
+; Don't bother with such niceties as word boundaries
+;		and	di, 0FFFEh
+		mov	oldul, di
+		if	VESA_MULTISEG
+		 mov	ax,cs:VESA_SLICE
+		 mov	oldslice,ax
+		endif
+		mov	si, di
+		if	VESA_MULTISEG
+		 mov	ax, cs:VID_SEG
+		else
+		 mov	ax, graph_plane
+		endif
+		mov	es, ax
+		mov	di, offset mmask
+		add	di, mclipy
+		call	mdraw
+		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+;
+; ES:SI -> our destination
+; DS:DI -> mouse form
+
+mdraw:
+		if	VESA_MULTISEG
+		 push	cs:VESA_SLICE
+		endif
+		lea	bx, mousbuf
+		mov	mousbuf_ptr, bx
+;
+; OK. For each line:
+;
+; i)  Copy the old data.
+; ii) For those bits covered by the mask, replace with bits from data.
+;
+		mov	cx,mht		;Do 16 rows
+		dec	cx
+		jz	nodrawing
+
+		mov	bx,mousbuf_ptr
+mdraw_lp:	push	cx
+		push	si
+		if 	VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		endif
+
+		mov	dx,8000h	;Mask
+		mov	cx,mwid
+mdraw_xrow:	mov	al,es:[si]
+		mov	[bx],al
+		inc	bx
+;
+;Saved old pixel. Now see if a new pixel should be plotted.
+;
+		mov	ax,[di]		;Mask
+		and	ax,dx
+		jz	mdraw_trans
+		mov	ax,32[di]	;Pattern
+		and	ax,dx
+		mov	al,mous_col_bg
+		jz	mdraw_pix
+		mov	al,mous_col_fg
+mdraw_pix:	mov	es:[si],al
+
+mdraw_trans:	ror	dx,1
+		inc	si
+
+		if 	VESA_SPLITLINE
+		 if	WINDOW_SIZE ne 0
+		  cmp	si, WINDOW_SIZE
+		 endif
+		 jnz	mdraw_t1
+		 inc	cs:VESA_SLICE
+		 call	setslice
+mdraw_t1:	
+		endif
+
+		loop	mdraw_xrow
+		if 	VESA_SPLITLINE
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		pop	si
+		inc	di
+		inc	di
+		add	si,bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	si, WINDOW_SIZE
+		  jc	mdraw_nslice
+		  sub	si, WINDOW_SIZE
+		 else
+		  jnc	mdraw_nslice
+		 endif
+		 inc	cs:VESA_SLICE
+		 call	setslice
+		endif
+mdraw_nslice:	pop	cx
+		loop	mdraw_lp
+nodrawing:
+		if	VESA_MULTISEG
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		ret
+;	
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+mousoff:	
+		if	VESA_MULTISEG
+		 push	cs:VESA_SLICE
+		 mov	ax, oldslice
+		 mov	cs:VESA_SLICE,ax
+		 call	setslice
+		endif
+
+		mov	di, oldul
+		if	VESA_MULTISEG
+		 mov	ax, cs:VID_SEG
+		else
+		 mov	ax, graph_plane
+		endif
+		mov	es, ax
+
+		lea	si, mousbuf
+		mov	cx, oldmht
+		dec	cx
+		jz	discur3
+
+discur0:	push	cx
+		push	di
+		if 	VESA_SPLITLINE
+		 push	cs:VESA_SLICE
+		 mov	cx,oldmwid
+discur0a:	 lodsb
+		 call	stosb1024 
+		 loop	discur0a	
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		else	
+		 mov	cx,oldmwid
+		 rep	movsb
+		endif
+		pop	di
+		pop	cx
+		add	di,bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	di, WINDOW_SIZE
+		  jc	discur1
+		  sub	di, WINDOW_SIZE
+		 else
+		  jnc	discur1
+		 endif
+		 inc	cs:VESA_SLICE
+		 call	setslice
+		endif
+discur1:	loop	discur0
+
+discur3:
+		if	VESA_MULTISEG
+		 pop	cs:VESA_SLICE
+		 call	setslice
+		endif
+		retn	
+;
+	dseg
+ortbl		db 80h,	40h, 20h, 10h, 8, 4, 2,	1; DATA	XREF: do_line+1Ao
+					; do_line+41o
+dxgedy_tbl	dw offset dxgedy_replace	; DATA XREF: do_line+92o
+		dw offset dxgedy_tran
+		dw offset dxgedy_xor
+		dw offset dxgedy_invtran
+dygedx_tbl	dw offset dygedx_replace	; DATA XREF: do_line+1A9o
+		dw offset dygedx_tran
+		dw offset dygedx_xor
+		dw offset dygedx_invtran
+box_optbl	dw offset box_replace_mode	; DATA XREF: BOX_FILL_LINE+6Do
+		dw offset box_tran_mode
+		dw offset box_xor_mode
+		dw offset box_invtran_mode
+byte_902_5C6	db 0FFh, 7Fh, 3Fh, 1Fh,	0Fh, 7,	3, 1, 0; DATA XREF: cseg:8E4Bo
+					; cseg:8E5Bo
+word_mask_table	dw 0FFFFh, 7FFFh, 3FFFh, 1FFFh
+		dw 00FFFh, 07FFh, 03FFh, 01FFh
+		dw 000FFh, 007Fh, 003Fh, 001Fh
+		dw 0000Fh, 0007h, 0003h, 0001h
+		dw 0
+bit_mask_table	dw 08000h, 4000h, 2000h, 1000h
+		dw 00800h, 0400h, 0200h, 0100h
+		dw 00080h, 0040h, 0020h, 0010h
+		dw 00008h, 0004h, 0002h, 0001h
+		dw 0
+left_word_mask	dw 0			; DATA XREF: BOX_FILL_LINE+13w
+					; BOX_FILL_LINE+40w ...
+right_word_mask	dw 0			; DATA XREF: BOX_FILL_LINE+2Aw
+					; BOX_FILL_LINE+44w ...
+patcnt		dw 0			; DATA XREF: BOX_FILL_LINE+61w
+					; cseg:4A1Ar ...
+		dw 0
+gcurx		dw 0			; DATA XREF: cseg:05CEr sub_0_40E0+5w
+					; ...
+gcury		dw 0			; DATA XREF: cseg:05D2r sub_0_40E0+Bw
+					; ...
+HIDE_CNT	dw 1			; DATA XREF: cseg:05AFw v_pline+12r
+					; ...
+WRT_MODE	dw 0			; DATA XREF: vswr_mode+2Aw
+					; vswr_mode+30w ...
+LSTLIN		dw 0			; DATA XREF: dr_recfl+12w pline+12w
+
+LN_MASK		dw 0FFFFh		; DATA XREF: v_pline+3Cw cseg:0CC6w
+					; ...
+		dw 0
+		dw 0
+FG_BP_1		dw 0			; DATA XREF: dr_recfl+24w v_pline+3Fw
+					; ...
+epsilon1	dw 0			; DATA XREF: do_line+7Ew
+					; do_line+184r ...
+yinc		dw 0			; DATA XREF: do_line+5Fw
+					; do_line+69w ...
+X1		dw 0			; DATA XREF: dr_recfl+35w pline+88w
+					; ...
+Y1		dw 0			; DATA XREF: dr_recfl+2Aw pline+93w
+					; ...
+X2		dw 0			; DATA XREF: dr_recfl+2Dw pline+A0w
+					; ...
+Y2		dw 0			; DATA XREF: dr_recfl+31w pline+A8w
+					; ...
+mheight		dw 10h			; Mouse pointer height
+;;;mshft		dw 0			; DATA XREF: mouson+3Aw
+mwid		dw 10h			; Mouse pointer width
+mht		dw 10h			; DATA XREF: mouson+7Bw
+					; mdraw+31r
+oldul		dw 0			; Old mouse pointer addr
+		if VESA_MULTISEG
+oldslice	 dw 0			; Old mouse pointer VESA slice
+		endif
+oldmwid		dw 0			; Old mouse pointer width
+oldmht		dw 10h			; DATA XREF: mouson+7Fw
+					; mousoff+Dr
+word_902_621	dw 10h			; DATA XREF: mdraw+35w
+mclipx		dw 0			; DATA XREF: mousonw mouson+18w
+					; ...
+mclipy		dw 0			; DATA XREF: mouson+6w
+					; mouson+74w ...
+		dw 0
+mousbuf_ptr	dw 0			; DATA XREF: mdraw+Aw
+					; mdraw+39r ...
+;
+; What was behind the mouse pointer. In SDPSC9: 32 words x 4 planes. In 
+; SD256: 16x16x8bpp.
+;
+mousbuf		rs 256			; DATA XREF: mdraw+6o
+					; mousoff+9o
+word_902_72B	dw 0			; DATA XREF: mdraw+4Bw
+					; DATA XREF: mdraw+47o
+vec_len_high	dw 1			; DATA XREF: vec_len+1Bw
+					; vec_len+2Dw ...
+vec_len_low	dw 1			; DATA XREF: vec_len+1Fw
+					; vec_len+29w ...
+plane_loop_count	db 4			; DATA XREF: CLEARMEM+35w CLEARMEM+4Cw
+
+;;; The VESA driver doesn't use planes
+;;; plane_port_tbl	db 1, 1, 2, 2, 4, 4, 4, 4, 8
+					; mdraw+1Bo ...
+;;; plane_read_tbl	db 0, 0, 1, 1, 2, 2, 2, 2, 3
+					; mousoff+26o ...
+plygn_bez	dw 0			; DATA XREF: plygn_main+F0w
+flit_bez	dw 0			; DATA XREF: CLC_FLIT+20r
+flit_bez_off	dw 0			; DATA XREF: CLC_FLIT+18w
+plygn_rrot	db 0			; DATA XREF: plygn_main+6w
+					; plygn_main+110r
+

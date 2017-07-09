@@ -1,0 +1,17 @@
+entry+
+dispatch+
+alpha+
+coninq+
+init+
+include+
+primattr+
+downfont+
+graphics+
+image+
+utility+
+data+
+misc+
+serio+
+xio
+pdpst8.sys,
+pdpst8.map;

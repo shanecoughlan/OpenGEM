@@ -1,0 +1,996 @@
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        * 
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;************************************************************************
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+DGROUP	GROUP	DATA
+		dseg
+
+include externs.a86
+
+;****************************************************************
+;*   Small model file operations.				*
+;****************************************************************
+PCDOS		equ	21h	; DOS function call interrupt
+ALLOCATE_MEMORY	equ	48h	; DOS function to allocate memory
+CLOSE_FILE	equ	3eh	; DOS function to close a file
+CREATE_FILE	equ	3ch	; DOS function to create a file
+DELETE_FILE	equ	41h	; DOS function to delete a file
+FREE_MEMORY	equ	49h	; DOS function to free allocated memory
+GET_DISK	equ	19h	; DOS function to return the current drive
+OPEN_FILE	equ	3dh	; DOS function to open a file
+READ_FILE	equ	3fh	; DOS function to read from the file
+SEEK		equ	42h	; DOS function to position the file pointer
+WRITE_FILE	equ	40h	; DOS function to write to the file
+
+;************************************************
+;*   Constants for determining buffer sizes 	*
+;************************************************
+REC_SIZE	equ	256	; size of display list portion of buffer
+REC_SHIFT	equ	8	; log of REC_SIZE, base 2
+
+; for rasterizing buffer
+DEF_SLICE_CNT	equ	2
+DEF_SLICE_SZ	equ	DEF_SLICE_CNT * G_SL_HGT
+
+
+CGROUP	GROUP	CODE
+		cseg
+
+		public	open_sp, clear_sp, close_sp, pt_op_wd, pt_op_by
+		public	pt_ptsin, pt_intin
+		public	gt_word, gt_byte, gt_intin, gt_ptsin
+		public	rewnd_sp, flush_sp, ini_bufs, set_bufs
+		public	allo_buf
+
+		extrn	gdos_path:dword
+
+; Code segment data.
+		extrn	sc_bytes:word
+
+; These duplicates of variables in the data segment are for OPTIMIZATION.
+tot_plsize	dw	0
+bf_len		dw	0
+
+;**********************************************************************
+;* open_sp()                                                          *
+;*                                                                    *
+;*      Entry to Open the Spool File                                  *
+;*                                                                    *
+;* Inputs:  None                                                      *
+;* Outputs:  CONTRL[6] set to zero if unsuccessful file open.         *
+;**********************************************************************
+open_sp:
+
+; Create the printer spooling file.
+		cmp	abort_fl, 0		; skip if file was not closed
+		jz	os_get_gdos
+		jmp	open_error
+
+; Copy the GDOS drive number and string.
+os_get_gdos:
+		push	ds
+		mov	ax, ds
+		mov	es, ax
+		mov	di, offset spool_file	; es:di -> gdos path string
+		lds	si, gdos_path
+		lodsb				; al = drive number
+		add	al, 'a'			; convert to lower case drive
+		stosb
+		mov	es:byte ptr [di], ':'
+		inc	di
+		mov	cx, 2			; cx = gdos path string length
+os_loop:
+		lodsb
+		cmp	al, 0			; quit when null found
+		je	end_os_loop
+		stosb
+		inc	cx			; count it
+		jmps	os_loop
+end_os_loop:
+		pop	ds
+
+; Append the overflow file name.
+		mov	cx, spool_len
+		mov	si, offset spool_file_name
+	rep	movsb
+		sub	di, 6
+		mov	spool_digit, di
+
+; Try to open the file.
+		mov	bx, 6			; number of digits
+		mov	cx, 10			; digit rolling maximum
+os_open_loop:
+		push	bx
+		push	cx
+		mov	dx, offset spool_file	; ds:dx -> file name
+		mov	ax, 256 * OPEN_FILE
+		int	PCDOS			; try to create the file
+		jc	os_create		; doesn't exist...
+		mov	bx, ax
+		mov	ah, CLOSE_FILE
+		int	PCDOS			; close the file
+		pop	cx
+		pop	bx
+		mov	di, spool_digit
+		dec	cx
+		jnz	os_up_digit
+		dec	bx
+		jz	open_error
+		mov	cx, 10
+		mov	byte ptr [di], '0'
+		dec	di
+		mov	spool_digit, di
+os_up_digit:
+		inc	byte ptr [di]
+		jmps	os_open_loop
+
+; The file was not found.  Create it and initialize the rollout environment.
+os_create:
+		mov	dx, offset spool_file	; ds:dx -> file name
+		xor	cx, cx			; cx = file creation attribute
+		mov	ah, CREATE_FILE
+		int	PCDOS			; try to create the file
+		pop	cx
+		pop	bx
+		jnc	os_success
+		mov	di, spool_digit
+		dec	cx
+		jnz	os_create_up_digit
+		dec	bx
+		jz	open_error
+		mov	cx, 10
+		mov	byte ptr [di], '0'
+		dec	di
+		mov	spool_digit, di
+os_create_up_digit:
+		inc	byte ptr [di]
+		push	bx
+		push	cx
+		jmps	os_create
+os_success:
+		mov	file_handle, ax		; save the file handle
+		mov	abort_fl, 0ffffh	; file open and ready
+		xor	ax, ax
+		mov	recs_out, ax		; no records written to file
+		mov	write_pos, ax		; nothing in display list yet
+		mov	read_pos, ax
+		jmps	end_open_sp
+
+; The file couldn't be opened.  Force a VDI device handle of zero.
+open_error:
+		xor	ax, ax
+		mov	contrl + 12, ax
+
+end_open_sp:
+		ret
+
+
+;**********************************************************************
+;* clear_sp()                                                         *
+;*                                                                    *
+;*      Entry to clear the display list.  This is analogous to clear  *
+;*      workstation for a screen.                                     *
+;*                                                                    *
+;* Inputs:  None                                                      *
+;* Outputs:  Updated Di and display list                              *
+;**********************************************************************
+clear_sp:
+		cmp	abort_fl, 0		; forget it if file is closed
+		jge	end_clear_sp
+
+; Rewind the file.
+		mov	bx, file_handle
+		xor	cx, cx			; cx = high part of offset
+		mov	dx, cx			; cx = low part of offset
+		mov	al, cl			; al = seek method (beginning)
+		mov	ah, SEEK
+		int	PCDOS			; rewind the file
+
+; Update the internal data.
+		xor	ax, ax
+		mov	recs_out, ax		; no records written to file
+		mov	write_pos, ax		; nothing in display list yet
+		mov	read_pos, ax
+		mov	abort_fl, 0ffffh	; file is ready
+
+end_clear_sp:
+		ret
+
+
+;************************************************************************
+;* flush_sp()								*
+;*									*
+;*      Entry to flush the display list (i.e. write the last piece of	*
+;*      it to disk).							*
+;* Inputs:  None							*
+;* Outputs:  Updated display list environment				*
+;************************************************************************
+flush_sp:
+		cmp	abort_fl, 0		; forget it if file closed
+		jge	end_flush_sp
+		push	es
+
+; Zero fill the rest of this record so the reader will see an "eof".
+		mov	es, display_list_seg
+		mov	di, write_pos		; es:di -> display list
+		mov	ax, di			; how many bytes to fill?
+		add	ax, REC_SIZE
+		mov	cx, REC_SHIFT
+		shr	ax, cl
+		shl	ax, cl
+		mov	cx, ax
+		sub	cx, di
+		xor	al, al
+	rep	stosb
+
+; Don't perform a rollout if nothing was previously paged.
+		cmp	recs_out, 0
+		je	flush_done
+		call	rollout
+
+; Indicate no error.
+flush_done:
+		mov	abort_fl, 0ffffh
+		pop	es
+
+end_flush_sp:
+		ret
+
+
+;**********************************************************************
+;* rewnd_sp()                                                         *
+;*                                                                    *
+;*      Rewind the display list and clear the rasterizing buffer.     *
+;*                                                                    *
+;* Inputs:  None                                                      *
+;* Outputs:  Updated display list environment                         *
+;**********************************************************************
+rewnd_sp:
+		cmp	abort_fl, 0
+		jge	end_rewnd_sp
+		push	es
+
+; If the display list is memory-resident, no action required.
+		cmp	recs_out, 0
+		je	set_to_top
+
+; Rewind the file.
+		mov	bx, file_handle
+		xor	cx, cx			; cx = high part of offset
+		mov	dx, cx			; cx = low part of offset
+		mov	al, cl			; al = seek method (beginning)
+		mov	ah, SEEK
+		int	PCDOS			; rewind the file
+
+; Page in the first record.
+		call	rollin
+
+; Indicate that the current read position is at the top of the display list.
+set_to_top:
+		mov	read_pos, 0
+		mov	abort_fl, 0ffffh	; file is ready to go
+
+; Clear the rasterizing buffer.
+		mov	es, graph_plane
+		mov	cx, total_plane_sz
+		shr	cx, 1			; cx = count in words
+		xor	ax, ax
+		mov	di, ax			; es:di -> rasterizing buffer
+	rep	stosw
+		pop	es
+
+end_rewnd_sp:
+		ret
+
+
+;************************************************************************
+;* status = allo_buf()							*
+;*									*
+;* Inputs:  None							*
+;* Outputs:  status = ax = 0 (FALSE) if error, 1 (TRUE) if success	*
+;************************************************************************
+allo_buf:
+
+; Initialize the buffering size parameters.
+		call	buf_vars
+
+; Try to allocate memory for the display list and rasterizing buffer.
+; First try to allocate almost 32K (ideally how much we'd like).
+; If we can't get that much memory, allocate whatever is available as long as
+;   it's more than bf_len / 16.
+		mov	ax, bf_len
+		mov	cl, 4
+		shr	ax, cl
+		mov	cx, ax
+		
+		mov	bx, 07ffh		; paragraphs to allocate
+attempt_allocate:
+		mov	ah, ALLOCATE_MEMORY	; int 21 function 48
+		int	PCDOS
+		jnc	set_buffer_parms	; got memory: save buffer info
+		cmp	ax, 8			; int returns ax = error code
+		jne	allocate_error		;   & bx = largst avail. block
+		cmp	bx, cx			; larger than default buffer?
+		jg	attempt_allocate	; plenty available:  try again
+allocate_error:
+		xor	ax, ax			; indicate error: RETURN VALUE
+		jmps	end_allo_buf
+
+set_buffer_parms:
+		mov	display_list_seg, ax	; segment addr of allocation
+		shl	bx, 1			
+		shl	bx, 1
+		shl	bx, 1
+		shl	bx, 1
+		mov	buffer_size, bx		; size of allocation in bytes
+		mov	ax, bx
+		sub	ax, tot_plsize		; rasterizing buffer will be
+		mov	cx, REC_SHIFT		;   one slice big for now.
+		shr	ax, cl
+		shl	ax, cl			; cleared low byte of ax
+		mov	display_list_size, ax
+		call	ini_bufs
+		mov	ax, 1			; RETURN VALUE
+end_allo_buf:
+		ret
+
+
+;************************************************************************
+;* buf_vars:								*
+;*	Called ONCE ONLY, at the beginning of alloc_buf().  This	*
+;*	routine sets:							*
+;*	    plane_sz = (DEF_SLICE_CNT * sc_bytes)			*
+;*	    tot_plsize and total_plane_sz = (NUM_PLANES * plane_sz)	*
+;*	    bf_len = REC_SIZE + (DEF_SLICE_CNT * NUM_PLANES * sc_bytes) *
+;************************************************************************
+buf_vars:
+; plane_sz = (DEF_SLICE_CNT * sc_bytes)
+		mov	ax, sc_bytes
+		mov	bx, DEF_SLICE_CNT
+		mul	bx
+		mov	plane_sz, ax
+
+; tot_plsize = (DEF_SLICE_CNT * NUM_PLANES * sc_bytes)
+		mov	bx, NUM_PLANES
+		mul	bx
+		mov	tot_plsize, ax		
+		mov	total_plane_sz, ax
+
+; bf_len =  REC_SIZE + (DEF_SLICE_CNT * NUM_PLANES * sc_bytes)
+		mov	dx, REC_SIZE
+		add	dx, ax
+		mov	bf_len, dx		
+		ret
+
+
+;************************************************************************
+;* set_bufs()                                                         	*
+;*	Called ONCE ONLY from bld_page() in jmptbl.c			*
+;*                                                                   	*
+;*      Set display list and rasterizing buffer sizes.  If any of the 	*
+;*      display list has been output to the spooling file, allocate   	*
+;*      a display list buffer which is one record long and use as     	*
+;*      much of the remaining space as possible for the rasterizing   	*
+;*      buffer.  If the display list is entirely memory-resident,     	*
+;*      allocate the remainder of the buffer for rasterizing.         	*
+;*                                                                    	*
+;* Inputs:  None                                                      	*
+;* Outputs:  Updated buffering environment                            	*
+;************************************************************************
+set_bufs:
+		cmp	recs_out, 0
+		je	memory_resident
+
+; The display list has been paged to disk.  Reallocate the display list buffer
+; to be one record long and use the remaining space for the rasterizing buffer
+		mov	ax, REC_SIZE
+		jmps	set_buffering_values
+
+; The display list is memory-resident.  Allocate the remainder of the buffer
+; for the rasterizing buffer (record size aligned).
+memory_resident:
+		mov	ax, write_pos
+		add	ax, REC_SIZE + 1
+		mov	cx, REC_SHIFT
+		shr	ax, cl
+		shl	ax, cl
+
+set_buffering_values:
+		mov	display_list_size, ax
+		call	buffer_values
+		ret
+
+
+;************************************************************************
+;* ini_bufs()                                                         	*
+;*      Called from end of allo_buf() above, and also from		*
+;*		bld_page() in jmptbl.c					*
+;*		c_escape() in monoprin.c (case = clear display list)	*
+;*		v_clrwk() in monout.c					*
+;*      Set display list and rasterizing buffer sizes to default.     	*
+;*      Initialize the display list writing position.  If the display 	*
+;*      list has been paged, the new writing position is the old one  	*
+;*      mod the record size.  If the display list has not been paged, 	*
+;*      the writing position doesn't need to change.                  	*
+;*                                                                    	*
+;* Inputs:  None                                                      	*
+;* Outputs:  Updated buffering environment                            	*
+;************************************************************************
+ini_bufs:
+		cmp	recs_out, 0
+		je	bufs_in_memory
+		mov	ax, write_pos
+		xor	dx, dx
+		mov	cx, REC_SIZE
+		div	cx
+		mov	write_pos, dx
+		mov	ax, REC_SIZE
+		jmps	ini_buf_parms
+
+bufs_in_memory:
+		mov	ax, buffer_size
+		sub	ax, tot_plsize
+		mov	cx, REC_SHIFT
+		shr	ax, cl
+		shl	ax, cl
+
+ini_buf_parms:
+		mov	display_list_size, ax
+		call	buffer_values
+		ret
+
+
+;**********************************************************************
+;* BUFFER_VALUES                                                      *
+;*                                                                    *
+;*      Calculate buffering parameters.                               *
+;*                                                                    *
+;* Inputs:  ax = display list size                                    *
+;* Outputs:  graph_plane, plane_sz, total_plane_sz,                   *
+;*           slice_cnt, slice_sz                                      *
+;**********************************************************************
+buffer_values:
+; graph_plane = (display_list_size / 16) + display_list_seg
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		add	ax, display_list_seg
+		mov	graph_plane, ax
+
+; slice_cnt = (buffer_size - display_list_size) / (sc_bytes * NUM_PLANES)
+		mov	ax, NUM_PLANES
+		mul	sc_bytes
+		mov	cx, ax
+		mov	ax, buffer_size
+		sub	ax, display_list_size
+		xor	dx, dx
+		div	cx
+		mov	slice_cnt, ax
+
+; plane_sz = (slice_cnt * sc_bytes)
+; total_plane_sz = (slice_cnt * sc_bytes) * NUM_PLANES
+		mov	cx, sc_bytes
+		mul	cx
+		mov	plane_sz, ax
+		mov	cx, NUM_PLANES
+		mul	cx
+		mov	total_plane_sz, ax
+
+; slice_sz = (G_SL_HGT * slice_cnt)
+		mov	ax, G_SL_HGT
+		mul	slice_cnt
+		mov	slice_sz, ax
+
+		ret
+
+
+;************************************************************************
+;*  Deallocate display list buffer.  Close and delete the display list	*
+;*   spool file.							*
+;*	VOID close_sp()							*
+;************************************************************************
+close_sp:
+		push	es
+		mov	es, display_list_seg	; deallocate buffer
+		mov	ah, FREE_MEMORY		; function 49h
+		int	PCDOS
+
+; Close and delete the file.
+		cmp	abort_fl, 0
+		jge	end_close_sp		; don't close if not open
+
+		mov	bx, file_handle
+		mov	ah, CLOSE_FILE		; function 3eh
+		int	PCDOS
+		jc	end_close_sp		; ax = error code on failure
+
+		mov	dx, offset spool_file
+		mov	ah, DELETE_FILE		; function 41h
+		int	PCDOS
+
+end_close_sp:
+		mov	abort_fl, 0		; file is now gone
+		pop	es
+		ret
+
+
+;**********************************************************************
+;*  pt_op_by()                                                        *
+;*      Entry to put an opcode followed by a byte into the display    *
+;*      list.                                                         *
+;*  Input:  CONTRL array and TOKEN global                             *
+;*  Output:  Updated display list.                                    *
+;********************************************************************** 
+;*  pt_op_wd()                                                        *
+;*      Entry to put an opcode followed by a word into the display    *
+;*      list.                                                         *
+;*  Inputs:  CONTRL array and TOKEN global                            *
+;*  Outputs:  Updated display list                                    *
+;**********************************************************************
+pt_op_by:
+		xor	bx, bx			; flag byte op
+		jmps	pt_op_entry
+pt_op_wd:
+		mov	bx, 1			; flag word op
+pt_op_entry:
+		cmp	abort_fl, 0
+		jge	end_pt_op		; no go if no file
+		push	es
+
+; Append the opcode onto the display list.
+do_pt_op:
+		mov	es, display_list_seg
+		mov	di, write_pos		; es:di -> display list
+		mov	ax, contrl		; ax = opcode
+		stosb
+		cmp	di, display_list_size	; room for the next byte?
+		jne	put_word_argument
+		call	rollout			; make room for the next byte
+
+; Append the word argument onto the display list, a byte at a time.
+put_word_argument:
+		mov	ax, TOKEN
+		stosb				; store the low byte
+		cmp	di, display_list_size	; room for the next byte?
+		jne	put_high_byte
+		call	rollout			; make room for the next byte
+put_high_byte:
+		cmp	bx, 0			; byte or word op?
+		jz	exit_pt_op		; exit if byte op
+		mov	al, ah
+		stosb
+		cmp	di, display_list_size	; room for the next byte?
+		jne	exit_pt_op
+		call	rollout			; make room for the next byte
+
+; Save the current display list location.
+exit_pt_op:
+		mov	write_pos, di
+		pop	es
+
+end_pt_op:
+		ret
+
+
+;**********************************************************************
+;* pt_intin()                                                         *
+;*                                                                    *
+;*      Entry to put the INTIN array into the display list.           *
+;*                                                                    *
+;* Inputs:  CONTRL and INTIN arrays                                   *
+;* Outputs:  Updated display list                                     *
+;*                                                                    *
+;* pt_ptsin()                                                         *
+;*                                                                    *
+;*      Entry to put the PTSIN into the display list.                 *
+;*                                                                    *
+;* Inputs:  CONTRL and PTSIN arrays                                   *
+;* Outputs:  Updated display list                                     *
+;**********************************************************************
+pt_intin:
+		mov	ax, contrl + 6		; intin count
+		mov	si, offset intin
+		jmps	pt_array_entry
+pt_ptsin:
+		mov	ax, contrl + 2		; ptsin count
+		shl	ax, 1			; ax = number of words
+		mov	si, offset ptsin
+pt_array_entry:
+		shl	ax, 1			; ax = number of bytes
+		jz	end_pt_array
+		cmp	abort_fl, 0
+		jge	end_pt_array		; no go if no file
+		push	es
+
+; Append the intin array parameters to the display list.
+do_pt_array:
+		call	block_put		; output the block
+		pop	es
+
+end_pt_array:
+		ret
+
+
+;**********************************************************************
+;* gt_byte()                                                          *
+;*                                                                    *
+;*      Entry to get a byte from the display list.                    *
+;*                                                                    *
+;* Inputs:  Display list                                              *
+;* Outputs:  Updated display list and TOKEN global                    *
+;*                                                                    *
+;* gt_word()                                                          *
+;*                                                                    *
+;*      Entry to get a word from the display list.                    *
+;*                                                                    *
+;* Inputs:  Display list                                              *
+;* Outputs:  Updated display list and TOKEN global                    *
+;**********************************************************************
+gt_byte:
+		xor	bx, bx			; byte op flag
+		jmps	gt_value
+gt_word:
+		mov	bx, 1			; word op flag
+gt_value:
+		cmp	abort_fl, 0
+		jge	end_gt_value		; no go if no file
+		push	ds
+
+; Get the low byte from the display list.
+		mov	dx, display_list_size
+		mov	si, read_pos
+		mov	ds, display_list_seg	; ds:si -> display list
+		xor	ah, ah			; in case of byte op
+		lodsb
+		cmp	si, dx			; time for a roll in?
+		jne	get_high_byte
+		call	rollin
+
+; If word op requested, get the high byte from the display list.
+get_high_byte:
+		xchg	ah, al			; save the low byte
+		cmp	bx, 0			; byte or word op?
+		je	exit_gt_value
+		lodsb
+		cmp	si, dx			; time for a roll in?
+		jne	exit_gt_value
+		call	rollin
+
+exit_gt_value:
+		pop	ds
+		xchg	ah, al
+		mov	TOKEN, ax		; return the value
+		mov	read_pos, si		; save display list location
+
+end_gt_value:
+		ret
+
+
+;**********************************************************************
+;* gt_intin()                                                         *
+;*                                                                    *
+;*      Entry to load the INTIN array from the display list.          *
+;*                                                                    *
+;* Inputs:  Display list and CONTRL array                             *
+;* Outputs:  Updated display list  and INTIN                          *
+;*                                                                    *
+;* gt_ptsin()                                                         *
+;*                                                                    *
+;*      Entry to load the PTSIN array from the display list.          *
+;*                                                                    *
+;* Inputs:  Display list and CONTRL array                             *
+;* Outputs:  Updated display list  and PTSIN                          *
+;**********************************************************************
+gt_intin:
+		mov	ax, contrl + 6		; ax = number of words
+		mov	di, offset intin	; di -> intin array
+		jmps	gt_block
+gt_ptsin:
+		mov	ax, contrl + 2		; ax = count of vertices
+		shl	ax, 1			; ax = number of words
+		mov	di, offset ptsin	; di -> ptsin array
+gt_block:
+		shl	ax, 1			; ax = count of bytes
+		jz	end_gt_block
+		cmp	abort_fl, 0
+		jge	end_gt_block		; no go if no file
+		call	block_get
+end_gt_block:
+		ret
+
+
+;**********************************************************************
+;* BLOCK_PUT                                                          *
+;*                                                                    *
+;*      Internal subroutine to put a block of bytes into the display  *
+;*      list.                                                         *
+;*                                                                    *
+;* Inputs:  Ax = the number of bytes to move                          *
+;* Outputs:  Di and display list updated appropriately                *
+;**********************************************************************
+block_put:
+		mov	es, display_list_seg
+		mov	di, write_pos		; es:di -> dislpay list
+
+		mov	cx, display_list_size
+		sub	cx, di			; cx = space left in buffer
+		cmp	ax, cx			; ax = number of bytes to move
+		jle	block_fits
+
+; There are more bytes to output than space in the buffer.  Move in pieces
+; and roll the buffer out when necessary.
+move_block:
+		sub	ax, cx			; ax = bytes left to move
+	rep	movsb
+		cmp	ax, 0			; check if done yet
+		jle	exit_block_loop
+		call	rollout			; output the file buffer
+		mov	cx, display_list_size	; cx = space left in buffer
+		cmp	cx, ax			; cx = min(ax, buffer size)
+		jle	move_block
+		mov	cx, ax			; cx = min(ax, buffer size)
+		jmps	move_block
+
+; All the bytes will fit into this buffer.  Move them.
+block_fits:
+		mov	cx, ax
+	rep	movsb
+
+; All done.  If at the end of the buffer, roll it out.
+exit_block_loop:
+		cmp	di, display_list_size
+		jne	end_block_put
+		call	rollout
+
+; Save the final writing position for the display list.
+end_block_put:
+		mov	write_pos, di
+		ret
+
+
+;**********************************************************************
+;* BLOCK_GET:                                                         *
+;*                                                                    *
+;*      Internal subroutine to get a block of bytes from the display  *
+;*      list.                                                         *
+;*                                                                    *
+;* Inputs:  Ax = the number of bytes to move                          *
+;*          Es:Di = Where to put them (note: es = old ds)             *
+;* Outputs:  The bytes themselves and an updated display list         *
+;*           environment.                                             *
+;**********************************************************************
+block_get:
+		push	ds
+		push	es
+
+; Get the display list read position and the number of bytes left in the
+; display list buffer.
+		mov	cx, display_list_size
+		mov	si, ds
+		mov	es, si
+		mov	si, read_pos
+		mov	ds, display_list_seg	; ds:si -> display list
+
+		sub	cx, si			; cx = number of bytes left
+		cmp	ax, cx			; enough for the entire move?
+		jle	enough_there
+
+; More bytes have been requested than are currently in the buffer.  Transfer
+; the information in pieces, rolling in the buffer with each transfer.
+get_block:
+		sub	ax, cx			; ax = count of bytes to move
+	rep	movsb
+		cmp	ax, 0			; done yet?
+		jle	exit_get_loop
+		call	rollin			; get the next buffer
+		mov	cx, es:display_list_size
+		cmp	cx, ax			; cx = min(ax, buffer size)
+		jle	get_block
+		mov	cx, ax			; cx = min(ax, buffer size)
+		jmps	get_block
+
+; Enough bytes are available in the display list buffer for the transfer.
+enough_there:
+		mov	cx, ax			; cx = number of bytes to move
+	rep	movsb
+
+; If at the end of the buffer, roll in another.
+exit_get_loop:
+		cmp	si, es:display_list_size
+		jne	end_block_get
+		call	rollin			; get the next buffer
+
+; Save the current display list read position.
+end_block_get:
+		pop	es
+		pop	ds
+		mov	read_pos, si
+		ret
+
+
+;**********************************************************************
+;* ROLLOUT                                                            *
+;*      Internal subroutine to roll out the display list buffer       *
+;*                                                                    *
+;* Inputs:  Di is assumed to be pointing to the next position to      *
+;*          write to in the display list.  It is also assumed that    *
+;*          this will the first value beyond a record boundary.       *
+;* Outputs:  Updated Di and display list                              *
+;**********************************************************************
+rollout:
+		cmp	abort_fl, 0
+		jl	do_rollout
+		call	clear_disp		; error:  clear buffer
+		jmps	end_rollout
+
+do_rollout:
+		push	ds
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+
+; Output the display list buffer.  Adjust the number of bytes to write to be
+; a multiple of the record size.
+		add	di, REC_SIZE - 1	; for rounding
+		mov	cx, REC_SHIFT
+		shr	di, cl
+		shl	di, cl			; record boundary
+		mov	cx, di			; cx = bytes to write
+		inc	recs_out		; update records written count
+		mov	bx, file_handle		; bx = file handle
+		xor	dx, dx
+		mov	ds, display_list_seg	; ds:dx -> display list buffer
+		mov	ah, WRITE_FILE
+		int	PCDOS
+		jnc	exit_rollout
+		mov	abort_fl, 0		; flag error
+
+; Restore registers.
+exit_rollout:
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		pop	ds
+
+; Reset the buffer pointer to the top of the buffer.
+end_rollout:
+		xor	di, di
+		ret
+
+
+;**********************************************************************
+;* CLEAR_DISP                                                         *
+;*      Internal subroutine to fill the display list with zeroes      *
+;*                                                                    *
+;* Inputs:  None                                                      *
+;* Outputs:  Zeroed display list                                      *
+;**********************************************************************
+clear_disp:
+		push	es
+		push	di
+		push	cx
+		push	ax
+
+; Zap it with zeroes.
+		mov	cx, display_list_size
+		shr	cx, 1			; cx = count of words
+		mov	es, display_list_seg
+		xor	ax, ax
+		mov	di, ax			; es:di -> display list
+	rep	stosw
+
+; Restore and exit.
+		pop	ax
+		pop	cx
+		pop	di
+		pop	es
+		ret
+
+
+;**********************************************************************
+;* ROLLIN                                                             *
+;*      Internal subroutine to roll in the display list buffer        *
+;*                                                                    *
+;* Inputs:  None                                                      *
+;* Outputs:  Updated Si and display list environment                  *
+;**********************************************************************
+rollin:
+		push	es
+		push	ds
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+
+; The data segment probably points to the display list segment.  Retrieve
+; a friendlier data segment, for now.
+		mov	si, seg abort_fl
+		mov	ds, si
+
+; Bail out if file or buffering errors have occurred.
+		cmp	abort_fl, 0
+		jge	rollin_error
+
+; Read in a new display list buffer.
+		push	ds
+		mov	bx, file_handle		; bx = file handle
+		mov	cx, REC_SIZE		; cx = number of bytes to read
+		xor	dx, dx
+		mov	ds, display_list_seg	; ds:dx -> display list buffer
+		mov	ah, READ_FILE
+		int	PCDOS
+		pop	ds
+		jc	rollin_error
+		cmp	ax, 0
+		jne	exit_rollin
+
+rollin_error:
+		mov	abort_fl, 0		; flag error
+		call	clear_disp		; zap the display list
+
+; Restore registers and reset the display list offset to the top
+; of the buffer.
+exit_rollin:
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		pop	ds
+		pop	es
+		xor	si, si
+		ret
+
+
+;**********************************************************************
+;* Data segments for the printer driver                               *
+;**********************************************************************
+		dseg
+
+       		extrn	Contrl: Word, Ptsin: Word, TOKEN: Word
+		extrn	Intin: Word
+
+		public	buffer_size, display_list_seg
+		public	display_list_size, write_pos, read_pos
+		public	graph_plane, plane_sz
+		public	slice_cnt, slice_sz
+		public  g_plane	
+
+;*** Size stuff:
+buffer_size	        dw  	0
+display_list_seg	rw	1
+display_list_size	dw	REC_SIZE
+g_plane			rw	0
+graph_plane		rw	1
+plane_sz		dw	0
+total_plane_sz		dw	0
+slice_cnt		dw	DEF_SLICE_CNT
+slice_sz		dw	DEF_SLICE_SZ
+recs_out		dw	0		; # disp list recs written out
+
+;*** File stuff:
+abort_fl		dw	0
+file_handle		rw	1
+read_pos		rw	1
+write_pos		rw	1
+spool_digit		dw	0
+spool_file		rb	66
+spool_len		dw	end_spool_name - spool_file_name
+spool_file_name		db	'\GEM00000.$$$',0
+end_spool_name		rb	0

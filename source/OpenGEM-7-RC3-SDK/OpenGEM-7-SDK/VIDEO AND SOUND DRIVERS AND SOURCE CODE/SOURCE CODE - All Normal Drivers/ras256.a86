@@ -1,0 +1,2478 @@
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+; SD256: This is a stab at a 256-colour driver for GEM, initially based
+; on the disassembled source of SDPSC9.VGA. 
+;
+; New in this version: Attempts to make various aspects of the driver 
+; configurable by EQU directives, to support less memory-hungry resolutions
+;
+
+	if not GSX
+dseg
+	extrn	XMN_CLIP:WORD,XMX_CLIP:WORD	;clipping region
+	extrn	YMN_CLIP:WORD,YMX_CLIP:WORD	;
+	extrn	CLIP:WORD      			;clip on or off
+;
+	extrn	WORD_MASK_TABLE:word		;masks for fringes
+	extrn	CONTRL:word
+	extrn	PTSIN:word
+	extrn	INTIN:word
+	extrn	plane_loop_count:byte
+	extrn	MAP_COL:word
+	public	COPYTRAN
+
+COPYTRAN	DW	0			;TRANSPARENT VS OPAQUE FLAG
+tran_blt_tbl	db	0			; replace fg = 0/bg = 0
+		db	3			; 	  fg = 1/bg = 0
+		db	0ch			; 	  fg = 0/bg = 1
+		db	0fh			; 	  fg = 1/bg = 1	 
+		db	4			; trans   fg = 0
+		db	7			;	  fg = 1
+		db	4				  
+		db	7
+		db	6			; xor
+		db	6
+		db	6
+		db	6
+		db	1			; erase	  bg = 0
+		db	1
+		db	13			;	  bg = 1
+		db	13
+;
+sdad		dw	0      			;source dot address
+ddad		dw	0      			;destination dot address
+yover		dw	0      			;source and dest overlap
+;
+optable		dw	offset op0, offset op1, offset op2, offset op3
+		dw	offset op4, offset op5, offset op6, offset op7
+		dw	offset op8, offset op9, offset opa, offset opb
+		dw	offset opc, offset opd, offset ope, offset opf
+;
+woptable	dw	offset wop0, offset wop1, offset wop2, offset wop3
+		dw	offset wop4, offset wop5, offset wop6, offset wop7
+		dw	offset wop8, offset wop9, offset wopa, offset wopb
+		dw	offset wopc, offset wopd, offset wope, offset wopf
+;
+cseg				;need variables in code segment
+
+
+
+		if VESA_MULTISEG
+VESA_SLICE	 dw 0					; ...
+		 public	VESA_SLICE, D_SLICE, S_SLICE
+		endif
+
+backwards	dw	0      	;must copy to buffer first
+;
+		extrn	CONCAT:near
+		if VESA_MULTISEG
+		 extrn	setsslice:near, setdslice:near, setslice:near
+		endif
+
+;
+PTSIN_SEG	dw	0
+ms_fg		db	0		; Mem->screen: Foreground
+ms_bg		db	0		; Mem->screen: Background
+ms_planemask	db	0		; 0FFh for transparent copy,
+					; else goes 80 40 20 10...
+sm_planemask	db	0		; Screen-to-memory plane mask
+ssfunc		dw	0		; Screen-to-screen draw function
+msfunc		dw	0		; Memory-to-screen draw function
+smfunc		dw	0		; Screen-to-memory draw function
+s_off		dw	0		; Base address of source form
+s_seg		dw	0		; Segment of source form
+s_base		dw	0
+		if	VESA_MULTISEG
+s_slice0	 dw	0		; VESA slice in use at top of source
+s_slice		 dw	0		; VESA slice in use at source
+		endif
+source_next	dw	0		; Width of source form
+source_next_seg	dw	0		; Offset to next plane (paras)
+source_next_off	dw	0		; Offset to next plane (subpara)
+s_format	dw	0		; Source form format
+s_planes	dw	0		; Source form plane count
+swrap		dw	0	;segment wrap
+tran_blt_map	dw	0
+;
+d_off		dw	0	;start of dest form
+d_seg		dw	0	;seg of dest form
+		if	VESA_MULTISEG
+d_slice		 dw	0	; VESA slice in use at destination
+d_slice0	 dw	0	; VESA slice in use at top of dest.
+		endif
+d_base		dw	0
+dest_next	dw	0	;add this to get to next line in buffer
+if num_planes gt 1
+dest_next_seg	dw	0
+dest_next_off	dw	0
+endif
+d_format	dw	0	;form format flag
+d_planes	dw	0	;number of planes
+dwrap		dw	0	;segment wrap
+;
+rwidth		dw	0	;width of area in pixels
+rheight		dw	0	;height of area in pixels
+;
+dest_words	dw	0	;number of words in the middle
+right_mask	dw	0	;
+left_mask	dw	0	;fringes of destination to be affected
+rotate_mask	dw	0	;overlap between words in inner loop
+;
+rotate		dw	offset rol_call	;where to jump to align source
+logicop		dw	offset op1	;pixel operation address
+wlogicop	dw	offset wop1	;pixel operation address
+blttype		dw	single_loop	;how big an area are we affecting
+
+		public	COPY_RFM
+
+COPY_RFM:	mov	cs:ms_fg,0FFh
+		mov	cs:ms_bg,0
+		push	bp
+		push	ds
+		push	es
+
+		mov	ax, ds
+		mov	cs:PTSIN_SEG,	ax
+		mov	di, offset CONTRL
+		mov	bx, 14[di]
+		mov	es, 16[di]	;Source MFDB
+
+		mov	ax, es:[bx]	;Source form
+		mov	cs:s_off,ax
+		mov	cx, es:2[bx]
+		mov	cs:s_seg,cx
+		or	ax, cx
+		jnz	calc_source_mfdb_width
+		jmp	source_screen
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+;
+; Source is not the screen
+;
+calc_source_mfdb_width:				; CODE XREF: COPY_RFM+27j
+		mov	ax, es:8[bx]
+		shl	ax, 1
+		mov	cs:source_next,	ax
+		cmp	COPYTRAN, 0
+		jnz	get_smfdb_tran	
+		mul	es:word ptr 6[bx]	;Multiply bytes/line * lines
+		mov	dx, ax
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		mov	cs:source_next_seg,	ax
+		and	dx, 0Fh
+		mov	cs:source_next_off,	dx
+		mov	ax, es:10[bx]
+		mov	cs:s_format,	ax
+		mov	ax, es:12[bx]
+		mov	cs:s_planes,	ax
+		cmp	ax, 8
+		jz	get_d_mfdb
+
+plane_count_wrong:				; CODE XREF: COPY_RFM+12Bj
+		pop	es
+		pop	ds
+		pop	bp
+		retn	
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+get_smfdb_tran:				; CODE XREF: COPY_RFM+3Bj
+		mov	cs:source_next_seg,0
+		mov	cs:source_next_off,0
+		mov	cs:s_planes,	1
+		mov	bx, INTIN+2
+		shl	bx, 1
+		mov	ax, MAP_COL[bx]	;AX = foreground
+		mov	cs:ms_fg,al
+		mov	bx, INTIN+4
+		shl	bx, 1
+		mov	bx, MAP_COL[bx]	;BX = background
+		mov	cs:ms_bg,bl
+		mov	dx, INTIN
+		dec	dx
+		mov	ah, dl	;Mode
+		and	ah, 3
+		mov	cx, 4
+
+get_tran_bltmap:				; CODE XREF: COPY_RFM+B9j
+		mov	bh, ah
+		ror	al, 1
+		rcr	dx, 1
+		ror	bl, 1
+		rcr	dx, 1
+		ror	bh, 1
+		rcr	dx, 1
+		ror	bh, 1
+		rcr	dx, 1
+		loop	get_tran_bltmap
+		mov	cs:tran_blt_map, dx
+		jmps	get_d_mfdb
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+source_screen:				; CODE XREF: COPY_RFM+29j
+		mov	cs:source_next,	0
+		mov	cs:source_next_seg, 0
+		mov	cs:source_next_off, 0
+
+get_d_mfdb:				; CODE XREF: COPY_RFM+6Bj COPY_RFM+C0j
+		mov	bx, 18[di]
+		mov	es, 20[di]	;Dest MFDB
+		mov	ax, es:[bx]
+		mov	cs:d_off,	ax
+		mov	cx, es:2[bx]
+		mov	cs:d_seg,	cx
+		or	ax, cx
+		jz	dest_screen
+		mov	ax, es:8[bx]		;Form width, words
+		shl	ax, 1
+		mov	cs:dest_next,	ax	;Form width, bytes
+		mul	es:word ptr 6[bx]	;Multiply by form height
+		mov	dx, ax			;DX = plane size, bytes
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		mov	cs:dest_next_seg, ax	;Plane size, paras
+		and	dx, 0Fh
+		mov	cs:dest_next_off, dx	;Plane size offset
+		mov	ax, es:10[bx]
+		mov	cs:d_format, ax
+		mov	ax, es:12[bx]
+		mov	cs:d_planes, ax
+		cmp	ax, 8
+		jz	loc_0_86BE
+		jmp	plane_count_wrong
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+dest_screen:				; CODE XREF: COPY_RFM+EFj
+		mov	cs:dest_next, 0
+		mov	cs:dest_next_seg, 0
+		mov	cs:dest_next_off, 0
+
+loc_0_86BE:				; CODE XREF: COPY_RFM+129j
+		cmp	CLIP, 0	
+		jz	copy_rfm_noclip
+		cmp	cs:d_seg,	0
+		jnz	copy_rfm_noclip
+		call	clip_rfm
+
+copy_rfm_noclip:				; CODE XREF: COPY_RFM+148j
+					; COPY_RFM+150j
+		mov	yover, 0
+		mov	cs:backwards,	0
+		mov	ax, cs:s_seg
+		cmp	ax, cs:d_seg
+		jnz	no_overlap
+		mov	bx, cs:s_off
+		cmp	bx, cs:d_off
+		jnz	no_overlap
+		mov	ax, word ptr PTSIN+2
+		mov	cx, word ptr PTSIN+0Ah
+		cmp	ax, cx
+		jz	xchk
+		jg	no_overlap
+		mov	ax, word ptr PTSIN+6
+		cmp	ax, cx
+		jl	no_overlap
+		mov	yover, 0FFFFh
+		jmps	no_overlap
+
+xchk:				; CODE XREF: COPY_RFM+182j
+		mov	ax, word ptr PTSIN
+		cmp	ax, word ptr PTSIN+8
+		jge	no_overlap
+		mov	cs:backwards,	0FFFFh
+
+no_overlap:				; CODE XREF: COPY_RFM+16Bj
+					; COPY_RFM+177j ...
+		mov	ax, word ptr PTSIN+2
+		mov	bx, word ptr PTSIN
+		mov	cx, word ptr PTSIN+6
+		mov	dx, word ptr PTSIN+4
+		sub	dx, bx
+		inc	dx
+		mov	cs:rwidth,	dx
+		sub	cx, ax
+		inc	cx
+		mov	cs:rheight,	cx
+		cmp	COPYTRAN, 0
+		jz	no_overlap_not_tran
+		cmp	cs:dest_next,	0
+		jnz	source_address
+		mov	ax, INTIN
+		cmp	al, 2
+		jnz	source_address
+		mov	bx, INTIN+2
+		shl	bx, 1
+		mov	ax, MAP_COL[bx]
+		mov	ah, 0FFh
+		and	al, ah
+		jz	no_overlap_tran_tst
+		cmp	al, ah
+		jz	no_overlap_tran_tst
+		jmps	source_address
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+no_overlap_tran_tst:				; CODE XREF: COPY_RFM+1E8j
+					; COPY_RFM+1ECj
+		mov	bx, word ptr PTSIN
+		and	bl, 7
+		jnz	source_address
+		mov	cx, word ptr PTSIN+8
+		and	cl, 7
+		jnz	source_address
+		mov	bx, word ptr PTSIN+4
+		and	bl, 7
+		cmp	bl, 7
+		jnz	source_address
+;
+; Don't allow tran_aligned_blit if going to or from the screen; the 
+; optimisation will not be effective.
+;
+       		mov     bx,cs:s_seg
+       		or      bx,bx
+       		jz      source_address
+       		mov     bx,cs:d_seg
+       		or      bx,bx
+       		jz      source_address
+
+		jmp	loc_0_8F83
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+no_overlap_not_tran:				; CODE XREF: COPY_RFM+1C9j
+		cmp	INTIN, 3
+		jnz	source_address
+		mov	cx, cs:source_next
+		or	cx, cs:dest_next
+		jnz	source_address
+		and	bl, 7
+		mov	ax, word ptr PTSIN+8
+		and	al, 7
+		cmp	bl, al
+		jnz	source_address
+;;; Removed the optimised blit. On a system with enough grunt to have a
+;;; 1024x768 VESA card, it doesn't really gain us anything and it's a 
+;;; pain to implement.
+;;; 		jmp	screen_aligned_blit
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+source_address:				; CODE XREF: COPY_RFM+1D1j
+					; COPY_RFM+1D8j ...
+		mov	ax, word ptr PTSIN+2	;AX = Y
+		mov	bx, word ptr PTSIN	;BX = X
+		cmp	yover, 0FFFFh
+		jnz	t_source
+		mov	ax, word ptr PTSIN+6
+t_source:	mov	cx, cs:source_next
+		cmp	cx, 0
+		jz	source_concat
+		call	not_screen_address
+		mov	sdad, bx
+		add	di, cs:s_off
+		mov	si, di
+		mov	cs:swrap, 0
+		jmps	loc_0_87FE
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+;
+; Source is from the screen.
+;
+source_concat:				; CODE XREF: COPY_RFM+24Cj
+		call	screen_address
+		mov	sdad, bx
+		mov	si, di
+		mov	ax, 50h
+		mov	cs:source_next,	ax
+		mov	cs:swrap, 6A50h
+		if	VESA_MULTISEG
+		 mov	ax,cs:VESA_SLICE
+		 mov	cs:s_slice, ax
+		 mov	ax, cs:VID_SEG
+		 mov	cs:s_seg, ax
+		else	;VESA
+		 mov	cs:s_seg, graph_plane
+		endif	;VESA
+;
+; SI is now source address
+;
+loc_0_87FE:				; CODE XREF: COPY_RFM+263j
+		cmp	yover, 0FFFFh
+		jnz	loc_0_8811
+		neg	cs:source_next
+		mov	cs:swrap,	95B0h
+
+loc_0_8811:				; CODE XREF: COPY_RFM+288j
+		mov	ax, word ptr PTSIN+0Ah
+		mov	bx, word ptr PTSIN+8
+		cmp	yover, 0FFFFh
+		jnz	loc_0_8822
+		mov	ax, word ptr PTSIN+0Eh
+
+loc_0_8822:				; CODE XREF: COPY_RFM+2A2j
+		mov	cx, cs:dest_next
+		cmp	cx, 0
+		jz	loc_0_8841
+		call	not_screen_address
+		mov	ddad, bx
+		add	di, cs:d_off
+		mov	cs:dwrap,	0
+		jmps	loc_0_885D
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+;
+; Destination is the screen
+;
+loc_0_8841:				; CODE XREF: COPY_RFM+2AFj
+		call	screen_address
+		mov	ax, 50h
+		mov	cs:dest_next,	ax
+		mov	cs:dwrap,	6A50h
+		if	VESA_MULTISEG
+		 mov	ax,cs:VESA_SLICE
+		 mov	cs:d_slice, ax
+		 mov	ax, cs:VID_SEG
+		 mov	cs:d_seg, ax
+		else
+		 mov	cs:d_seg, graph_plane
+		endif
+
+loc_0_885D:				; CODE XREF: COPY_RFM+2C4j
+		cmp	yover, 0FFFFh
+		jnz	address_done
+		neg	cs:dest_next
+		mov	cs:dwrap,	95B0h
+
+address_done:				; CODE XREF: COPY_RFM+2E7j
+		mov	ax,d_seg
+		if	VESA_MULTISEG
+		 mov	bx, cs:VID_SEG
+		else
+		 mov	bx, graph_plane
+		endif
+		cmp	ax, bx
+		mov	ax,s_seg
+		jnz	not_toscr
+		cmp	ax, bx
+		jz	scr2scr
+		jmp	mem2scr
+
+not_toscr:	cmp	ax, bx
+		jnz	mem2mem
+		jmp	scr2mem
+
+mem2mem:	call	blt
+
+blt_done:	
+		if	VESA_MULTISEG
+		 call	setslice	;Ensure that cs:VESA_SLICE is accurate
+		endif
+		pop	es
+		pop	ds
+		pop	bp
+		retn	
+;
+; We are blitting from one bit of the screen to another.
+;
+scr2scr:	mov	bx,INTIN	;Drawing mode
+		and	bx,0fh
+		add	bx,bx
+		mov	ax,cs:ssfuncs[bx]
+		mov	cs:ssfunc,ax
+
+; We are blitting from s_slice,s_seg:SI to d_slice,d_seg:DI
+		mov	bx,cs:rheight
+		mov	cx,cs:rwidth
+ss1:		call	ss_getrow
+		call	ss_putrow
+		mov	ax,yover
+		and	ax,ax
+		jz	ss1_f
+ss1_b:		sub	si, bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  jnc	ss1_0
+		  add	si, WINDOW_SIZE
+		  dec	cs:s_slice
+		 else
+		  jnc	ss1_0
+		  dec	cs:s_slice
+		 endif
+		endif
+ss1_0:		sub	di, bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  jnc	ss1_2
+		  add	di, WINDOW_SIZE
+		  dec	cs:d_slice
+		 else
+		  jnc	ss1_2
+		  dec	cs:d_slice
+		 endif
+		endif
+		jmps	ss1_2
+
+ss1_f:		add	si, bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	si, WINDOW_SIZE
+		  jc	ss1_1
+		  sub	si, WINDOW_SIZE
+		 else
+		  jnc	ss1_1
+		 endif
+		 inc	cs:s_slice
+		endif
+ss1_1:		add	di, bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	di, WINDOW_SIZE
+		  jc	ss1_2
+		  sub	di, WINDOW_SIZE
+		 else
+		  jnc	ss1_2
+		 endif
+		 inc	cs:d_slice	
+		endif
+ss1_2:		dec	bx
+		jnz	ss1
+		jmp	blt_done
+;
+; Get CX bytes from s_seg:si to PTSIN
+;
+ss_getrow:	push	ds
+		push	si
+		push	di
+		push	cx
+
+		if	VESA_MULTISEG
+		 call	setsslice
+		endif
+		mov	ax,ds
+		mov	es,ax
+		mov	ax,cs:s_seg
+		mov	ds,ax
+		mov	di,offset PTSIN
+		cld
+		rep	movsb
+		pop	cx
+		pop	di
+		pop	si
+		pop	ds
+		ret
+;
+; Put CX bytes from PTSIN to d_seg:di
+;
+ss_putrow:
+		push	cx
+		push	bx
+		push	si
+		push	di
+		if	VESA_MULTISEG
+		 call	setdslice
+		endif
+		mov	ax,cs:d_seg
+		mov	es,ax
+		mov	si,offset PTSIN
+		mov	bx,cs:ssfunc
+ss_put1:	
+;;;		mov	es:byte ptr[di],2
+;;;		inc	di
+
+		lodsb
+		call	bx
+		loop	ss_put1
+		pop	di
+		pop	si
+		pop	bx
+		pop	cx
+		ret
+;
+ssf0:		xor	ax,ax
+		jmps	ssf3
+;
+ssf4:		xor	al,0FFh
+ssf1:		and	al,es:[di]
+		jmps	ssf3
+;
+ssf2:		mov	ah,es:[di]
+		xor	ah,0FFh
+		and	al,ah
+ssf3:		stosb
+		ret
+;
+ssf5:		ret
+;
+ssf6:		xor	al,es:[di]
+		jmps	ssf3
+;
+ssf7:		or	al,es:[di]
+		jmps	ssf3
+;
+ssf8:		or	al,es:[di]
+		jmps	ssf12
+;
+ssf9:		xor	al,es:[di]
+		jmps	ssf12
+;
+ssf10:		mov	al,es:[di]
+		jmps	ssf12
+;
+ssf11:		mov	ah,es:[di]
+		xor	ah,0FFh
+		or	al,ah
+		jmps	ssf3
+;
+ssf12:		xor	al,0FFh
+		jmps	ssf3
+;
+ssf13:		xor	al,0FFh
+		or	al,es:[di]
+		jmps	ssf3
+;
+ssf14:		and	al,es:[di]
+		jmps	ssf12
+;
+ssf15:		mov	al,0FFh
+		jmps	ssf3
+;
+; We are blitting from the screen to memory.
+;
+scr2mem:	
+		if	VESA_MULTISEG
+		 mov	ax,cs:s_slice
+		 mov	cs:s_slice0,ax
+		endif
+		mov	bx,INTIN	;Drawing mode
+		and	bx,0fh
+		add	bx,bx
+		mov	ax,cs:smfuncs[bx]
+		mov	cs:smfunc,ax
+		mov	cs:sm_planemask,1
+;
+; We can't do a transparent copy from the screen. But at least make sure
+; that we only blit one plane.
+;
+		mov	ax,COPYTRAN
+		or	ax,ax	
+		jz	sm_nottran
+
+		mov	cs:ms_planemask,0FFh
+sm_nottran:	mov	dx,ddad
+sm0: 		push	ds
+; We are blitting from s_seg:SI to d_seg:DI
+		mov	ax,cs:d_seg
+		mov	es,ax	
+		mov	cs:s_base,si
+
+sm0a:		push	di
+		push	cs:d_seg
+		mov	si,cs:s_base
+		mov	ax,cs:s_seg
+		mov	ds,ax			;Reset DS, SI and slice
+		if	VESA_MULTISEG
+		 mov	ax,cs:s_slice0	
+		 mov	cs:s_slice,ax
+		 call	setsslice
+		endif
+		mov	cx,cs:rheight
+		mov	bx,cs:rwidth
+sm1:		push	bx
+		push	si
+		push	di
+		push	dx
+		call	sm_bltrow
+		pop	dx
+		pop	di
+		pop	si
+		pop	bx
+		add	si, bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	si, WINDOW_SIZE
+		  jc	sm1_1
+		  sub	si, WINDOW_SIZE
+		  inc	cs:s_slice
+		  call	setsslice
+		 else
+		  jnc	sm1_1
+		  inc	cs:s_slice
+		  call	setsslice	
+		 endif
+		endif
+ 
+sm1_1:		add	di,cs:dest_next
+		jnc	sm1_2
+		add	cs:d_seg,1000h
+		mov	ax,cs:d_seg
+		mov	es,ax
+sm1_2:		loop	sm1		
+;
+; If we are blitting multiple planes, repeat until 8 planes are done.
+; We cannot rely that d_seg:di is now pointing at the start of the
+; next plane. Instead, we need the original values from somewhere, and
+; add dest_next_seg and dest_next_off to them.
+;
+		pop	ax	;Original segment
+		add	ax,cs:dest_next_seg
+		mov	es,ax
+		mov	cs:d_seg,ax
+		pop	di
+		add	di,cs:dest_next_off
+;
+		mov	al,cs:sm_planemask
+		rol	al,1
+		mov	cs:sm_planemask,al
+		test	al,1
+		jz	sm0a
+		pop	ds
+		jmp	blt_done
+
+smfuncs		dw	smf0, smf1, smf2,  smf3,  smf4,  smf5,  smf6,  smf7
+		dw	smf8, smf9, smf10, smf11, smf12, smf13, smf14, smf15
+msfuncs		dw	msf0, msf1, msf2,  msf3,  msf4,  msf5,  msf6,  msf7
+		dw	msf8, msf9, msf10, msf11, msf12, msf13, msf14, msf15
+ssfuncs		dw	ssf0, ssf1, ssf2,  ssf3,  ssf4,  ssf5,  ssf6,  ssf7
+		dw	ssf8, ssf9, ssf10, ssf11, ssf12, ssf13, ssf14, ssf15
+
+mstfuncs	dw	mstf0, mstf1, mstf2,  mstf3
+;
+; We're going from memory to screen
+;
+mem2scr:	
+		if	VESA_MULTISEG
+		 mov	ax,cs:d_slice
+		 mov	cs:d_slice0,ax
+		endif
+		mov	bx,INTIN	;Drawing mode
+		and	bx,0fh
+		add	bx,bx
+		mov	ax,cs:msfuncs[bx]
+		mov	cs:msfunc,ax
+		mov	cs:ms_planemask,1
+		mov	ax,COPYTRAN
+		or	ax,ax	
+		jz	nottran
+
+		mov	bx,INTIN
+		and	bx,03h
+		add	bx,bx
+		mov	ax,cs:mstfuncs[bx]
+		mov	cs:msfunc,ax
+		mov	cs:ms_planemask,0FFh
+nottran:	
+		mov	dx,sdad
+
+ms0: 		push	ds
+; We are blitting from s_seg:SI to d_seg:DI
+		mov	ax,cs:s_seg
+		mov	ds,ax	
+		mov	cs:d_base,di
+
+ms0a:		
+		push	si
+		push	ds
+		mov	di,cs:d_base
+		mov	ax,cs:d_seg
+		mov	es,ax			;Reset ES, DI and slice
+		if	VESA_MULTISEG
+		 mov	ax,cs:d_slice0	
+		 mov	cs:d_slice,ax
+		 call	setdslice
+		endif
+		mov	cx,cs:rheight
+		mov	bx,cs:rwidth
+ms1:		push	bx
+		push	si
+		push	di
+		push	dx
+		call	ms_bltrow
+		pop	dx
+		pop	di
+		pop	si
+		pop	bx
+		add	di, bytes_line
+		if	VESA_MULTISEG
+		 if	WINDOW_SIZE ne 0
+		  cmp	di, WINDOW_SIZE
+		  jc	ms1_1
+		  sub	di, WINDOW_SIZE
+		 else
+		  jnc	ms1_1
+		 endif
+		 inc	cs:d_slice
+		 call	setdslice	
+		endif
+ 
+ms1_1:		add	si,cs:source_next
+		jnc	ms1_2
+		add	cs:s_seg,1000h
+		mov	ax,cs:s_seg
+		mov	ds,ax
+ms1_2:		loop	ms1		
+;
+; If we are blitting multiple planes, repeat until 8 planes are done.
+; We cannot rely that ds:si is now pointing at the start of the
+; next plane. Instead, we need the original values from somewhere, and
+; add source_next_seg and source_next_off to them.
+;
+		pop	ax	;Original DS
+		add	ax,cs:source_next_seg
+		mov	cs:s_seg,ax
+		mov	ds,ax
+		pop	si
+		add	si,cs:source_next_off
+
+		mov	al,cs:ms_planemask
+		rol	al,1
+		mov	cs:ms_planemask,al
+		test	al,1
+		jz	ms0a
+
+		pop	ds
+		jmp	blt_done
+
+;
+; Blit one row to the screen.
+;
+; Enter with DI->first screen pixel
+;            SI->first memory pixel
+;            BX = form width, pixels
+;	     DX = left offset within SI
+;
+ms_bltrow:	push	cx
+		mov	al,dl
+		cmp	al,8		;If AL >= 8, then 
+		jc	msb_even	;SI is in the previous byte
+		sub	al,8
+		mov	dl,al
+		inc	si
+msb_even:	mov	cl,dl
+		mov	ah,80h
+		shr	ah,cl		;AH = source mask
+		lodsb
+		mov	cx,bx		;CX = width
+msb_doit:	push	ax
+		mov	dx,cs:word ptr ms_fg	;DL = foreground DH=background
+		and	al,ah		;AL = pixel
+		jz	msb_src0
+		mov	al,cs:ms_planemask
+		jmps	msb_src1
+;
+msb_src0:	mov	al,0 	;;;cs:ms_planemask
+
+msb_src1:	mov	bx,cs:msfunc	;Transfer the pixel	
+		mov	ah,cs:ms_planemask
+		xor	ah,0FFh		;AH = NOT planemask 
+		call	bx
+		pop	ax
+		inc	di		;Next dest pixel
+		shr	ah,1
+		and	ah,ah		;If we've got to the end of the byte
+		jnz	msb_noinc	;then get another.
+		mov	ah,80h
+		lodsb
+msb_noinc:	loop	msb_doit
+		pop	cx
+		ret
+;
+; Blit a row from screen to memory
+;
+sm_bltrow:	push	cx
+		mov	al,dl
+		cmp	al,8		;If AL >= 8, then 
+		jc	smb_even	;DI is in the previous byte
+		sub	al,8
+		mov	dl,al
+		inc	di
+smb_even:	mov	cl,dl
+		mov	ah,80h
+		shr	ah,cl		;AH = destination mask
+		mov	al,es:[di]	;Destination byte
+		mov	cx,bx		;CX = width
+smb_doit:	mov	dx,ax
+		lodsb			;AL = source byte
+		mov	ah,dh
+		xor	ah,0FFh
+		and	al,cs:sm_planemask
+		jz	smb_0
+		mov	al,0FFh
+smb_0:		mov	bx,cs:smfunc
+		call	bx		;DX = dest mask and byte
+		mov	ax,dx
+		shr	ah,1
+		and	ah,ah		;If we've got to the end of the byte
+		jnz	smb_noinc	;then get another.
+		stosb
+		mov	ah,80h
+		mov	al,es:[di]	
+smb_noinc:	loop	smb_doit
+		stosb
+		pop	cx
+		ret
+;
+; Screen->memory raster ops.
+; DL = byte to write
+; DH = OR  mask to write to it
+; AH = AND mask to write to it
+; AL = value read from video plane, 0 or 0FFh
+; Return with DL = new version of byte
+;
+smf0:	and	dl,ah		;0: Blank
+	ret
+;
+smf4:	xor	al,0FFh		;Dest AND NOT source
+smf1:	and	al,dl		;AND with previous value
+	jmps	smf3
+;
+smf2:	xor	dl,0FFh		;AND with inverse of previous value
+	and	al,dl
+	xor	dl,0FFh	
+;	jmps	smf3
+smf3:	and	dl,ah		;Blank out old pixel
+	and	al,dh		;Limit new value to new pixel
+	or	dl,al
+	ret
+;
+smf5:	ret		;Leave
+;
+smf6:	xor	al,dl		;XOR with previous pixel
+	jmps	smf3
+;
+smf7:	or	al,dl		;OR with previous pixel
+	jmps	smf3
+;
+smf8:	or	al,dl		;NOT (src OR dest)
+	jmps	smf12
+;
+smf9:	xor	al,dl		;NOT (src XOR dest)
+	jmps	smf12
+;
+smf10:	mov	al,dl		;NOT dest
+	xor	al,0FFh
+smf12:	xor	al,0FFh		;NOT src
+	jmps	smf3
+;
+smf11:	xor	dl,0FFh		;src OR NOT dest
+	or	al,dl
+	xor	dl,0FFh	
+	jmps	smf3
+;
+smf13:	xor	al,0FFh		;dest OR NOT src
+	or	al,dl
+	jmps	smf3
+;
+smf14:	and	al,dl		;NOT (src AND dest)
+	jmps	smf12	
+;
+smf15:	or	dl,dh		;Solid
+	ret	
+;
+; Memory-to-screen raster ops
+; 
+; DL = foreground colour
+; DH = background colour
+; AL = (source pixel AND cs:ms_planemask)
+; AH = NOT cs:ms_planemask
+;
+
+;
+; Transparent ops
+;
+mstf0:		test	al,al
+		mov	al,dh
+		jz	mstfp
+		ret
+;
+mstf1:		test	al,al
+		mov	al,dh
+		jz	mstfp
+		mov	al,dl
+mstfp:		mov	es:[di],al
+		ret
+;
+mstf2:		test	al,al
+		mov	al,dl
+		jnz	mstfp
+		ret
+;
+mstf3:		test	al,al
+		jz	mstf3r
+		xor	es:byte ptr [di],0FFh
+mstf3r:		ret	
+;
+; Opaque ops
+;
+msf0:		mov	al,dh		;Background
+msf3a:		and	al,cs:ms_planemask
+msf3:		and	es:[di],ah	;source
+		or	es:[di],al
+		ret
+;
+msf1:		and	al,es:[di]	;source AND dest	
+		jmps	msf3
+;	
+msf2:		mov	dh,es:[di]	;source AND NOT dest
+		xor	dh,0FFh
+		and	al,dh
+		jmps	msf3
+;
+msf4:		xor	al,cs:ms_planemask	;dest AND NOT source
+		and	al,es:[di]
+		and	al,cs:ms_planemask
+		jmps	msf3
+;
+msf5:		ret			;No change
+;
+msf6:		xor	al,es:[di]	;Source XOR dest
+		jmps	msf3a
+;
+msf7:		or	al,es:[di]
+		jmps	msf3a
+;
+msf8:		or	al,es:[di]
+		jmps	msf12
+
+msf9:		xor	al,es:[di]
+		jmps	msf12
+;
+msf10:		mov	al,cs:ms_planemask
+		xor	es:[di],al
+		ret	
+;
+msf11:		mov	dh,es:[di]
+		xor	dh,0FFh
+		or	al,dh
+		and	al,cs:ms_planemask
+		jmps	msf3
+
+msf13:		mov	dh,es:[di]
+		xor	dh,0FFh
+		and	al,dh
+		jmps	msf12	
+
+msf14:		and	al,es:[di]
+msf12:		xor	al,0FFh
+		and	al,cs:ms_planemask
+		jmps	msf3
+;
+msf15:		mov	al,dl
+		jmps	msf3a
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+; Enter with AX=Y, BX=X, CX=row width
+; Return DI->data word, BX = position within word
+;
+not_screen_address:
+					; COPY_RFM+2B1p
+		mov	di, bx
+		and	bx, 0Fh		;BX = pos in word 
+		shr	di, 1
+		shr	di, 1
+		shr	di, 1
+		and	di, 0FFFEh
+		mul	cx
+		add	di, ax
+		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+screen_address:
+					; COPY_RFM+2C6p
+		call	concat
+		xor	bh, bh
+		retn
+;
+; Don't word-align; it's much simpler if we treat everything as bytes.
+;
+;;;		test	di, 1
+;;;		jz	loc_0_889B
+;;;		or	bx, 8
+;;;
+;;;loc_0_889B:				; CODE XREF: screen_address+9j
+;;;		and	di, 0FFFEh
+;;;		retn	
+
+
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+blt:
+		mov	ax, offset ror_call
+		mov	cx, ddad
+		sub	cx, sdad
+		mov	bx, cx
+		jns	loc_0_88B7
+		neg	cx
+		mov	ax, offset rol_call
+		add	bx, 10h
+
+loc_0_88B7:				; CODE XREF: blt+Dj
+		shl	bx, 1
+		mov	bx, word_mask_table[bx]
+		not	bx
+		mov	cs:rotate_mask,	bx
+		neg	cx
+		add	cx, 0Fh
+		shl	cx, 1
+		shl	cx, 1
+		add	ax, cx
+		mov	cs:rotate, ax
+		mov	bx, ddad
+		shl	bx, 1
+		mov	ax, word_mask_table[bx]
+
+	mov	left_mask,ax		;1's are where we have good data
+;
+	shr	bx,1			;set it back to tddad
+	add	bx,rwidth
+	cmp	bx,10h
+	ja	double_dest		;if bx<10 then it fits in one word
+	shl	bx,1
+	mov	ax,word_mask_table[bx]	;get mask for right side of BLT
+if byte_swap
+	xchg	ah,al
+endif	
+	not	ax
+	and	left_mask,ax 		;put the two masks together
+	mov	right_mask,0h		;we'll use this mask for skews
+	mov	dest_words,0		;number of words to write for middle
+	mov	blttype,offset single_loop
+	jmps	masks_done
+;
+double_dest:				;otherwise there are two masks
+	mov	blttype,offset double_loop
+	mov	ax,bx			;get tdad+width
+	shr	ax,1
+	shr	ax,1
+	shr	ax,1
+	shr	ax,1
+	dec	ax
+	mov	dest_words,ax		;number of words to write for middle
+	and	ax,ax
+	jnz	multi_dest
+	mov	ax,sdad
+	add	ax,rwidth
+	cmp	ax,20h
+	jb	do_rightmask		;source fits in two words too
+multi_dest:
+	mov	blttype,offset multi_right
+	cmp	rotate,offset rol_call
+	jb	do_rightmask
+	mov	blttype,offset multi_left
+;
+do_rightmask:
+	and	bx,0fh
+	jnz	not_null
+	dec	dest_words		;last word is full so its a fringe
+	mov	bx,10h
+not_null:
+	shl	bx,1
+	mov	ax,word_mask_table[bx]
+if byte_swap
+	xchg	ah,al
+endif	
+	not	ax			;1's mean we have valid data
+	mov	right_mask,ax
+masks_done:
+;
+if (num_planes gt 1) and not( segment_access )
+;
+	mov	plane_loop_count, num_planes		; load up the plane count
+	mov	bx, 1			; set up the mask bit for plane/color
+bltmasks_done_0:
+;;; VESA driver doesn't access the hardware 
+;;;	mov	dx, plane_sel_port
+;;;	mov	al, plane_port_tbl[bx]
+;;;	out	dx, al			; output the byte for the port
+;;;	mov	dx, plane_read_port
+;;;	mov	al, plane_read_tbl[bx]
+;;;	out	dx, al
+
+	shl	bx, 1			; move the bit mask over one
+	push	bx			; save the mask
+	push	si
+	push	di
+	push	es
+	push	ds
+	push	rheight
+	cmp	COPYTRAN,0
+	jz	not_blt_tran
+	mov	bx, tran_blt_map
+	and	bx, 0fh
+	mov	al, tran_blt_tbl[bx]
+	xor	ah,ah
+	mov	intin, ax
+	mov	cl,4
+	shr	tran_blt_map, cl
+not_blt_tran:
+	call	bltmasks_done_1
+	pop	rheight			; save the blit scan line count
+	pop	ds
+	pop	es
+	pop	di
+	pop	si
+	pop	bx
+	mov	ax,source_next_seg
+	add	s_seg,ax		; move source pointer
+	add	si,source_next_off	
+	mov	ax,dest_next_seg
+	add	d_seg,ax
+	add	di,dest_next_off	; move dest pointer
+	dec	plane_loop_count	; is line done
+	jnz	bltmasks_done_0
+	ret
+bltmasks_done_1:
+;
+endif
+;
+if (num_planes gt 1) and ( segment_access )
+;
+	mov	plane_loop_count, num_planes		; load up the plane count
+bltmasks_done_0:
+	push	si
+	push	di
+	push	es
+	push	ds
+	push	height
+	cmp	COPYTRAN,0
+	jz	not_blt_tran
+	mov	bx, tran_blt_map
+	and	bx, 0fh
+	mov	al, tran_blt_tbl[bx]
+	xor	ah,ah
+	mov	intin, ax
+	mov	cl, 4
+	shr	tran_blt_map, cl
+not_blt_tran:
+	call	bltmasks_done_1
+	pop	height
+	pop	ds
+	pop	es
+	pop	di
+	pop	si
+	mov	ax,source_next_seg
+	add	s_seg,ax		; move source pointer
+	add	si,source_next_off	
+	mov	ax,dest_next_seg
+	add	d_seg,ax
+	add	di,dest_next_off	; move dest pointer
+	dec	plane_loop_count	; is line done
+	jnz	bltmasks_done_0
+	ret
+bltmasks_done_1:
+;
+endif
+	mov	bx,INTIN
+	and	bx, 0fh			; make sure in range
+	cmp	bx,03h			;replace mode?
+	jne	not_rep
+	mov	ax,sdad
+	cmp	ax,ddad
+	jne	not_rep			;we have to rotate
+	cmp	backwards,FALSE
+	jne	not_rep
+	jmp	rep_norotates
+not_rep:	
+	shl	bx,1
+	mov	ax,optable[bx]
+	mov	logicop,ax		;call this address to do logicop
+	mov	ax,woptable[bx]
+	mov	wlogicop,ax		;logicop for words
+;
+	mov	cx,rheight
+;
+	mov	es,d_seg
+	mov	ds,s_seg		;set up segments
+;
+	cmp	backwards,FALSE
+	je	not_back
+
+buff_loop:				; CODE XREF: bltmasks_done_1+81j
+		mov	es, cs:PTSIN_SEG
+		push	si
+		push	di
+		mov	di, offset PTSIN
+		mov	cx, cs:dest_words
+		inc	cx
+		inc	cx
+		inc	cx
+		rep movsw
+		mov	si, offset PTSIN
+		pop	di
+		mov	ax, es
+		mov	ds, ax
+		mov	es, cs:d_seg
+		mov	cx, 1
+		call	not_back
+		pop	si
+		add	si, cs:source_next
+		mov	ds, cs:s_seg
+		dec	cs:rheight
+		jnz	buff_loop
+		retn	
+
+
+not_back:
+	mov	bp,left_mask		;get the first mask
+	call	blttype			;do the fastest one
+	ret
+;
+single_loop:				;destination is a single word
+	lodsw
+	mov	dx,[si]			;get two words (may only use one)
+	mov	bx,es:[di]		;get dest
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	dh,dl
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	and	ax,bp			;strip off garbage
+	call	logicop	
+if not byte_swap
+	xchg	ah,al
+endif
+	mov	es:[di],ax		;store the result
+	dec	si			;reset source address
+	dec	si
+	add	si,source_next		;get to next line
+if multiseg
+	cmp	si, plane_size		; check gone past the edge of graphics ?
+	jc	ssnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+ssnowrap:
+	add	di,dest_next
+if multiseg
+	cmp	di, plane_size		; check gone past the edge of graphics ?
+	jc	sdnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+sdnowrap:
+	loop	single_loop
+	ret
+;
+double_loop:				;do a line (two fringes)
+	lodsw
+	mov	dx,[si]			;get two words (may only use one)
+	mov	bx,es:[di]		;get dest
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	dh,dl
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the first one back
+	and	ax,bp			;strip off garbage
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	mov	es:[di],ax		;store the result
+	mov	ax,dx			;get the other half (it got shifted in)
+	inc	di
+	inc	di
+	mov	bx,es:[di]		;get the next word
+;
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	bp, right_mask
+	and	ax,bp			;strip off unused bits
+	call	logicop	     	
+if not byte_swap
+	xchg	ah,al
+endif
+	mov	es:[di],ax		;save the result
+	dec	di
+	dec	di			;reset dest address
+	dec	si
+	dec	si			;reset source address
+	add	si,source_next		;get to next line
+if multiseg
+	cmp	si, plane_size		; check gone past the edge of graphics ?
+	jc	dsnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+dsnowrap:
+	add	di,dest_next
+if multiseg
+	cmp	di, plane_size		; check gone past the edge of graphics ?
+	jc	ddnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+ddnowrap:
+	loop	double_loop
+	ret
+;
+multi_left:
+	push	cx
+	mov	cx,dest_words
+	push	si
+	push	di
+	lodsw
+	mov	dx,[si]			;get two words
+	inc	si
+	inc	si			;point at next word
+	mov	bx,es:[di]		;get dest
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	dh,dl
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the mask for left fringe
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	stosw				;store the result
+;
+	mov	bp,rotate_mask
+words_left:
+	mov	bx,dx			;save what's  left of this word
+	and	bx,bp			;clear out garbage at end of word
+	mov	dx,[si]			;get next_word
+	inc	si
+	inc	si
+if not byte_swap
+	xchg	dh,dl
+endif
+	call	rotate			;rotate good bits into ax
+	not	bp
+	and	ax,bp			;strip off garbage
+	not	bp
+	xor	ax,bx			;put leftovers in front of word
+	jcxz	left_done		;we have to mask the last word
+	call	wlogicop
+if not byte_swap
+	xchg	ah,al
+endif
+	stosw
+	dec	cx
+	jmp	words_left
+;
+left_done:
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	bp, right_mask		;load the mask we need
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	mov	es:[di],ax		;save the result
+	pop	di
+	pop	si
+	add	si,source_next		;get to next line
+if multiseg
+	cmp	si, plane_size		; check gone past the edge of graphics ?
+	jc	lsnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+lsnowrap:
+	add	di,dest_next
+if multiseg
+	cmp	di, plane_size		; check gone past the edge of graphics ?
+	jc	ldnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+ldnowrap:
+	pop	cx
+	dec	cx
+	jcxz	ldone
+	jmp	multi_left
+;
+ldone:
+	ret
+;
+multi_right:
+	push	cx
+	mov	cx,dest_words
+	push	si
+	push	di
+	lodsw
+	mov	bx,es:[di]		;get dest
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the mask for left fringe
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	stosw				;store the result
+;
+	mov	bp,rotate_mask
+words_right:
+	mov	bx,dx			;get bits left over from last shift
+	and	bx,bp			;save the high bits of the word
+	lodsw				;get new word
+if not byte_swap
+	xchg	ah,al
+endif
+	call	rotate			;rotate it down toward dx
+	not	bp
+	and	ax,bp			;strip off garbage at high bits
+	not	bp
+	xor	ax,bx	       		;put leftovers in front of word
+	jcxz	right_done     		;is this the right fringe word?
+	call	wlogicop
+if not byte_swap
+	xchg	ah,al
+endif
+	stosw
+	dec	cx
+	jmps	words_right
+;
+right_done:
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	bp, right_mask		;load the mask we need
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	mov	es:[di],ax		;save the result
+	pop	di
+	pop	si
+	add	si,source_next		;get to next line
+if multiseg
+	cmp	si, plane_size		; check gone past the edge of graphics ?
+	jc	rsnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+rsnowrap:
+	add	di,dest_next
+if multiseg
+	cmp	di, plane_size		; check gone past the edge of graphics ?
+	jc	rdnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+rdnowrap:
+	pop	cx
+	dec	cx
+	jcxz	rdone
+	jmp	multi_right
+;
+rdone:
+	ret
+;
+
+
+ror_call:				;call in here someplace to do
+	rcr	ax,1			;a 32 bit shift right
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+ror_one:
+	rcr	ax,1
+	rcr	dx,1
+ror_none:
+	ret
+;
+rol_call:				;this is a 32 bit left shift
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+rol_none:
+	ret
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	writing mode operations
+;	on entry, ax = Source word
+;	          bx = Dest word
+;		  bp = mask (1's represent useable bits)
+;	on exit,  ax = new destination word [D']
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+op0:	
+if not rev_vid
+	not	bp  			; mode 0  D'= 0
+	and	bx,bp
+	not	bp
+	mov	ax,bx
+	ret
+else
+	or	bx,bp			; mode 15 D'= 1
+	mov	ax,bx
+	ret
+endif
+;
+op1:	
+if not rev_vid
+	not	bp			; mode 1  D'= S and D
+	or	ax,bp
+	not	bp
+	and	ax,bx
+	ret
+else
+	or	ax,bx			; mode 7  D'= S or D  (or mode)
+	ret	
+endif
+;
+op2:
+if not rev_vid
+	not	bx			; mode 2  D'= S and [not D]
+	and	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	not	bx			; mode 11 D'= S or [not D]
+	or	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+
+endif
+;
+op3:	not	bp			; mode 3  D'= S (replace mode)	
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret	
+;
+op4:	
+if not rev_vid
+	not	ax			; mode 4  D'= [not S] and D (erase)
+	and	ax,bx
+	ret
+else
+	not	ax			; mode 13 D'= [not S] or D
+	and	ax,bp
+	or	ax,bx
+	ret
+endif
+;
+op5:	mov	ax,bx			; mode 5  D'= D
+	ret
+;
+op6:
+if not rev_vid
+	xor	ax,bx			; mode 6  D'= S xor D (xor mode)
+	ret
+else
+	xor	ax,bx			; mode 9 D'= not [S xor D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+endif	
+;
+op7:	
+if not rev_vid
+	or	ax,bx			; mode 7  D'= S or D  (or mode)
+	ret	
+else
+	not	bp			; mode 1  D'= S and D
+	or	ax,bp
+	not	bp
+	and	ax,bx
+	ret
+endif
+;
+op8:
+if not rev_vid
+	or	ax,bx			; mode 8  D'= not [S or D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	and	ax,bx			; mode 14 D'= not [S and D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+endif	  
+;
+op9:
+if not rev_vid
+	xor	ax,bx			; mode 9 D'= not [S xor D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	xor	ax,bx			; mode 6  D'= S xor D (xor mode)
+	ret
+endif
+;
+opa:	mov	ax,bx			; mode 10 D'= not D
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx	
+ 	ret
+;
+opb:
+if not rev_vid
+	not	bx			; mode 11 D'= S or [not D]
+	or	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	not	bx			; mode 2  D'= S and [not D]
+	and	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+
+endif
+;
+opc:	not	ax			; mode 12 D'= not S
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret	
+;
+opd:
+if not rev_vid
+	not	ax			; mode 13 D'= [not S] or D
+	and	ax,bp
+	or	ax,bx
+	ret
+else
+	not	ax			; mode 4  D'= [not S] and D (erase)
+	and	ax,bx
+	ret
+endif
+;
+ope:
+if not rev_vid
+	and	ax,bx			; mode 14 D'= not [S and D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	or	ax,bx			; mode 8  D'= not [S or D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+endif
+;
+opf:	
+if not rev_vid
+	or	bx,bp			; mode 15 D'= 1
+	mov	ax,bx
+	ret
+else
+	not	bp  			; mode 0  D'= 0
+	and	bx,bp
+	not	bp
+	mov	ax,bx
+	ret
+endif
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	word writing mode operations
+;	on entry, ax = Source word
+;	          bx = Dest word
+;	on exit,  ax = new destination word [D']
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+wop0:	
+	xor	ax,ax  			; mode 1  D'= 0
+if rev_vid
+	not	ax
+endif
+	ret
+;
+wop1:					; mode 2 D'= S and D
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	and	ax,bx
+else
+	or	ax,bx
+endif
+	ret
+;
+wop2:					; mode 3  D'= S and [not D]
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	bx
+	and	ax,bx
+	ret
+else
+	not	bx
+	or	ax,bx
+	ret
+endif
+;
+wop3:					; mode 4  D'= S (replace mode)	
+	ret	
+;
+wop4:					; mode 5  D'= [not S] and D (erase)
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	ax
+	and	ax,bx
+	ret
+else
+	not	ax
+	or	ax,bx
+	ret
+endif
+;
+wop5:					; mode 6  D'= D
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	ax,bx	
+	ret
+;
+wop6:					; mode 7  D'= S xor D (xor mode)
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+
+	xor	ax,bx
+if rev_vid
+	not	ax
+endif
+	ret	
+;
+
+wop7:					; mode 8  D'= S or D  (or mode)
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	or	ax,bx
+	ret	
+else
+	and	ax,bx
+	ret
+endif
+;
+wop8:					; mode 9  D'= not [S or D]
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	or	ax,bx
+	not	ax
+	ret	  
+else
+	and	ax,bx
+	not	ax
+	ret
+endif
+;
+wop9:					; mode 10 D'= not [S xor D]
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	xor	ax,bx
+if not rev_vid
+	not	ax
+endif
+	ret
+;
+wopa:					; mode 11 D'= not D
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	ax,bx	
+	not	ax
+ 	ret
+;
+wopb:					; mode 12 D'= S or [not D]
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	bx
+	or	ax,bx
+	ret
+else
+	not	bx
+	and	ax,bx
+	ret	
+endif
+wopc:					; mode 13 D'= not S
+	not	ax
+	ret	
+;
+wopd:					; mode 14 D'= [not S] or D
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	ax
+	or	ax,bx
+	ret
+else
+	not	ax
+	and	ax,bx
+	ret
+endif
+;
+wope:					; mode 15 D'= not [S and D]
+	mov	bx,es:[di]		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid 
+	and	ax,bx
+	not	ax
+	ret
+else
+	or	ax,bx
+	not	ax
+	ret
+endif
+wopf:
+	xor	ax,ax			; mode 16 D'= 1
+if not rev_vid
+	not	ax
+endif
+	ret
+
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	clip raster area
+;	on entry, PTSIN contains the rectangles
+;	on exit,  PTSIN contains altered rectangles
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+clip_rfm:
+	mov	ax, PTSIN + 10	; get the miny of dest rect
+	mov	bx, YMN_CLIP
+	mov	cx, PTSIN + 14	; get the maxy of dest rect
+	cmp	ax, bx		; if dest_miny < clip_miny
+	jge	clip_rfm_1
+	cmp	cx, bx		; if dest_maxy >= clip_miny
+	jl	clip_rfm_reject
+	mov	PTSIN + 10, bx  ; dest_miny = clip_miny
+	sub	bx, ax		; find delta of clip top y
+	add	PTSIN + 2, bx	; move the source up properly
+	mov	ax, PTSIN + 10
+clip_rfm_1:
+	mov	bx, YMX_CLIP
+	cmp	cx, bx		; if dest maxy > clip_maxy
+	jle	clip_rfm_2
+	cmp	ax, bx		; if dest mainy <= clip_maxy
+	jg	clip_rfm_reject
+	mov	PTSIN + 14, bx	; dest maxy = clip maxy
+	sub	cx, bx		; get the delta y
+	sub	PTSIN + 6, cx	; adjust the destination properly
+clip_rfm_2:
+	mov	ax, PTSIN + 8	; get the minx of dest rect
+	mov	bx, XMN_CLIP
+	mov	cx, PTSIN + 12
+	cmp	ax, bx		; if dest minx < clip minx
+	jge	clip_rfm_3
+	cmp	cx, bx		; if dest maxx >= clip minx
+	jl	clip_rfm_reject
+	mov	PTSIN + 8, bx	; dest minx = clip minx
+	sub	bx, ax		; find delta of clip top x
+	add	PTSIN, bx	; move the source up properly
+	mov	ax, PTSIN + 8
+clip_rfm_3:
+	mov	bx, XMX_CLIP
+	cmp	cx, bx		; if dest maxx > clip maxx
+	jle	clip_rfm_4
+	cmp	ax, bx		; if dest minx <= clip maxx
+	jg	clip_rfm_reject
+	mov	PTSIN + 12, bx
+	sub	cx, bx
+	sub	PTSIN + 4, cx	; adjust source
+clip_rfm_4:
+	ret
+clip_rfm_reject:
+	pop	ax		;dump return address
+	jmp	blt_done
+
+
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+rep_norotates:				; CODE XREF: bltmasks_done_1+1Ej
+		mov	es, cs:d_seg
+		mov	ds, cs:s_seg
+		mov	bp, cs:left_mask
+		mov	dx, cs:right_mask
+
+loc_0_8DF2:				; CODE XREF: cseg:8E36j
+		push	si
+		push	di
+		lodsw
+		xchg	ah, al
+		and	ax, bp
+		mov	bx, es:[di]
+		xchg	bh, bl
+		not	bp
+		and	bx, bp
+		not	bp
+		xor	ax, bx
+		xchg	ah, al
+		stosw
+		mov	cx, cs:dest_words
+		rep movsw
+		lodsw
+		xchg	ah, al
+		and	ax, dx
+		mov	bx, es:[di]
+		xchg	bh, bl
+		not	dx
+		and	bx, dx
+		not	dx
+		xor	ax, bx
+		xchg	ah, al
+		stosw
+		pop	di
+		pop	si
+		add	si, cs:source_next
+		add	di, cs:dest_next
+		dec	cs:rheight
+		jnz	loc_0_8DF2
+		retn	
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+;;;screen_aligned_blit:				; CODE XREF: COPY_RFM+230j
+;;;		mov	bx, word ptr PTSIN
+;;;		mov	ax, word ptr PTSIN+4
+;;;		mov	dx, ax
+;;;		sub	dx, bx
+;;;		inc	dx
+;;;		mov	si, bx
+;;;		and	si, 7
+;;;		mov	cl, byte_902_5C6[si]
+;;;		sub	si, 8
+;;;		neg	si
+;;;		mov	di, ax
+;;;		inc	di
+;;;		and	di, 7
+;;;		mov	ch, byte_902_5C6[di]
+;;;		not	ch
+;;;		cmp	dx, 8
+;;;		jge	loc_0_8E6E
+;;;		and	cl, ch
+;;;		xor	dx, dx
+;;;		xor	ch, ch
+;;;		jmps	loc_0_8E80
+;;;
+;;;loc_0_8E6E:				; CODE XREF: cseg:8E64j
+;;;		sub	dx, si
+;;;		sub	dx, di
+;;;		shr	dx, 1
+;;;		shr	dx, 1
+;;;		shr	dx, 1
+;;;		cmp	si, 8
+;;;		jnz	loc_0_8E80
+;;;		xor	cl, cl
+;;;		inc	dx
+;;;
+;;;loc_0_8E80:				; CODE XREF: cseg:8E6Cj cseg:8E7Bj
+;;;		mov	cs:dest_words,	dx
+;;;		mov	bx, word ptr PTSIN
+;;;		mov	dx, word ptr PTSIN+8
+;;;		mov	si, 1
+;;;		cmp	cs:backwards,	0
+;;;		jz	loc_0_8EA5
+;;;		xchg	ch, cl
+;;;		neg	si
+;;;		std	
+;;;		mov	bx, word ptr PTSIN+4
+;;;		mov	dx, word ptr PTSIN+0Ch
+;;;
+;;;loc_0_8EA5:				; CODE XREF: cseg:8E96j
+;;;		mov	cs:dest_next,	si
+;;;		push	cx
+;;;		mov	ax, word ptr PTSIN+2
+;;;		mov	cx, word ptr PTSIN+0Ah
+;;;		mov	cs:source_next,	80
+;;;		cmp	yover, 0
+;;;		jz	loc_0_8ECC
+;;;		mov	ax, word ptr PTSIN+6
+;;;		mov	cx, word ptr PTSIN+0Eh
+;;;		neg	cs:source_next
+;;;
+;;;loc_0_8ECC:				; CODE XREF: cseg:8EBEj
+;;;		push	dx
+;;;		push	cx
+;;;		call	concat
+;;;		mov	si, di
+;;;		pop	ax
+;;;		pop	bx
+;;;		push	si
+;;;		call	concat
+;;;		pop	si
+;;;		pop	bx
+;;;		mov	dx, cs:VID_SEG
+;;;		mov	es, dx
+;;;
+;;;		mov	dx, 3C5h
+;;;		mov	al, 0FFh
+;;;		out	dx, al		; EGA port: sequencer data register
+;;;		mov	dx, 3CEh
+;;;		mov	al, 8
+;;;		out	dx, al		; EGA: graph 1 and 2 addr reg:
+;;;					; bit mask
+;;;					; Bits 0-7 select bits to be masked in all planes
+;;;		mov	dx, 3CFh
+;;;		mov	cx, cs:dest_words
+;;;
+;;;loc_0_8EF4:				; CODE XREF: cseg:8F35j
+;;;		push	ds
+;;;		push	es
+;;;		pop	ds
+;;;
+;;;		push	di
+;;;		push	si
+;;;		push	cx
+;;;		mov	al, bl
+;;;		call	sub_0_8F3C
+;;;		pop	cx
+;;;		push	cx
+;;;		jcxz	loc_0_8F1D
+;;;		mov	dx, 3CEh
+;;;		mov	al, 5
+;;;		out	dx, al		; EGA: graph 1 and 2 addr reg:
+;;;					; mode register.Data bits:
+;;;					; 0-1: Write mode 0-2
+;;;					; 2: test condition
+;;;					; 3: read mode:	1=color	compare, 0=direct
+;;;					; 4: 1=use odd/even RAM	addressing
+;;;					; 5: 1=use CGA mid-res map (2-bits/pixel)
+;;;		mov	dx, 3CFh
+;;;		mov	al, 1
+;;;		out	dx, al		; EGA port: graphics controller	data register
+;;;		rep movsb
+;;;		mov	al, 0
+;;;		out	dx, al		; EGA port: graphics controller	data register
+;;;		mov	dx, 3CEh
+;;;		mov	al, 8
+;;;		out	dx, al		; EGA: graph 1 and 2 addr reg:
+;;;					; bit mask
+;;;					; Bits 0-7 select bits to be masked in all planes
+;;;		mov	dx, 3CFh
+;;;
+;;;loc_0_8F1D:				; CODE XREF: cseg:8F01j
+;;;		mov	al, bh
+;;;		call	sub_0_8F3C
+;;;		pop	cx
+;;;		pop	si
+;;;		pop	di
+;;;		pop	ds
+;;;
+;;;		add	si, cs:source_next
+;;;		add	di, cs:source_next
+;;;		dec	cs:rheight
+;;;		jnz	loc_0_8EF4
+;;;		cld	
+;;;		jmp	blt_done
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+		retn	
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+;		S u b r	o u t i	n e
+
+;;;sub_0_8F3C:
+;;;		and	al, al
+;;;		jz	locret_0_8F82
+;;;		push	bx
+;;;		mov	cx, 4
+;;;		out	dx, al
+;;;		mov	dx, 3CEh
+;;;		mov	al, 4
+;;;		out	dx, al		; EGA: graph 1 and 2 addr reg:
+;;;					; read map select.
+;;;					; Data bits 0-2	select map # for read mode 00.
+;;;		mov	bx, 1
+;;;
+;;;loc_0_8F4E:				; CODE XREF: sub_0_8F3C+2Ej
+;;;		mov	dx, 3CFh
+;;;		mov	al, ss:plane_read_tbl[bx]
+;;;		out	dx, al		; EGA port: graphics controller	data register
+;;;		mov	dx, 3C5h
+;;;		mov	al, ss:plane_port_tbl[bx]
+;;;		out	dx, al		; EGA port: sequencer data register
+;;;		shl	bx, 1
+;;;		mov	al, [si]
+;;;		mov	ah, es:[di]
+;;;		mov	es:[di], al
+;;;		loop	loc_0_8F4E
+;;;		mov	al, 0Fh
+;;;		out	dx, al		; EGA port: sequencer data register
+;;;		pop	bx
+;;;		mov	dx, 3CEh
+;;;		mov	al, 8
+;;;		out	dx, al		; EGA: graph 1 and 2 addr reg:
+;;;					; bit mask
+					; Bits 0-7 select bits to be masked in all planes
+;;;		mov	dx, 3CFh
+;;;		mov	al, 0FFh
+;;;		out	dx, al		; EGA port: graphics controller	data register
+;;;		lodsb
+;;;		add	di, cs:dest_next
+;;;
+;;;locret_0_8F82:				; CODE XREF: sub_0_8F3C+2j
+;;;		retn	
+
+
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_8F83:				; CODE XREF: COPY_RFM+20Ej
+		push	ax
+		mov	bh, 0
+		mov	bl, 10h
+		and	al, al
+		jnz	loc_0_8F8E
+		mov	bl, 8
+
+loc_0_8F8E:				; CODE XREF: cseg:8F8Aj
+		mov	bx, word ptr PTSIN+8
+		mov	ax, word ptr PTSIN+0Ah
+		call	concat
+		if	VESA_MULTISEG
+		 mov	ax, cs:VID_SEG
+		else
+		 mov	ax, graph_plane
+		endif
+		mov	es, ax
+		mov	bp, cs:rheight
+		mov	cx, cs:rwidth
+		shr	cx, 1
+		shr	cx, 1
+		shr	cx, 1
+		mov	bx, bytes_line	;1024
+		mov	ax, cs:source_next
+		mov	si, word ptr PTSIN+2
+		mul	si
+		mov	dx, cs:source_next
+		mov	si, word ptr PTSIN
+		shr	si, 1
+		shr	si, 1
+		shr	si, 1
+		add	si, ax
+		pop	ax
+		add	si, cs:s_off
+		push	cs:s_seg
+		pop	ds
+		and	al, al
+		jz	loc_0_8FE9
+		call	tran_blit_regular_outloop
+		jmp	blt_done
+;ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒ
+
+loc_0_8FE9:				; CODE XREF: cseg:8FE1j
+		call	tran_blit_not_outloop
+		jmp	blt_done
+
+;€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+
+
+;
+;ds:si = source pointer data
+;es:di = dest pointer
+;cx = inner loop count
+;bp = height
+;bx = next screen line
+;dx = next source line
+;
+tran_blit_regular_outloop:
+	push	cx
+	push	si
+	push	di
+tran_blit_regular_loop:
+	lodsb				;get the source byte
+	mov	ah, es:[di]		;apply the logic op
+	stosb
+	loop	tran_blit_regular_loop
+	pop	di
+	pop	si
+	pop	cx
+	add	di, bx
+	add	si, dx
+	dec	bp
+	jnz	tran_blit_regular_outloop
+	ret
+;
+;ds:si = source pointer data
+;es:di = dest pointer
+;cx = inner loop count
+;bp = height
+;bx = next screen line
+;dx = next source line
+;
+tran_blit_not_outloop:
+	push	cx
+	push	si
+	push	di
+tran_blit_not_loop:
+	lodsb				;get the source byte
+	not	al
+	mov	ah, es:[di]		;apply the logic op
+	stosb
+	loop	tran_blit_not_loop
+	pop	di
+	pop	si
+	pop	cx
+	add	di, bx
+	add	si, dx
+	dec	bp
+	jnz	tran_blit_not_outloop
+	ret
+
+	else	;not GSX
+;
+; In GSX, we still need these VESA variables
+;
+	public	s_slice, d_slice, vesa_slice, vid_seg
+s_slice		dw	0
+d_slice		dw	0
+vesa_slice	dw	0
+vid_seg		dw	0
+	endif	;not GSX

@@ -1,0 +1,35 @@
+;**************************************************************************
+;*			    DEVICE SPECIFIC ROUTINES			  *
+;*									  *   
+;*		These routines and equates are device dependant.	  *
+;*									  *
+;*									  *
+;*									  *
+;**************************************************************************
+;Hist
+;Name	Date	Modification
+;
+include externs.a86
+include ps8regs.a86
+include vgadrv.a86
+
+include	ibmmdvsp.a86
+if mouse
+cseg
+include imouse.a86
+endif
+cseg
+include egammre1.a86
+include egammre2.a86
+dseg
+include vgadev.a86
+include	vgacols.a86
+;
+					; ...
+		include	date.a86
+		db ' IBM VGA 8-colour driver '
+		include copyrt.a86
+		rs offset PTSIN + 2 * PTSIN_SIZE + 4 - offset $
+INTOUT		rw INTOUT_SIZE
+					; ...
+

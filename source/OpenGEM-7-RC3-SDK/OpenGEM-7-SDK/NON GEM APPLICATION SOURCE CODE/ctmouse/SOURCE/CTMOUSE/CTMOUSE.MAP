@@ -1,0 +1,10 @@
+
+ Start  Stop   Length Name               Class
+
+ 00000H 014E3H 014E4H _TEXT              CODE
+ 014E4H 014E5H 00002H _DATA              DATA
+ 014E6H 01A9EH 005B9H CONST              CONST
+
+Program entry point at 0000:0100
+Warning: no stack
+

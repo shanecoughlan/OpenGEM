@@ -1,0 +1,225 @@
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        * 
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;************************************************************************
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+W_0	equ	word ptr 0
+W_1	equ	word ptr 2
+W_2	equ	word ptr 4
+W_3	equ	word ptr 6
+W_4	equ	word ptr 8
+W_5	equ	word ptr 10
+W_6	equ	word ptr 12
+W_7	equ	word ptr 14
+W_8	equ	word ptr 16
+W_9	equ	word ptr 18
+W_10	equ	word ptr 20
+W_11	equ	word ptr 22
+
+include externs.a86
+
+CGROUP	GROUP	CODE
+		cseg				  
+		extrn	printer:near		; in jmptbl.c
+
+		public	compact?
+		public	small?
+		public	pentry
+		public	df_pport
+
+;************************************************************************
+;*	pentry:								*
+;************************************************************************
+compact?:
+small?:
+pentry:
+	jmps	pentry_top
+include devinfo.a86			; put 'zyxg' at top of driver for
+					;   easy finding.
+pentry_top:
+	pushf				; save state on old stack
+	cli
+	or	ax, ax			; if ax contains 0, it is OW call,
+	jnz	not_OW			;   else ax contains data segment
+	mov	ax, seg data_seg		
+	mov	gdos_path_off, bx
+	mov	gdos_path_seg, cx
+Not_OW:
+	mov	cx, sp
+	mov	bx, ss
+	mov	ss, ax
+	mov	sp, offset stack_top	;set up local stack
+	push	cx			; save sp
+	push	bx			; save ss
+	sti
+	mov	es, ax			;ax is our dseg
+	mov	di, offset contrl_ptr	;point to array pointer storage
+	mov	si, dx						       
+	mov	cx, 10
+	rep	movsw			;store 5 long array pointers
+	mov	ds, ax			;set ds to data seg
+	mov	di, offset CONTRL	;point es:di to our control array
+	push	ds
+	lds	si, contrl_ptr		;point ds:si to app control array
+	mov	cx, CONTRL_SIZE
+	rep	movsw	 		;copy control array in to our dseg
+	pop	ds
+	mov	si, offset CONTRL
+	mov	W_2[si], 0		;init intout count and ptsout count
+	mov	W_4[si], 0
+	mov	cx, W_1[si]		;length of ptsin
+      	shl	cx, 1			;two words per point
+	cmp	cx, PTSIN_SIZE
+	jb	ptsok
+	mov	cx, PTSIN_SIZE
+	mov	W_1[si], cx
+	shr	W_1[si], 1
+
+ptsok:	mov	di, offset PTSIN
+	push	ds
+	lds	si, ptsin_ptr
+	rep	movsw			;copy ptsin array to our dseg
+	pop	ds
+	mov	si, offset CONTRL
+	mov	cx,W_3[si]		;length of intin
+	cmp	cx, 2
+	ja	chk_intin_max
+	mov	cx, 2
+	jmps	intok
+
+chk_intin_max:
+	cmp	cx, INTIN_SIZE
+	jb	intok
+	mov	cx, INTIN_SIZE
+	mov	W_3[si], cx
+
+intok:	mov	di, offset INTIN
+	push	ds
+	lds	si, intin_ptr
+	rep	movsw			; mov intin array to our dseg
+	pop	ds
+	mov	FLIP_Y, 0		; clear the flip y flag
+
+	push	es
+	push	ax
+	mov	ax, seg ds_gdos_path
+	mov	es, ax
+	mov	ax, cs:gdos_path_off
+	mov	es:ds_gdos_path, ax
+	mov	ax, cs:gdos_path_seg
+	mov	es:ds_gdos_path + 2, ax
+	pop	ax
+	pop	es
+
+	call	printer			; go to C part of driver, in jmptbl.c
+
+; Update the invoker's control array.  If the requested function was to open
+; the workstation, return the handle (in case it was modified).
+		mov	si, offset contrl	; ds:si -> driver contrl
+		les	di, contrl_ptr		; es:di -> invoker contrl
+		cmp	contrl, 1		; open workstation?
+		jne	return_counts
+		mov	ax, W_6[si]
+		mov	es:W_6[di], ax
+return_counts:
+	mov	bx, W_8[si]
+	mov	es:W_8[di], bx		;contrl[8]
+	mov	bx, W_7[si]
+	mov	es:W_7[di], bx		;contrl[7]
+	mov	bx, W_4[si]
+	mov	es:W_4[di], bx		;contrl[4] = intout size
+	mov	cx, W_2[si]
+	mov	es:W_2[di], cx		;contrl[2] = ptsout size
+	and	cx, cx
+	jz	ret_intout
+	shl	cx, 1			;two words per point
+	les	di, ptsout_ptr
+	mov	si, offset PTSOUT
+	rep	movsw
+
+ret_intout:
+	and	bx, bx
+	jz	ret_done
+	mov	cx, bx
+	les	di, intout_ptr	
+	mov	si, offset INTOUT
+	rep	movsw
+
+ret_done:
+	mov	ax, FLIP_Y		; return the flip flag 0 ok 1 = no
+	cli
+	pop	cx			;get the old ss
+	pop	bx			;get the old sp
+	mov	ss, cx
+	mov	sp, bx
+	popf
+	retf
+
+;************************************************************************
+;*  WORD df_pport()							*
+;*	Called ONCE ONLY, from v_opnwk() in monout.  Returns patched	*
+;*	port number (type?)						*
+;************************************************************************
+df_pport:
+	xor	ah, ah
+	mov	al, vp_port		; defined in devinfo.ehi ("zyxg")
+	ret
+
+
+
+; Code segment data...
+		public	gdos_path
+
+gdos_path	rd	0
+gdos_path_off	rw	1
+gdos_path_seg	rw	1
+
+
+
+;************************************************************************
+;*				data	area	     			*
+;************************************************************************
+DGROUP	GROUP	DATA
+DATA	dseg	PUBLIC	word
+
+		public	flip_y
+		public	xfm_mode
+		public	contrl_ptr
+		public	ds_gdos_path
+
+		extrn	CONTRL:WORD
+		extrn	INTIN:WORD
+		extrn	PTSIN:WORD
+		extrn	INTOUT:WORD
+		extrn	PTSOUT:WORD
+
+data_seg	rw	0
+
+contrl_ptr	rd	1
+intin_ptr	rd	1
+ptsin_ptr	rd	1
+intout_ptr	rd	1
+ptsout_ptr	rd	1
+
+stack		rw	256
+stack_top	rw	0			;push decrements before store
+flip_y		dw	0
+xfm_mode	dw	0
+
+ds_gdos_path	rw	2
+
+		end	pentry

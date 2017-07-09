@@ -1,0 +1,21 @@
+sdw869.vga = entry,
+w86_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+w86_drv,
+w8pttxt1,
+w8pttxt2,
+w8ptdraw,
+w86mblit,
+w86blit,
+w86pat,
+enddseg, 
+vgacp, 
+vgafont[nop]
+                                                                    
+                                                                    

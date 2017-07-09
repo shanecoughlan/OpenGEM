@@ -1,0 +1,11 @@
+
+all:
+
+tidy:
+
+clean:
+	erase *.app
+	erase *.rsc
+	erase *.acc
+	erase *.exe
+

@@ -1,0 +1,614 @@
+;/*		ESCAPE.A86	1/29/87 - 3/26/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	esc_font_extension
+		public	esc_full_stepaside
+		public	esc_pd_list
+		public	gdos_escape
+
+; External entry points.
+		extrn	cat_string:near
+		extrn	reset_current_directory:near
+		extrn	set_font_directory:near
+
+; External data.
+include externs.a86
+
+
+;************************************************************************
+;* gdos_escape								*
+;*	ds:si -> control array.						*
+;************************************************************************
+gdos_escape:
+		mov	ax, word ptr 10[si]
+		cmp	ax, 1
+		jne	ge_check_font_extension
+		call	esc_full_stepaside
+		jmps	end_gdos_escape
+ge_check_font_extension:
+		cmp	ax, 2
+		jne	ge_check_pd_list
+		call	esc_font_extension
+		jmps	end_gdos_escape
+ge_check_pd_list:
+		cmp	ax, 3
+		jne	ge_check_drvr_list
+		call	esc_pd_list
+ge_check_drvr_list:
+		cmp	ax, 4
+		jne	end_gdos_escape
+		call	esc_drvr_list
+end_gdos_escape:
+		ret
+
+
+;************************************************************************
+;* esc_font_extension							*
+;*	ds:si -> control array.						*
+;************************************************************************
+esc_font_extension:
+		lds	bx, intin		; ds:bx -> caller intin array
+		mov	ax, [bx]
+		mov	sd_font + 2, al
+		mov	ax, 2[bx]
+		mov	sd_font + 3, al
+		mov	ax, 4[bx]
+		mov	sd_font + 4, al
+		ret
+
+
+;************************************************************************
+;* esc_pd_list								*
+;*	ds:si -> control array.						*
+;************************************************************************
+esc_pd_list:
+		les	di, 14[si]		; es:di -> destination string
+		mov	ds, assign_seg
+		xor	si, si			; ds:si -> assignment table
+
+; Top of the assignment table information copy loop.
+epl_loop:
+		mov	ax, ASS_WORK_ID[si]
+		cmp	al, 0
+		je	epl_list_copy_done
+		cmp	al, 20
+		jb	epl_next
+		cmp	al, 29
+		ja	epl_next
+		stosb
+		mov	cx, ASS_NAME_LGTH	; bytes to copy
+		mov	bx, si			; save assignment table item
+		add	si, ASS_FILE_NAME
+	rep	movsb
+		mov	si, bx			; restore pointer
+epl_next:
+		add	si, ASS_LENGTH		; point to next
+		jmps	epl_loop
+epl_list_copy_done:
+		stosb
+		call	epl_get_gdos		; get GDOS path in intout
+		ret
+
+;************************************************************************
+;* epl_get_gdos 							*
+;*	Copy the GDOS drive and path to the intout array.		*
+;*	ENTRY:	none							*
+;*	EXIT:	es:di -> NUL at end of string in intout			*
+;************************************************************************
+epl_get_gdos:
+		les	di, intout		; es:di -> intout array
+		mov	al, gdos_drive		; 0 based
+		add	al, 'A'			; to ASCII
+		stosb				; store GDOS drive
+		mov	al, ':'			; x:
+		stosb
+		mov	si, cs			; si = seg gdos_path
+		mov	ds, si			; ds = seg gdos_path
+		mov	si, offset gdos_path	; ds:si -> GDOS path string
+egg_path_loop:
+		lodsb				; al = one of path
+		or	al, al			; source is NUL terminated
+		je	egg_path_done		; don't store the NUL
+		stosb				; anything else goes
+		jmps	egg_path_loop
+egg_path_done:
+		mov	al, '\'			; add a trailing '\'
+		stosb
+		xor	al, al			; and a trailing NUL
+		mov	es:[di], al		; but leave di -> NUL
+		ret
+
+
+;************************************************************************
+;* esc_full_stepaside							*
+;*	ds:bx -> control array.						*
+;************************************************************************
+esc_full_stepaside:
+
+; Set the full step-aside flag.
+		mov	step_aside, 1
+
+; Get the name of the program to be executed when in full step-aside.
+		lds	bx, intin		; ds:bx -> caller intin array
+		push	ds			; save intin array segment
+		lds	si, [bx]		; ds:si -> program name string
+		mov	di, seg aside_file
+		mov	es, di
+		mov	di, offset aside_file	; es:di -> file name to EXEC
+program_name_loop:
+		lodsb
+		stosb
+		cmp	al, 0			; terminate loop on null byte
+		jne	program_name_loop
+		pop	ds			; restore intin array segment
+
+; Fill in the EXEC parameter block information:  command line and two FCB's.
+; Do the command line first.
+		push	es			; save destination segment
+		push	ds			; save intin array segment
+		lds	si, 4[bx]		; ds:si -> caller's parm block
+		push	ds			; save parameter block segment
+		push	si			; save parameter block offset
+		lds	si, 2[si]		; ds:si -> command line
+		mov	di, offset aside_com_line	; es:di -> command
+command_line_loop:
+		lodsb
+		stosb
+		cmp	al, 0			; terminate loop on null byte
+		jne	command_line_loop
+		pop	si			; restore parm  blk offset
+		pop	ds			; restore parm blk segment
+
+; Fill in the first FCB.
+		push	ds			; save parm block segment
+		push	si			; save parm block offset
+		lds	si, 6[si]		; ds:si -> first FCB
+		mov	es, psp_base
+		mov	di, 5ch			; es:di -> first FCB (PSP)
+		mov	cx, 16			; cx = unopened FCB length
+	rep	movsb
+		pop	si			; restore parm blk offset
+		pop	ds			; restore parm blk segment
+
+; Fill in the second FCB.
+		lds	si, 10[si]		; ds:si -> second FCB
+		mov	es, psp_base
+		mov	di, 6ch			; es:di -> second FCB (PSP)
+		mov	cx, 16			; cx = unopened FCB length
+	rep	movsb
+
+		mov	aside_block + 8, es	; first default FCB segment
+		mov	aside_block + 12, es	; second default FCB segment
+
+; Get the step-aside error message.
+		pop	ds			; restore intin array segment
+		pop	es			; restore destination segment
+		lds	si, 8[bx]		; ds:si -> error message
+		mov	di, offset aside_msg	; es:di -> error message
+error_message_loop:
+		lodsb
+		stosb
+		cmp	al, 0			; terminate loop on null byte
+		jne	error_message_loop
+		dec	di
+		mov	al, '$'
+		stosb				; terminate string
+		ret
+
+;************************************************************************
+;* esc_drvr_list							*
+;*	GDOS escape to return driver information.			*
+;*	ENTRY:	intin[0] = device ID					*
+;*		intin[1] = information type requested			*
+;*			   1: full driver file name including path	*
+;*			   2: short driver identifier (<= 12 chars)	*
+;*			   3: long driver identifier (<= 72 chars)	*
+;*			   4: driver font search path (path string with	*
+;*			      wild cards)				*
+;*	EXIT:	intout = WORD string of requested information		*
+;*		control[4] = length of string (no NUL included)		*
+;*			   = 0 if no info available			*
+;************************************************************************
+
+esc_drvr_list:
+		lds	si, intin		; es:di -> intin array
+		mov	bx, [si]		; bx = intin[0] (device ID)
+		mov	cx, 2[si]		; cx = intin[1] (info type)
+		mov	ds, assign_seg
+		xor	si, si			; ds:si -> assignment table
+edl_loop:
+		mov	ax, ASS_WORK_ID[si]	; get device ID for this entry
+		cmp	ax, bx			; right ID?
+		je	edl_fnddev		; found device if so
+		cmp	al, 0			; 0 => end of table
+		je	edl_abort		; all done - no info
+		add	si, ASS_LENGTH		; point to next assign entry
+		jmps	edl_loop		; and keep looking
+edl_fnddev:
+		loop	edl_not1		; if cx = 1 then
+		call	edl_get_fname		; get driver file name
+		jmps	edl_done		; that's all
+
+edl_not1:	loop	edl_not2		; if cx = 2 then
+		call	edl_find_short		; get short name
+		jmps	edl_done		; that's all
+
+edl_not2:	loop	edl_not3		; if cx = 3 then
+		call	edl_find_long		; get long name
+		jmps	edl_done		; that's all
+
+edl_not3:	loop	edl_not4		; if cx = 4 then
+		call	edl_find_fpath		; get font path string
+		jmps	edl_done		; that's all
+
+edl_not4:	loop	edl_not5		; if cx = 5 then
+		call	edl_find_patch		; get driver patch byte(s)
+		mov	bx, 1			; 1 int out
+		jmps	edl_fix_contrl		; that's all
+edl_not5:
+
+edl_abort:
+		xor	bx, bx			; no output data
+		jmps	edl_fix_contrl
+edl_done:
+		call	edl_expand		; expand INTOUT to words
+		
+edl_fix_contrl:
+		lds	si, contrl		; ds:di -> contrl array
+		mov	word ptr 4[si], 0	; nptsout = contrl[2] = 0
+		mov	8[si], bx		; nintout = contrl[4] = bx
+		ret
+
+;************************************************************************
+;* edl_get_fname        						*
+;*	Get full driver file name including path.			*
+;*	ENTRY:	ds:si -> assign table entry for requested driver	*
+;*	EXIT:	intout = NUL terminated file name			*
+;************************************************************************
+edl_get_fname:
+		push	si			; save offset
+		push	ds			; and assign entry segment
+		call	epl_get_gdos		; get gdos path into intout
+						; es:di -> NUL at end
+		pop	ds			; ds:si -> assign table
+		pop	si			; restore assign table index
+		mov	cx, ASS_NAME_LGTH	; bytes to copy
+		add	si, ASS_FILE_NAME	; add offset to name part
+	    rep	movsb				; move file name (NUL too)
+	    	ret
+
+;************************************************************************
+;* edl_expand	        						*
+;*	Expand NUL terminated string in intout from bytes to words.	*
+;*		(128 chars max)						*
+;*	ENTRY:	intout = NUL terminated string <= 128 chars		*
+;*	EXIT:	bx = string length not including NUL			*
+;************************************************************************
+edl_expand:
+		xor	al, al			; al = NUL
+		les	di, intout		; es:di -> intout array
+;;;;;		mov	si, di			; save start offset in si
+		mov	cx, 128			; 128 MAX
+	  repne	scasb				; scan for NUL
+	  	mov	ax, 128			; MAX
+		sub	ax, cx			; ax = string length (w NUL)
+;;;;;		mov	cx, ax			; set up for move
+		dec	ax			; ax = length - 1
+		mov	bx, ax			; save in bx
+;;;;;		add	ax, si			; ax = start + length - 1
+;;;;;		mov	si, ax			; si = source offset
+;;;;;		add	ax, bx			; ax = start + (length-1)*2
+;;;;;		mov	di, ax			; di = destination offset
+;;;;;		mov	ax, es			; ax = segment of intout
+;;;;;		mov	ds, ax			; ds = segment of intout
+;;;;;		xor	ah, ah			; ah = 0
+;;;;;		std				; reverse move
+;;;;;exp_loop:
+;;;;;		lodsb		      		; al = a byte
+;;;;;		stosw				; save as a word
+;;;;;		loop	exp_loop		; for total length
+;;;;;		cld				; back to forward
+	    	ret				; all done
+
+;************************************************************************
+;* edl_find_zyxg         						*
+;*	Find "zyxg" in driver file and fill disk_buff with data in file	*
+;*	that immediately follows.					*
+;*	ENTRY:	intout = driver file name (NUL terminated)		*
+;*	EXIT:	ds:si -> disk_buff = data after zyxg			*
+;*		cx = number of valid bytes in disk_buff			*
+;************************************************************************
+edl_find_zyxg:
+		mov	ax, 256*FILE_OPEN	; Open file DOS call (3dh)
+		lds	dx, intout		; ds:dx -> driver name
+		int	PCDOS			; open driver file
+		jc	efz_find_noopen		; abort if open failed
+		mov	bx, ax			; bx = file handle
+
+		mov	ax, cs			; ax = code segment
+		mov	ds, ax			; ds = code = data segment
+		mov	es, ax			; es also
+		mov	dx, offset disk_buff	; ds:dx -> disk buffer
+efz_find_rloop:
+		call	edl_file_read		; read a disk buffer full
+		jc	efz_find_abort		; abort if read error
+efz_scanz:	mov	al, 'z'			; search for a 'z'
+	  repne	scasb				; scan for 'z'
+	  	jne	efz_find_rloop		; another buffer if no 'z'
+		jcxz	efz_read1		; if cx != 0 then
+		jmps	efz_findy		; go look for a y
+efz_read1:	call	edl_file_read		; read a disk buffer full
+		jc	efz_find_abort		; abort if read error
+efz_findy:	cmp	byte ptr [di], 'y'	; check for 'y'
+	  	jne	efz_scanz		; try for another 'z'
+		inc	di			; bump buffer index
+		loop	efz_findx		; cx--, if cx = 0 then
+		call	edl_file_read		; read a disk buffer full
+		jc	efz_find_abort		; abort if read error
+efz_findx:	cmp	byte ptr [di], 'x'	; check for 'x'
+	  	jne	efz_scanz		; try for another 'z'
+		inc	di			; bump buffer index
+		loop	efz_findg		; cx--, if cx = 0 then
+		call	edl_file_read		; read a disk buffer full
+		jc	efz_find_abort		; abort if read error
+efz_findg:	cmp	byte ptr [di], 'g'	; check for 'g'
+	  	jne	efz_scanz		; try for another 'z'
+
+		inc	di			; bump buffer index
+		loop	efz_havezyxg		; cx--, if cx = 0 then
+		call	edl_file_read		; read a disk buffer full
+		jc	efz_find_abort		; abort if read error
+efz_havezyxg:	mov	si, di			; si = source for move
+		mov	di, dx			; di back to start of buffer
+		mov	ax, DISK_BUFF_SIZE	; ax = total size
+		sub	ax, cx			; ax = # to read = tot-so far
+	    rep	movsb				; move after 'g' to start
+	    	mov	cx, ax			; cx = # to read
+		jcxz	efz_noread		; if buffer not yet full =>
+		mov	dx, di			; append to data already there
+		mov	ah, FILE_READ		; DOS file read
+		int	PCDOS			; do the disk read
+		jc	efz_find_abort		; abort if error (not for EOF)
+efz_noread:	add	ax, di			; total = #read + di - start
+		mov	si, offset disk_buff	; set up for return
+		sub	ax, si			; total = # read + # moved
+		mov	cx, ax			; cx = #, ds:si = buffer
+		mov	ah, FILE_CLOSE		; Close file DOS call (3eh)
+		int	PCDOS			; close it
+		clc				; success -> clear carry
+		ret
+efz_find_abort:
+		mov	ah, FILE_CLOSE		; Close file DOS call (3eh)
+		int	PCDOS			; close it
+		stc				; failed -> set carry
+efz_find_noopen:
+		ret
+
+DISK_BUFF_SIZE equ 256
+disk_buff	rb	DISK_BUFF_SIZE
+
+;************************************************************************
+;* edl_file_read	     						*
+;*	Read file buffer into disk_buff and return status		*
+;*	ENTRY:	bx = file handle					*
+;*		ds:dx -> disk_buff					*
+;*	EXIT:	cx = number of bytes read				*
+;*		ds:di -> disk_buff
+;*		carry is clear unless cx = 0 or there was a read error	*
+;************************************************************************
+edl_file_read:
+		mov	ah, FILE_READ		; DOS file read
+		mov	cx, DISK_BUFF_SIZE	; # of bytes to read
+		int	PCDOS			; do the disk read
+		jc	efr_done		; abort if error
+		mov	di, dx  		; di = start of disk_buff
+		mov	cx, ax			; cx = number of bytes read
+		or	ax, ax			; test for 0 bytes read
+		jne	efr_done		; if count = 0 then
+		stc				; set carry if EOF also
+efr_done:	
+		ret				
+
+
+;************************************************************************
+;* edl_find_patch         						*
+;*	Retrieve driver patch byte or bytes from the driver file or	*
+;*	assign table if it has been previously read from the driver file*
+;*	ENTRY:	ds:si -> assign table entry for requested driver	*
+;*	EXIT:	intout = driver patch					*
+;************************************************************************
+edl_find_patch:
+		test	byte ptr ASS_RES_ID[si], ASS_NAMES_VALID
+						; see if names OK
+		jne	edl_p_have_em		; if not then
+		or	byte ptr ASS_RES_ID[si], ASS_NAMES_VALID
+						; we will now
+		push	ds			; save assign table segment
+		push	si			; save assign table offset
+		call	edl_get_names		; go get them
+		pop	si			; restore assign table offset
+		pop	ds			; restore assign table segment
+edl_p_have_em:
+		les	di, intout		; es:di -> intout array
+		mov	ax, ASS_PATCH[si]	; ax = patch byte(s)
+		mov	es:[di], ax		; patch byte(s) -> intout
+		ret
+
+;************************************************************************
+;* edl_find_short         						*
+;*	Retrieve driver short identifier from the driver file or assign	*
+;*	table if it has been previously read from the driver file.	*
+;*	ENTRY:	ds:si -> assign table entry for requested driver	*
+;*	EXIT:	intout = driver short identifier (NUL terminated)	*
+;************************************************************************
+edl_find_short:
+		test	byte ptr ASS_RES_ID[si], ASS_NAMES_VALID
+						; see if names OK
+		jne	edl_s_have_em		; if not then
+		or	byte ptr ASS_RES_ID[si], ASS_NAMES_VALID
+						; we will now
+		push	ds			; save assign table segment
+		push	si			; save assign table offset
+		call	edl_get_names		; go get them
+		pop	si			; restore assign table offset
+		pop	ds			; restore assign table segment
+edl_s_have_em:
+		les	di, intout		; es:di -> intout array
+		mov	cx, ASS_S_NAME_LEN	; 12 bytes max + NUL
+		add	si, ASS_S_NAME		; short name at this offset
+	  rep	movsb				; copy string thru NUL
+	    	xor	al, al			; al = NUL
+		stosb				; add just in case
+		ret
+
+;************************************************************************
+;* edl_find_long         						*
+;*	Retrieve driver long identifier from the driver file or assign	*
+;*	table if it has been previously read from the driver file.	*
+;*	ENTRY:	ds:si -> assign table entry for requested driver	*
+;*	EXIT:	intout = driver long identifier (NUL terminated)	*
+;************************************************************************
+edl_find_long:
+		test	byte ptr ASS_RES_ID[si], ASS_NAMES_VALID
+						; see if names OK
+		jne	edl_l_have_em		; if not then
+		or	byte ptr ASS_RES_ID[si], ASS_NAMES_VALID
+						; we will now
+		push	ds			; save assign table segment
+		push	si			; save assign table offset
+		call	edl_get_names		; go get them
+		pop	si			; restore assign table offset
+		pop	ds			; restore assign table segment
+edl_l_have_em:
+		les	di, intout		; es:di -> intout array
+		mov	cx, ASS_L_NAME_LEN	; 72 bytes max + NUL
+		add	si, ASS_L_NAME		; long name at this offset
+	  rep	movsb				; copy string thru NUL
+	    	xor	al, al			; al = NUL
+		stosb				; add just in case
+		ret
+
+;************************************************************************
+;* edl_get_names         						*
+;*	Retrieve driver short and long names from the driver file.	*
+;*	The driver file must contain the characters "zyxg", followed by	*
+;*	1 (non-screen) or 2 (screen) patch bytes, followed by a NUL	*
+;*	terminated short (<= 12 chars + NUL) name, followed by a NUL	*
+;*	terminated long (<= 72 chars + NUL) name.  This routine only	*
+;*	characters in the range [0x20,0x7f] and assumes that if any	*
+;*	othercharacter is found that the entries are not present.	*
+;*	ENTRY:	ds:si -> assign table entry for requested driver	*
+;*		ax = device ID						*
+;*	EXIT:	ASSIGN table entry for device is filled:		*
+;*			ASS_PATCH  = patch byte or bytes		*
+;*			ASS_S_NAME = short name				*
+;*			ASS_L_NAME = long name				*
+;************************************************************************
+
+edl_get_names:
+		push	ax			; save device ID
+		push	ds			; save assign table segment
+		push	si			; save assign table offset
+		call	edl_get_fname		; get driver file - intout
+		call	edl_find_zyxg		; search file for zyxg
+		pop	bx			; restore assign table offset
+		pop	es			; assign table entry at es:bx
+		pop	ax			; restore device ID
+		jc	edl_nonames		; if found then at ds:si
+		lea	di, ASS_PATCH[bx]	; es:di -> patch bytes
+		mov	es: word ptr [di], 0	; initialize to 0	
+		movsb				; 1st byte
+		cmp	ax, 9			; screen driver id [1,9]
+		jge	edl_noscr		; if it's a screen =>
+		movsb				; 2nd byte
+edl_noscr:	mov	cx, ASS_S_NAME_LEN	; 12 bytes max + NUL
+		lea	di, ASS_S_NAME[bx]	; es:di -> short name
+
+edl_s_move:	lodsb				; al = one from disk_buff
+		stosb				; store it in assign table
+		or	al, al			; test for NUL
+		je	edl_s_done		; done if so
+		cmp	al, 20h			; char in [01h, 1fh]
+		jb	edl_nonames		; assume no names if so
+		cmp	al, 7fh			; char in [7fh, ffh]
+		ja	edl_nonames		; assume no names if so
+		loop	edl_s_move		; keep going until NUL or 12
+		jmps	edl_s_full		; full string
+edl_s_done:	add	si, cx			; bump over fixed length field
+		dec	si			; -1 for early exit
+edl_s_full:  	mov	cx, ASS_L_NAME_LEN	; 72 bytes max + NUL
+		lea	di, ASS_L_NAME[bx]	; es:di -> long name
+
+edl_l_move:	lodsb				; al = one from disk_buff
+		stosb				; store it in assign table
+		or	al, al			; test for NUL
+		je	edl_l_done		; done if so
+		cmp	al, 20h			; char in [01h, 1fh]
+		jb	edl_nolong		; assume no long name if so
+		cmp	al, 7fh			; char in [7fh, ffh]
+		ja	edl_nolong		; assume no long name if so
+		loop	edl_l_move		; keep going until NUL or 72
+edl_l_done:
+	  	jmps	edl_names_done		; all done
+edl_nonames:
+		xor	al, al			; al = NUL
+		mov	es:ASS_S_NAME[bx], al	; short name = ""
+edl_nolong:
+		xor	al, al			; al = NUL
+		mov	es:ASS_L_NAME[bx], al	; long name = ""
+edl_names_done:
+		ret
+
+;************************************************************************
+;* edl_find_fpath         						*
+;*	Find the font path string for the device containing wild card	*
+;*	characters.							*
+;*	ENTRY:	ds:si -> assign table entry for requested driver	*
+;*	EXIT:	intout = NUL terminated font path search string		*
+;************************************************************************
+edl_find_fpath:
+		push	ds			; save assign table segment
+		push	si			; save assign table offset
+		call	set_font_directory	; go to font directory
+		lds	si, intout		; ds:si -> intout array
+		mov	ah, GET_DRIVE		; get current disk drive
+		int	PCDOS			; its in al
+		mov	dl, al			; into dl for GET_DIR below
+		add	al, 'A'			; convert to ASCII
+		mov	[si], al		; save in intout[0]
+		mov	al, ':'			; add ':'
+		mov	1[si], al		; save in intout[1]
+		mov	al, '\'			; add '\'
+		mov	2[si], al		; save in intout[2]
+		add	si, 3			; point to intout[3]
+		inc	dl			; 0 = default for GET_DIR
+		mov	ah, GET_DIR		; get current directory = font
+		int	PCDOS			; font dir now in intout
+		call	reset_current_directory	; back to original directory
+		les	di, intout		; es:di -> intout
+		mov	cx, 128			; NUL in < 128 chars
+		xor	al, al			; al = NUL
+	 repne	scasb				; es:di -> 1 past NUL
+	 	dec	di			; es:di -> NUL in intout
+		mov	al, '\'			; add an '\'
+		stosb				; overwrite NUL
+		mov	al, '*'			; add an '*'
+		stosb
+		mov	al, '.'			; add a '.'
+		stosb
+		pop	si			; ds:si = assign table entry
+		pop	ds
+		add	si, ASS_FILE_NAME	; offset in entry to file name
+		mov	cx, 9			; '.' in 1st 9 chars
+eff_getdot:	lodsb				; al = a char of file name
+		cmp	al, '.'			; find the "."
+		loopne	eff_getdot		; until its found
+		call	cat_string		; add extension
+
+eff_done:	ret
+
+		end

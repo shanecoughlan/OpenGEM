@@ -1,0 +1,290 @@
+README for  9/04/2000 build of the AES
+======================================
+
+  New in this build:
+* Bug fixes; the Win2D setting is honoured again and the SIZER control
+ is drawn.
+
+  New in last build:
+* GEM/5-style window frames now selected by GEM.CFG
+* "Desk" menu can go at right or left end of menu bar
+* Support for background images in EMS
+* Round/square buttons and other GUI options can be set
+ dynamically at run time.
+
+New functionality over DR GEM/3
+===============================
+
+  fsel_exinput() - like fsel_input(), but takes a title as an extra parameter.
+
+  xgrf_colour()  - set desktop colours
+
+  xgrf_dtmfdb()  - set desktop image
+
+  prop_get()     - get settings from global properties file
+  prop_put()     - save setting to global properties file
+  prop_del()     - delete setting from global properties file
+
+  xapp_getinfo() - Implementation of the Atari appl_getinfo() function
+
+  For details of the parameters to these calls, see my current build of the
+GEM PTK.
+
+New functionality not (yet) covered by the PTK
+==============================================
+
+  GUI options
+  -----------
+
+  prop_gui_get() (call 1013) and prop_gui_set() (call 1014) provide an
+extensible interface for miscellaneous user-interface options. The syntax is:
+
+WORD prop_gui_get(WORD option)
+
+  Returns the value of the chosen option, zero if the option number is out
+of range.
+
+WORD prop_gui_set(WORD option, WORD value)
+
+  Sets the chosen option to a new value. Returns the value used, which may
+not be the same as the value requested.
+
+  The option numbers are:
+
+0 - Return count of option words (currently returns 5; valid option numbers
+   are 0-4). Cannot be set.
+1 - If zero, 3D objects have square corners; if nonzero, the corners are
+   rounded.
+2 - If zero, window frames follow the GEM/2 style; otherwise they follow
+   the GEM/5 style. If this is changed at runtime, windows will have a
+   strange appearance until a new program is loaded.
+3 - GEM emulation mode
+   This is provided for future compatibility with other AES replacements
+   (such as oAESis) which have extended the AES in different ways and
+   with which FreeGEM is incompatible.
+    When read, this will return the emulation mode of this AES:
+   0: GEM/1 subset. Programs should only assume features that are present
+     in GEM/1.
+   1: Atari GEM. Object flags and types have Atari semantics.
+   2: FreeGEM.   Object flags and types have FreeGEM semantics.
+
+    When written, the variable is set to 0 if the desired emulation mode be
+   not available, or the requested mode if it is. Currently, only modes
+   0 and 2 are available (and behave identically).
+
+    Notes for AES authors: If you want to support FreeGEM programs, check
+   the number of parameters passed to appl_init(). If there is an address
+   parameter (see X_BUF_V2 below), then the program is FreeGEM aware and
+   you should set your emulation mode to 2. If the program then wants to
+   use Atari object flags, it should immediately call  prop_gui_set(3,1)
+   to switch back to Atari mode.
+4 - Menu flags
+   Bit 0 set: The "Desk" menu is called "Desk" rather than taking the name
+             of the current program.
+   Bit 1 set: The "Desk" menu is on the left.
+
+  Square button change
+  --------------------
+
+  The "GEM.AES.Square3D" line in GEM.CFG is now obsolete. To get buttons with
+square corners, the correct settings line is "GEM.AES.Option.1: 0000".
+SETTINGS.APP should be used to make this change - use the new "GUI options"
+screen.
+
+  Desktop image in EMS
+  --------------------
+
+  xgrf_dtmfdb() now returns a WORD value. If this value is nonzero, then
+the image passed has been copied into EMS memory and will be used for all
+programs (except those that create their own desktops, like SETTINGS.APP).
+If the image has been copied into EMS memory you don't have to keep your
+copy of the image. Zero will be returned if:
+* There is no EMS memory.
+* There is not enough EMS memory for the image.
+* The image will not fit in the EMS page frame.
+
+  Switchable shells
+  -----------------
+
+  When starting, GEM checks GEM.CFG for a line such as:
+
+GEM.AES.Shell: NEWDESK.APP
+
+  If this line is found, it will be taken as the name (no path) of the
+  desktop program to use instead of DESKTOP.APP. The alternative desktop
+  should be stored in \GEMAPPS\GEMSYS.
+
+  You can also set the name of the desktop program to use by means of the
+ xshl_setshell() call (no. 1031). This call takes one parameter in
+ addr_in: the name of the desktop program (again, no path). It will return 0
+ if the desktop program was set, or 1 if the name was too long.
+  To get the name of the desktop program, call xshl_getshell() (call 1030).
+ It takes one parameter in addr_in - the address of a buffer for the name
+ of the program. This call returns 0 if the default desktop (DESKTOP.APP) is
+ in use, or 1 if a different desktop has been set by use of GEM.CFG or
+ xshl_setshell().
+  Note that a normal GEM program is not suitable for use as a shell, since
+ when it terminates it will be immediately re-run.
+
+
+  GEM/5-style UI improvements
+  ---------------------------
+
+  The flag names in this section come from the 22 October 1999 release of the
+ Resource Construction Set.
+
+  3D object borders: Up to now, 3D objects have had a black border round them.
+                    If you set the "White Background" (WHITEBAK) state, then
+                    the black border will not be drawn.
+
+  Sunken 3D objects: If you set the "3D background" (FL3DBAK) flag on an
+                    object instead of "Draw 3D" (FLAG3D / FL3DIND) it will
+                    be drawn sunken rather than raised.
+                    
+  "Default" symbol on buttons: If a button has the "Extended 3D" (DRAW3D)
+                    state, and it is the default button, then a symbol
+                    representing "Return" will be drawn on it. See
+                    SETTINGS.APP for an example.
+
+  Checkboxes:       If an object (not a button or icon) has the "Extended 3D"
+                    (DRAW3D) state, and it is SELECTABLE, it will be drawn as
+                    a checkbox. A tick will appear in the box if the object is
+                    CHECKED or SELECTED.
+
+                    By default, the checkbox is drawn in 3D. If it is to be
+                    on a white background, the "White background" (WHITEBAK)
+                    state should be selected to make the outline draw in 2D.
+
+  Radio buttons:    A radio button is set up in exactly the same way as a
+                    checkbox, but it must also have the "Radio button"
+                    (RBUTTON) flag.
+
+  The use of WHITEBAK is unfortunately rather inconsistent; it should really
+work the other way round for 3D objects. I had to do it like this for
+backwards compatibility.
+
+  More colour categories
+  ----------------------
+
+   Colour categories 16-21 now exist. They are:
+
+  16: Foreground is the 3D "light" colour.
+      Background is the 3D "dark"  colour.
+      Style and index are not used.
+
+  17: Foreground is the radio button "dot" inner colour.
+      Background is the radio button "dot" outer colour.
+      Style and index are not used.
+
+  18: Background is the checkbox "tick" colour.
+      Foreground, style and index are not used.
+
+  19: Foreground is the colour for window titlebar text.
+      Background is the border colour for the titlebar.
+      Style is nonzero if the titlebar text should be on a white
+      background (as it is in GEMs 1-4 and ViewMAX).
+      Index is not used.
+  20: As 19, for inactive titlebars.
+  21: As 19, for info lines.
+
+  Window decorations
+  ------------------
+
+  The window decorations can be changed using wind_set() and wind_get(). This
+is how:
+
+#define WF_OBFLAG  1001	/* Window tree: flag words */
+#define WF_OBTYPE  1002	/* Window tree: type words */
+#define WF_OBSPEC  1003	/* Window tree: spec dwords */ 
+
+  wind_get(n, WF_OBFLAG, &a, &b, &c, &d) - a = object flags for decoration "n"
+  wind_get(n, WF_OBTYPE, &a, &b, &c, &d) - a = object type of decoration "n"
+  wind_get(n, WF_OBSPEC, &a, &b, &c, &d) - (b<<16)|a = spec of decoration "n"
+  wind_set(n, WF_OBFLAG,  a,  b,  c,  d) - Set flags for decoration "n" to "a"
+  wind_set(n, WF_OBSPEC,  a,  b,  c,  d) - Set spec of decoration "n" to
+                                           (b<<16)|a
+
+  The "n" parameter is one of:
+
+#define W_BOX            0  outline
+#define W_TITLE	         1  titlebar outline
+#define W_CLOSER         2  close box
+#define W_NAME	         3  titlebar
+#define W_FULLER         4  full-size box
+#define W_INFO           5  info bar
+#define W_DATA	         6  work area outline
+#define W_WORK	         7  work area
+#define W_SIZER	         8  resize box
+#define W_VBAR           9  vertical scroll bar outline
+#define W_UPARROW       10  scroll up box
+#define W_DNARROW       11  scroll down box
+#define W_VSLIDE        12  vertical scroll bar
+#define W_VELEV	        13  scroll thumb
+#define W_HBAR          14  horizontal scroll bar outline
+#define W_LFARROW       15  scroll left box
+#define W_RTARROW       16  scroll right box
+#define W_HSLIDE        17  horizontal scroll bar
+#define W_HELEV	        18  horizontal scroll bar thumb
+
+  For more information, see the source of SETTINGS.APP. 
+
+How to detect this version of the AES:
+======================================
+
+Create a variable of type X_BUF_V2 (see obdefs.h) - for example:
+
+     X_BUF_V2 var;
+
+Initialise it to 0, and set its length member correctly:
+
+     memset(&var, 0, sizeof(var));
+     var.buf_len = sizeof(var);
+
+Then pass the address of var to appl_init(), in addr_in[0]. This may require 
+the binding to be rewritten; my Pacific and DJGPP ones have been updated to
+use this form of binding.
+
+  On return, the following values will be set:
+
+var.buf_len = actual size of buffer returned.
+var.arch    = 0 for DRI GEM, 16 for this version of GEM, 32 for any future
+              32-bit AES.
+var.cc      = far address of the colour structures. These are set by the
+              xgrf_colour() call (no. 132) but until now there has been no
+              mechanism to read their values.
+var.w_active = far address of the object tree GEM uses to draw window
+               decorations. This is so the glyphs on the buttons can be
+               changed at runtime (eg, to the GEM/1 set). NB: The "resize"
+               button in the bottom right-hand corner of the window is
+               set programmatically and cannot be changed by this method.
+               Use of this field is deprecated; you should use wind_set()
+               and wind_get() instead. In future versions this field may
+               become zero.
+var.info     = far pointer to a 0-terminated string (max. 40 characters)
+               containing information about the AES. For 'about' boxes and
+               similar.
+var.abilities = bitmapped field. Currently six bits are used:
+                Bit 0 (ABLE_GETINFO) - supports an Atari-style xapp_getinfo().
+                                       Set on 8/8/1999 & later builds.
+                Bit 1 (ABLE_PROP)    - supports prop_get(), prop_put() and
+                                       prop_del(). Set on 25/7/1999 & later
+                                       builds. Properties are a compile-
+                                       time option.
+                Bit 2 (ABLE_WTREE)   - able dynamically to alter the window
+                                       decorations using wind_get() and
+                                       wind_set(). Set on 5/9/1999 & later
+                                       builds.
+                Bit 3 (ABLE_X3D)     - supports the GEM/5 UI enhancements.
+                                       Set on 22/10/1999 & later builds.
+                Bit 4 (ABLE_XSHL)    - supports xshl_getshell() and
+                                       xshl_setshell(). Set on 3/12/1999 and
+                                       later builds.
+                Bit 5 (ABLE_PROP2)   - supports prop_gui_get() and
+                                       prop_gui_set(). Set on 22/3/2000 and
+                                       later builds. This is a compile-time
+                                       option.
+                Bit 6 (ABLE_EMSDESK) - supports loading desktop images into
+                                       EMS. Set on 22/3/2000 build; this is
+                                       a compile-time option.
+             
+

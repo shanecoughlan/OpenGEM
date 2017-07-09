@@ -1,0 +1,36 @@
+
+CC = pacc
+CFLAGS = -Bl
+OBJECTS = SYSFONT.OBJ DLGS.OBJ MEMFONT.OBJ LOADFONT.OBJ MAIN.OBJ UTILS.OBJ VIEW.OBJ RSRC.OBJ
+BINARIES = sysfont.app sysfont.rsc sysfont.txt license.txt sysfont.ico sysfdoc.ico sdpsc9.vga
+CSOURCE  = SYSFONT.C DLGS.C MEMFONT.C LOADFONT.C MAIN.C UTILS.C VIEW.C RSRC.C
+HSOURCE  = SYSFONT.H        MEMFONT.H VIEW.H SYSFONTI.H
+XSOURCE  = sysfont.dfn Makefile
+ZIP = pkzip
+RM = xdel
+
+all:	sysfont.app
+
+sysfont.app:	sysfont.exe
+	copy $< $@
+
+sysfont.exe:	$(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) ../lib/ppdgem-l.lib
+
+%.OBJ:	%.C $(HSOURCE)
+	$(CC) $(CFLAGS) -c $<
+
+clean:
+	$(RM) $(OBJECTS)
+
+sysfont.zip:	$(BINARIES)
+	$(ZIP) $@ $(BINARIES)
+
+sysfonts.zip:	$(BINARIES) $(CSOURCE) $(HSOURCE) $(XSOURCE)
+	$(ZIP) $@ $(BINARIES)
+	$(ZIP) $@ $(CSOURCE)
+	$(ZIP) $@ $(HSOURCE)
+	$(ZIP) $@ $(XSOURCE)
+
+zip:	sysfont.zip sysfonts.zip
+

@@ -1,0 +1,11 @@
+; Short name must be 13 chars long, long name 81 chars, both NULL terminated
+; 10/7/87 - This long name NOW HAS 81 characters
+
+		db	'zyxg'
+vp_port		db	0
+		db	'Laserjet 150'
+		db	0
+		db	'Hewlett Packard Laserjet+ (150 x 150 dots/inch)'
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+		end

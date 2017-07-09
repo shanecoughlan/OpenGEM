@@ -1,0 +1,164 @@
+;************************************************************************
+;* *
+;* *
+;************************************************************************
+DGROUP	GROUP	DATA
+		dseg
+
+		public	dev_tab, siz_tab, inq_tab, inq_pts
+		public	clip, xmn_clip, xmx_clip, ymn_clip, ymx_clip
+		public	m_dot, m_plus, m_star, m_square, m_cross, m_dmnd
+		public	a_page, g_page, div_fact
+		public	curalpha, reqalpha, vmu
+
+; Alpha attribute environment bit flags.
+curalpha	db	0ffh
+reqalpha	db	0
+
+; Vertical motion unit global.
+vmu		dw	0
+
+; Printer scan height information.
+a_page		dw	0		; # alpha slices / page
+g_page		dw	0		; # graphics slices / page
+div_fact	dw	1		; see vq_scan call in VDI manual
+
+; Device tables.
+dev_tab		dw	RES_XMX		;0	x resolution
+		dw	RES_YMX		;1	y resolution
+		dw	1		;2	0=exact,1=not exact
+		dw	XSIZE		;3	width of pixel
+		dw	YSIZE		;4	height of pixel
+		dw	0		;5	character sizes
+		dw	8		;6	linestyles
+		dw	75		;7	linewidths
+		dw	8		;8	marker types
+		dw	8		;9	marker size
+		dw	0		;10	text font
+		dw	24		;11	area patterns
+		dw	12		;12	crosshatch patterns
+		dw	2		;13	colors at one time
+		dw	10		;14	number of GDP's
+		dw	1		;15	GDP bar
+		dw	2		;16	GDP arc
+		dw	3		;17	GDP pie
+		dw	4		;18	GDP circle
+		dw	5		;19	GDP ellipse
+		dw	6		;20	GDP elliptical arc
+		dw	7		;21	GDP elliptical pie
+		dw	8 		;22	GDP rounded rectangle
+		dw	9 		;23	GDP filled rounded rectangle
+		dw	10		;24	GDP justified text
+
+;GDP attributes
+		dw	3		;25	GDP #1
+		dw	0		;26	GDP #2
+		dw	3		;27	GDP #3
+		dw	3		;28	GDP #4
+		dw	3		;29	GDP #5
+		dw	0		;30	GDP #6
+		dw	3		;31	GDP #7
+		dw	0 		;32	GDP #8
+		dw	3 		;33	GDP #9
+		dw	2 		;34	GDP #10
+		dw	0		;35	Color capability
+		dw	1		;36	Text Rotation
+		dw	1		;37	Polygonfill
+		dw	0		;38	Cell Array
+		dw	2		;39	Pallette size
+		dw	0		;40	# of locator devices
+		dw	0		;41	# of valuator devices
+		dw	0		;42	# of choice devices
+		dw	0		;43	# of string devices
+		dw	0		;44	Workstation Type 2 = out/in
+
+; Size table.
+; returns text, line and marker sizes in device coordinates
+siz_tab		dw	0		;0  min char width
+		dw	0		;1  min char height
+		dw	0		;2  max char width
+		dw	0		;3  max char height
+		dw	1		;4  min line width
+		dw	0		;5  -- not used
+		dw	150		;6  max line width
+		dw	0		;7  -- not used
+		dw	31		;8  min marker width
+		dw	31		;9 min marker height
+		dw	251		;10 max marker width
+		dw	251		;11 max marker height
+
+inq_tab		dw	0		; 0  type of alpha/graphic controllers
+		dw	1		; 1  number of background colors
+		dw	0fh		; 2  text styles supported
+		dw	0		; 3  scale rasters = false
+		dw	1		; 4  number of planes
+		dw	0		; 5  video lookup table
+		dw	50		; 6  performance factor
+		dw	0		; 7  contour fill capability
+		dw	1		; 8  character rotation capability
+		dw	4		; 9  number of writing modes
+		dw	0		; 10 highest input mode
+		dw	1		; 11 text alignment flag
+		dw	0		; 12 inking capability
+		dw	0		; 13 rubber banding
+		dw	PTSIN_SIZE/2-1	; 14 maximum vertices
+		dw	INTIN_SIZE	; 15 maximum intin size
+		dw	0		; 16 number of buttons on mouse
+		dw	0		; 17 styles for wide lines
+		dw	0		; 18 writing modes for wide lines
+clip		rw	1		; 19 clipping flag
+		dw	DOTUNITS	; 20 extended dot size units
+					;    0 => not applicable
+					;    1 => 1/10 microns
+					;    2 => 1/100 microns
+					;    3 => 1/1000 microns
+		dw	XTDXSIZE	; 21 x dot size in [20] units
+		dw	XTDYSIZE	; 22 y dot size in [20] units
+		dw	XDPI		; 23 x dots per inch
+		dw	YDPI		; 24 y dots per inch
+		dw	1		; 25 bit image capabilities flag
+					;    0 => not applicable
+					;    1 => 0,90,180,270 degree rotation
+		dw	0,0,0,0,0,0,0,0
+		dw	0,0,0,0,0,0,0,0
+		dw	0,0,0
+inq_pts		rw	0		; INQ_PTS[0] = XMN_CLIP
+xmn_clip	rw	1		; 0  upper left x
+ymn_clip	rw	1		; 1  upper left y
+xmx_clip	rw	1		; 2  lower right x
+ymx_clip	rw	1		; 3  lower right y
+		rw	8
+
+
+; Marker definitions.
+m_dot		dw	1		; number of polylines
+		dw	2		; segments in polyline
+		dw	0, 0, 0, 0
+
+m_plus		dw	2		; number of polylines
+		dw	2		; segments in polyline
+		dw	0, -10, 0, 10
+		dw	2		; segments in polyline
+		dw	-10, 0, 10, 0
+
+m_star		dw	3		; number of polylines
+		dw	2		; segments in polyline
+		dw	0, -10, 0, 10
+		dw	2		; segments in polyline
+		dw	10, 10, -10, -10
+		dw	2		; segments in polyline
+		dw	10, -10, -10, 10
+
+m_square	dw	1		; number of polylines
+		dw	5		; segments in polyline
+		dw	-10, -10, 10, -10, 10, 10, -10, 10, -10, -10
+
+m_cross		dw	2		; number of polylines
+		dw	2		; segments in polyline
+		dw	-10, -10, 10, 10
+		dw	2		; segments in polyline
+		dw	-10, 10, 10, -10
+
+m_dmnd		dw	1		; number of polylines
+		dw	5		; segments in polyline
+		dw	-10, 0, 0, -10, 10, 0, 0, 10, -10, 0

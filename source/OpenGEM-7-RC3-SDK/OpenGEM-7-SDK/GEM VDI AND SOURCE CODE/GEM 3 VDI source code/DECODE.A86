@@ -1,0 +1,251 @@
+;decode.a86
+
+graphics_loader_code	cseg	para public
+
+include equates.a86
+include externs.a86
+
+		public	decode
+
+decode:
+
+;Shunt the encoded data to the top of the buffer to make room for
+;an in-situ decoding from low to high.
+
+; cx = total font data size = buffer size
+
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+		push	si
+		push	di
+		push	ds		; save header segment
+		push	es
+		
+		les	di, fb_free_addr ; es:di -> data just read
+		add	di, cx		; es:di -> end of buffer + 1
+		dec	di		; es:di -> end of buffer
+
+		mov	cx, ax		; cx = # of bytes read
+		mov	ax, .FORM_WIDTH	; ax = form width in bytes
+		push	ax		; remember form width at huff_done
+		mul	word ptr .FORM_HEIGHT ; ax = form size in bytes
+		push	ax		; remember form size at huff_done
+		mov	bx, .DAT_TABLE_OFF ; bx = offset to font form
+
+		lds	si, fb_free_addr ; ds:si -> data just read
+		add	si, cx		; si = offset of end of read + 1
+		dec	si		; si -> last byte in font form read
+
+		sub	cx, bx		; cx = # read - offset to form data
+		std			; We want to decrement
+	rep	movsb			; Must use byte count as maybe odd
+		inc	di		;Point to first byte of encoded font
+		push	si		;Remember .decoded_font-1 (Huff_done)
+		xchg	si,di		;Role reversal
+		cld			;We will increment in future
+
+;**************************************************************************
+;Now for the tricky bit - decoding the data.
+;
+;The decoding scheme is this:
+;Starting with a string of zeros, then alternating ones and zeros read string
+;lengths encoded as:
+;ZERO strings:
+; length of string   Encoding
+;     1-8	    1xyz	xyz=n-1 in binary
+;     9-16	    01xyz       xyz=n-9 in binary (1xyz=n-1)
+;    17-32	    001wxyz    wxyz=n-17 in binary (1wxyz=n-1)
+; etc to:
+;    64K-1	    0000 0000 0000 0111 1111 1111 1111 0
+;BUT 64K-1 no alternation:
+;		    0000 0000 0000 0111 1111 1111 1111 1
+;This last is used to break up long strings so that we can use 16 bit counts
+;
+;ONE strings:
+; length of string   Encoding
+;     1		     0
+;     2		     10
+;     3		     110
+; etc where the 0 flags the end of the string	 
+;NOTE that there is no theoretical limit to the lengths of strings encountered
+;
+;Lastly, convert each line except the top one to the XOR of itself and the
+;line above.
+;
+;**********************************************************************
+;
+;Register usage is very intensive, as follows:
+;AX=source word being scanned
+;BX=count of leading zeros in current source zeros string
+;CL=count of bits unused in source word. Decremented before each read
+;DX=destination byte current bit for ORing with memory form.
+;	(i.e. bits are shifted from DX to the right until CF set)
+;
+;DS:SI=ptr to source (start at beginning of encoded data)(word oriented)
+;ES:DI=ptr to destination byte.(start at beginning of form. Overlaps source.)
+;BP=byte count to end of form
+;
+;though there are minor differences depending on whether we are currently
+;reading or writing a zero or one string.
+;
+
+	mov	bp, ax		; bp = form size
+
+	inc	bp		;Must start with count+1
+;	mov	cl,0		;CL=0 bits still to be done in src word
+	mov	dl,1		;Select current bit which is the bit
+				; before the first word, as we have an
+				; imagined zero there (See HUFFMAN.A86)
+read_0s:
+	mov	bx,0FFFFH	;set BX(=count-1)=-1
+;*********************************************
+; count a string of zero bits which leads zeros string
+;*********************************************
+read0_lp:
+	dec	CL	;Any bits left unscanned in src word?
+	js	get_000s
+got_000s:
+	inc	BX	;Count times round this loop + 1
+	SHL	AX,1	;Shift source word into carry
+	jnc	read0_lp ;Any more zeros?
+;
+;At this point BX=count - 1
+;
+	push	BP	;Commandeer BP for a moment
+	mov	BP,1	;Preload the 1 bit implicit for n>8
+	cmp	BX,0	;Is string length going to be >8
+	ja	lots_zeros	;Yes
+;So there were 1 to 8 zeros and we must get 3 bit zero_count
+	mov	BX,1		;Pretend we need 3 bits (we do!)
+	mov	BP,0		; but we don't want the leading 1
+lots_zeros:
+	add	BX,2		;We need 2 bits more than BX
+BP_Loop:
+	dec	CL	
+	js	get_zeros
+zeros_got:
+	shl	AX,1		;Get next bit
+	rcl	BP,1		; into BP
+	dec	BX		;Count bits
+	jnz	BP_loop
+	add	BP,1		;(count-1)+1
+	MOV	BX,BP		;Get it back in BX
+	pop	BP		;Restore byte count to end-of-form
+	push	BX		;Save count of zeros in case 64K-1
+	jz	do_64k		;Treat 64K-1 case (Flag set by add inst.)
+;NOTE TO SELF: Would sbb BX,0 do the trick?
+done_64k:	
+	mov	DH,BL		;Isolate odd bits
+	and	DH,0111B	; in DH
+	shr	BX,1		;Convert to a byte count
+	shr	BX,1
+	shr	BX,1
+	jz	spin		;Do whole bytes, if any
+skip_0s:
+	inc	DI		;add byte count to pointer
+	dec	BP		;Subtract from count to end-of -form
+	jz	POPBX_Huff_done	;Reached end but remember to pop bx
+	mov	byte ptr [DI],0 ;Zero it
+	dec	BX
+	jnz	skip_0s
+spin:
+	dec	DH		;Spin DL by odd bits count in DH
+	js	done_0s
+	ror	DL,1		;8-bit rotate
+	jnc	spin		;end of byte?
+	inc	DI		;Yes.
+	dec	BP
+	jz	POPBX_Huff_done
+	mov	byte ptr [DI],0	;Zero next byte
+	jmp	spin
+
+do_64k:				;Treat 64K-1 case. All we have to do is
+	dec	BX		; decrement count because actually it
+	jmps	done_64k	; was 64K-1, not 64K as stated in the file.
+
+done_0s:
+	pop	BX		;Get back zero count.
+	or	BH,BL		;Zero? (i.e. 64K)
+	jz	read_0s		;Yes..read still more zeros.
+	 
+read_1s:
+	dec	CL	
+	js	get_ones
+ones_got:
+	or	ES:[DI],DL	;Set bit in font
+	ror	DL,1		; and point ES:DI:DL at next bit
+	jnc	same_byte
+	inc	DI
+	dec	BP
+	jz	Huff_done
+	mov	byte ptr [DI],0	;Zero it
+same_byte:
+	shl	AX,1		;Get next bit
+	jc	read_1s		;Loop until terminating 0 found
+end_ones:
+	jmp	read_0s
+	
+
+;**********************************************
+;get_zeros, get_000s, get_ones
+;**********************************************
+;These little routines are out of line because this way the conditional
+;jumps usually fall through, which is faster on an 8086.
+;
+get_000s:		;Get next word of source while scanning leading zeros
+	lodsw		;get next word of source	
+	mov	CL,15	; and set 15 bits still to be scanned
+	jmps	got_000s
+
+get_zeros:		;Get next word of source while scanning zeros
+	lodsw		;get next word of source	
+	mov	CL,15	; and set 15 bits still to be scanned
+	jmps	zeros_got
+
+get_ones:			;Get next word of source while scanning ones
+	lodsw		;get next word of source	
+	mov	CL,15	; and set 15 bits still to be scanned
+	jmps	ones_got	
+	
+;*********************************************************************
+;Huff_done
+;*********************************************************************
+;BP has just reached 0 so we are at the end of the form
+
+POPBX_Huff_done:	;We detected end-of-form while BX pushed, so
+	add	sp,2	; correct SP
+Huff_done:
+	pop	si	;Offset of form. Pushed just before we decoded
+	inc	si	;Offset - 1 was pushed
+	pop	cx	;Form size in bytes
+	pop	di	;width of one line
+	sub	cx,di	;Count of lines-1
+	shr	cx,1	;Convert to word count
+	add	di,si	;Offset of second line of form. 
+	
+;****************************
+;Undo the XOR
+;****************************
+;
+
+xor_loop:
+	lodsw			;read word from upper row
+	xor	ax,[DI]
+	stosw			;write it to lower row
+	loop	xor_loop	;repeat cx times
+
+
+		pop	es
+		pop	ds
+		pop	di
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+
+		ret		; all done
+
+		end

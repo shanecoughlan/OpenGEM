@@ -1,0 +1,43 @@
+;
+; Determine whether this is a 50Hz or 60Hz system.
+;
+vid_detect:
+	jmps	vdet1
+	db	'temp'	;Magic number for overriding the mode with vidpatch
+vdet1:	mov	dh, 80h
+	or	dh, dh
+	jns	use_fixed
+;
+; No type has been specified. Use the BIOS configuration table.
+;
+	push	ds
+	push	es
+	xor	ax, ax
+	mov	ds, ax
+	mov	bx, BIOS_CONFIG_TBL
+	les	bx, [bx]
+	add	bx, 20h		;Monitor type 50 / 60 Hz
+	mov	al, es:[bx]
+	pop	es
+	pop	ds
+	or	al, al
+	jnz	use_60
+	jmps	use_50
+
+use_fixed:
+	cmp	dh, 50
+	jz	use_50
+use_60:	mov	ax, 199
+	mov	cx, 620
+	jmps	have_size
+;
+use_50:	mov	ax, 255
+	mov	cx, 484
+have_size:
+	mov	true_yresmx, ax
+	mov	word ptr fp_mouse_maxy + 4, ax
+	mov	word ptr DEV_TAB + 2, ax
+	mov	true_ysize, cx
+	mov	word ptr DEV_TAB + 8, cx
+	ret
+

@@ -1,0 +1,20 @@
+!define BLANK ""
+d:\gemsound\lib\watcom\gemsnd.obj : d:\gemsound\lib\gemsnd.c .AUTODEPEND
+ @d:
+ cd d:\gemsound\lib\watcom
+ *wcc ..\gemsnd.c -i=D:\WATCOM\h -w4 -e25 -zq -otexan -bt=dos -ml
+
+d:\gemsound\lib\watcom\test.obj : d:\gemsound\lib\test.c .AUTODEPEND
+ @d:
+ cd d:\gemsound\lib\watcom
+ *wcc ..\test.c -i=D:\WATCOM\h -w4 -e25 -zq -otexan -bt=dos -ml
+
+d:\gemsound\lib\watcom\test.exe : d:\gemsound\lib\watcom\gemsnd.obj d:\gemso&
+und\lib\watcom\test.obj .AUTODEPEND
+ @d:
+ cd d:\gemsound\lib\watcom
+ @%write test.lk1 NAME test
+ @%append test.lk1 FIL gemsnd.obj,test.obj
+ @%append test.lk1 
+ *wlink SYS dos op m op maxe=25 op q op symf @test.lk1
+

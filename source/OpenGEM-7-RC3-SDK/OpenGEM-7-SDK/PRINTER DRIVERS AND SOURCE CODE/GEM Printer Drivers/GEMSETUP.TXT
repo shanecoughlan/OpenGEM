@@ -1,0 +1,33 @@
+@PLOTTER
+{
+|DESCRIPTION|Hewlett Packard, Bruning, Calcomp, and other HP compatibles
+|SHORT DESCR|HPGL Plotter
+|FILENAME|VDHPX8.SYS
+|SRC DISK|GEM/3 Driver Pack #2
+|LONG DESCRP|
+Choose this entry if you have an HPGL compatible plotter.  Manufacturers 
+like Hewlett Packard, Bruning, Calcomp, Roland DG, and Epson have models 
+that use the Hewlett Packard Packard Graphics Language (HPGL).  HPGL 
+support is sometimes optional on non-HP plotters.  Check with the plotter
+manufacturer if you have questions regarding HPGL support by your 
+particular plotter.
+
+The plotter hardware should be set up for 9600 baud, 8 data bits, 1 stop
+bit, and no parity.  Check your plotter documentation to see how this
+should be done.
+}
+{
+|DESCRIPTION|Houston Instruments DMP-series Plotters
+|SHORT DESCR|DMPL Plotter
+|FILENAME|VDHIX8.SYS
+|SRC DISK|GEM/3 Driver Pack #2
+|LONG DESCRP|
+Choose this entry if you have a Houston Instruments DMP series plotter.  
+This includes the DMP-29, DMP-51/52, DMP-51/52 MP, and the DMP-60 series 
+plotters.  This driver should also work for other DM/PL compatible 
+plotters.
+
+The plotter hardware should be set up for 9600 baud, 8 data bits, 1 stop
+bit, and no parity.  Check your plotter documentation to see how this
+should be done.
+}

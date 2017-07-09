@@ -1,0 +1,195 @@
+;/*		ENTRY.A86	1/29/87 - 3/19/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	gdos_entry
+
+; External entry points.
+		extrn	close_virtual:near
+		extrn	close_workstation:near
+		extrn	driver:near
+		extrn	gdos_escape:near
+		extrn	load_fonts:near
+		extrn	open_virtual:near
+		extrn	open_workstation:near
+		extrn	set_absolute:near
+		extrn	set_face:near
+		extrn	set_point:near
+		extrn	transform_ptsout:near
+		extrn	unload_fonts:near
+
+; External data.
+include externs.a86
+
+
+;************************************************************************
+;*	gdos_entry:							*
+;*		ds:dx -> parameter block.				*
+;*		Entered via interrupt EF.				*
+;************************************************************************
+gdos_entry:
+		jmps	after_signature
+		db	'GEMVDI23',0
+
+; Be a good citizen:  take care of some housekeeping, first.
+after_signature:
+		push	bp
+		mov	bp, sp
+
+; The stack currently looks like the following:
+;
+;	[bp] - saved value of the caller's bp
+;      2[bp] - stacked value of the caller's ip
+;      4[bp] - stacked value of the caller's cs
+;      6[bp] - stacked value of the caller's flags
+		push	word ptr 6[bp]
+		popf				; restore interrupt state
+		push	ax			; save the world
+		push	bx
+		push	cx
+		push	dx
+		push	si
+		push	di
+		push	ds
+		push	es
+ 		cld				; clear direction flag
+
+; Bump the re-entrancy semaphore.  If it is not zero, somebody is trying to
+; re-enter the GEMVDI.  In that event, save the critical data for its rightful
+; owner.
+		inc	entries
+		jz	copy_parameter_block
+		push	ds
+		mov	ax, seg save_block
+		mov	es, ax
+		mov	ds, ax
+		mov	si, offset save_start	; ds:si = critical data start
+		mov	di, offset save_block	; es:di = data save area
+		mov	cx, save_count		; cx = bytes to save
+	rep	movsb
+		pop	ds
+
+; Make a copy of the caller's parameter block so that we can tamper without
+; accessing the caller's memory.  According to GDOS calling conventions,
+; ds:dx currently points to the parameter block.
+copy_parameter_block:
+		mov	si, dx			; ds:si = parameter block
+		mov	ax, cs
+		mov	es, ax
+		mov	di, offset contrl	; es:di = new parameter block
+		mov	cx, 10			; move five long pointers
+	rep	movsw
+
+; Is this a GDOS escape?  If so, process it.
+		lds	si, contrl		; ds:si = new control array
+		mov	ax, [si]		; ax = opcode
+		cmp	ax, -1
+		jne	check_open_workstation
+		call	gdos_escape
+		jmp	gsx_quit
+
+; Is this an open workstation call?  If so, process it.
+check_open_workstation:
+		mov	opcode, ax		; save the opcode
+		cmp	ax, 1			; open workstation?
+		jne	check_vw
+		call	open_workstation
+		jmp	gsx_quit
+
+; Is this an open virtual workstation call?  If so, process it.
+check_vw:
+		cmp	ax, 100			; open virtual workstation?
+		jne	get_handle
+		call	open_virtual
+		jmp	gsx_quit
+
+; Get the workstation handle.  If the handle is not the handle of an open
+; workstation, forget it.
+get_handle:
+		mov	bx, 12[si]		; workstation handle
+		dec	bx
+		shl	bx, 1			; bx = workstation table index
+		cmp	ws_id[bx], 0		; valid handle?
+		je	gsx_quit		; invalid:  quit
+		test	ws_flags[bx],WS_OPEN	; is the workstation open?
+		jz	gsx_quit		; not open:  quit
+		mov	ws_index, bx		; save table index
+
+; Process set font and set size opcodes.
+check_font_opcodes:
+		cmp	ax, 21			; set face?
+		jne	check_point
+		call	set_face
+		jmps	other_call
+check_point:
+		cmp	ax, 107			; set point?
+		jne	check_absolute
+		call	set_point
+		jmps	other_call
+check_absolute:
+		cmp	ax, 12			; set absolute?
+		jne	check_load_fonts
+		call	set_absolute
+		jmps	other_call
+
+; Is this a load fonts call?  If so, process it.
+check_load_fonts:
+		cmp	ax, 119			; load fonts?
+		jne	check_unload_fonts
+		call	load_fonts
+		jmp	gsx_quit
+
+; Is this an unload fonts call?  If so, process it.
+check_unload_fonts:
+		cmp	ax, 120			; unload fonts?
+		jne	other_call
+		call	unload_fonts
+		jmp	gsx_quit
+
+; The handle has been validated.  Transfer control to the driver and then
+; transform the ptsout array.
+other_call:
+		call	driver			; (also transforms ptsin)
+		call	transform_ptsout
+
+; If the request was to close a workstation or virtual workstation, some
+; post-processing will be necessary.
+		cmp	opcode, 2		; close workstation?
+		jne	check_close_vw
+		call	close_workstation
+		jmp	gsx_quit
+check_close_vw:
+		cmp	opcode, 101		; close virtual workstation?
+		jne	gsx_quit
+		call	close_virtual
+
+; All done.  Decrement the re-entrancy semaphore.  If it is not negative,
+; the critical data saved earlier must be restored.
+gsx_quit:
+		dec	entries
+		js	good_citizen
+		mov	ax, seg save_block
+		mov	es, ax
+		mov	ds, ax
+		mov	si, offset save_block	; ds:si = data save area
+		mov	di, offset save_start	; es:di = critical data start
+		mov	cx, save_count		; cx = bytes to save
+	rep	movsb
+
+; Restore the caller's environment.
+good_citizen:
+		pop	es
+		pop	ds
+		pop	di
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		pop	bp
+		iret
+
+		end

@@ -1,0 +1,38 @@
+Contents
+--------
+
+copying      - GNU license file
+ctmouse.asm  - CuteMouse source code
+ctm-en.msg   - CuteMouse source file with messages in English
+ctm-*.msg    - messages in other languages
+com2exe.exe  - .COM to .EXE file converter executable
+makefile     - MAKE's script file for rebuilding CTMOUSE.EXE
+national.bat - batch file to compile any language version of CuteMouse
+alllang.bat  - batch file to compile all language versions of CuteMouse
+asmlib.cfg   - configuration file for makefile and batch files
+ctmouse.exe  - CuteMouse driver executable packed by aPACK with English
+		messages
+ctm-*.exe    - CuteMouse driver executables packed by aPACK with other
+		language messages
+ctmouse.txt  - main documentation for CuteMouse
+history.txt  - detailed version history
+extend.txt   - list of possible extensions for CuteMouse
+int10.lst    - excerpt from RBIL 61 for INT 10/04 and INT 10/Fx functions
+int33.lst    - excerpt from RBIL 61 for INT 33 mouse functions
+technote.txt - technical notes for advanced users
+protocol.txt - description of some low level mouse protocols
+
+UNPACKED\
+ctm-*.exe    - CuteMouse driver executables in original, unpacked form
+
+ASMLIB\
+*.*	     - assembler source library files
+
+UTILITY\
+makefile     - MAKE's script file for rebuilding utilities
+comtest.asm  - utility to detect COM ports, source
+comtest.com  - utility to detect COM ports, executable
+mousetst.cpp - mouse test example source (written under BC++ 3.1)
+mousetst.com - mouse test example executable
+protocol.asm - protocol analyzer source
+protocol.com - protocol analyzer executable

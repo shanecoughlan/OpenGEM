@@ -1,0 +1,263 @@
+EDICON v2.01                                         John Elliott, 9 June 2000
+==============================================================================
+
+  EDICON is a program to edit the icon files used by two Digital Research
+products: the GEM desktop (DESKTOP.APP) and ViewMAX (VIEWMAX.EXE).
+
+Release History
+===============
+
+2.01: Modified so adding the 73rd icon to a file fails instead of crashing.
+2.00: Initial release under GPL.
+1.9x: Beta releases
+
+
+Installation
+============
+
+1. Copy EDICON.APP and EDICON.RSC to a directory in your search path -
+  in GEM/3, I recommend \GEMAPPS.
+
+2. Under GEM: Highlight EDICON.APP, select "Configure application" from the
+  "options" menu, and set up as follows:
+              Document types:    ICN ICO
+              Application type:  GEM
+              Needs full memory: No
+              Memory required:   256k
+              Icon type:         Whatever you want!
+
+  Then select "Save desktop" from the "options" menu.
+
+3. Under ViewMAX: Highlight EDICON.APP, select "Configure application" from
+  the "options" menu, and set up as follows:
+
+              Takes parameters:   [ ]
+              Document types:     ICN ICO
+              Icon type:          Whatever
+
+  Then select "Save preferences" from the "options" menu.
+  Note that to use EDICON from ViewMAX, you will need a working GEM
+ installation as well.
+
+
+Use
+===
+
+  Start EDICON by clicking its icon, or by double-clicking an icon file.
+If you double-click an icon file, it will be opened within EDICON; otherwise
+EDICON will start with no files open.
+
+  When you open a file, all its icons appear in a window. Double-click an
+icon to edit it.
+
+  In the case of a Windows .ICO file, only mono and 16-colour icons are
+loaded; and the 16-colour icons are converted to mono. If you then save the
+.ICO file again, you will be left with a file containing only mono icons.
+
+Drag and drop
+=============
+  To delete an icon from a file, drag it out of its window onto the desktop.
+You will then be able to confirm or cancel the deletion.
+  To duplicate an icon, drag it to another place in the same window, and
+choose "Copy icon" from the pop-up menu that appears.
+  To copy or move an icon from one file to another, drag it from one window
+to another. If you drag the icon onto the top of another icon of the same
+size, you also have the option to replace the old icon with the new one.
+  You can also drag an icon into an editor window to replace the
+currently loaded icon.
+
+The Icon editor
+===============
+  When you double-click an icon, the icon editor window appears. At the left
+is the icon bitmap, and at the right is a preview window, a colour chooser
+and an "Edit" button that can be used to change the caption. The four
+colours are:
+
+* Dark blue: Foreground
+* White:     Background
+* Cyan:      Transparent
+* Dark cyan: Foreground in GEM icons; "reversed" in Windows icons.
+
+  These colours are user-configurable using Edit | Settings - see below.
+
+  Below these are two larger colour boxes; click on them to set the foreground
+or background colours for the icon. Icon colour is not saved in .ICO or RCS
+.ICN files, only in desktop icon sets.
+
+  GEM icons can have either type of "foreground" colour.
+
+  In the GEM/2 or GEM/3 desktop icons, "Icon 4" contains the images used to
+highlight drives and folders. In this image, the colours mean:
+
+* Dark blue: Both highlights
+* White:     Folder highlight only
+* Cyan:      Neither highlight
+* Dark cyan: Drive highlight only
+
+The File menu
+=============
+  This menu has five options:
+
+New...       Create a new icon database from scratch.
+Open...      Open a file. You can have multiple icon files loaded at once.
+Save         Save the current file.
+Save As...   Save the current icon database under a new name, and maybe in
+             a new format as well.
+Quit         Quit the program.
+
+  The Save and Save As options are not available if the foreground window is
+for an icon editor rather than an icon file.
+
+The Edit menu
+=============
+  Copy, Cut and Paste are only applicable while an icon editor window is open.
+All three items work on the entirety of an image. 
+
+Edit | Settings
+---------------
+  The Settings command allows you to choose the colours used in the icon 
+editor and the background colour of the icon listing. There are three 
+rows of colour choosers:
+
+* Top row:    Colours used in the editing screen
+* Middle row: Hatches used in the editing screen
+* Bottom row: Colour and hatch used for the icon listing
+
+  On a colour system, you may well want to set all the editing-screen 
+hatches to "solid" and just use colours. Conversely, on a black-and-white
+system the hatches will be needed to differentiate different cells.
+
+  Colour settings are stored in the file EDICON.CFG; delete this file to
+restore the default settings.
+
+The Image and Caption menus
+===========================
+  These menus can only be used when an icon is being edited. They both
+describe various transformations that can be done to the icon.
+
+The Window menu
+===============
+
+  This has two ways of arranging all the EDICON windows on the screen. It
+does not affect desk accessory windows.
+
+Creating a new application/file type
+====================================
+
+  Here is a worked example for adding a new application/file type pair to the
+"high-resolution" file VIEWHI.ICN:
+
+1. Select "Open" from the "file" menu, and browse to:
+
+    \DRDOS\VIEWHI.ICN
+
+2. Double-click a spare "application" icon, and design your new bitmap.
+3. To set its name, click "Edit" in the bottom right-hand corner of the
+  icon editor window.
+4. Do the same with the corresponding document icon.
+5. Save the file, run ViewMAX and see if it worked!
+
+Licence
+=======
+
+    Copyright (C) 1998,1999,2000  John Elliott <jce@seasip.demon.co.uk>
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+Technical
+=========
+  EDICON was compiled using Pacific C.
+
+The file format for a GEM/ViewMax icon file is:
+
+[DB - byte
+ DW - 16-bit word, least byte first
+ DD - 32-bit word, least byte first
+ DS - reserve space]
+
+	DW	nametbl	;@Pointer to names table
+	DW	offset	;Subtract this value from all pointers marked @ to
+			;get a 0-based pointer.
+
+	DS	990h	;Icon table.
+                        ;72 entries of length 34:
+			; 8 for drives: Hard; Floppy; Folder; highlights; Networked (Viewmax only); Spare;Spare;Spare
+			;32 for apps, matching the 32 name pointers below
+			;32 for the equivalent document types.
+
+	DS	...	;Up to 144 bitmaps. It is assumed that they are
+			;all the same size - the size given by the first
+			;entry in the icon table.
+			;  If two icons have (for example) the same mask,
+			;then only one copy of the bitmap is stored here;
+			;so they may well be fewer than 144 bitmaps.
+
+	DS	...	;32 0-terminated strings
+nametbl:
+	DS	40h	;32 @pointers to the 32 preceding strings. Each
+			;   string is the description for an application /
+			;   document type.
+
+  Thus length of the file is given by
+(value at word 0 - value at word 2) + 40h.
+
+Each entry in the icon table is a GEM ICONBLK:
+
+		DD	mask_no	;Image number for mask, zero based
+		DD	spr_no	;Image number for sprite number, zero based
+		DD	-1	;Caption - there is no caption
+		DB	0	;Drive letter - there is none
+		DB	clr	;Icon colours. Bits 0-3=background, 
+				;4-7=foreground. Normally 10h, black on white.
+		DW	x	;X offset for drive letter (0 if not a drive)
+		DW	y	;Y offset for drive letter (0 if not a drive)
+		DW	xicon	;17h for high-res icons, 0Fh for low-res
+		DW	yicon	;Always 0
+		DW	wicon	;Icon width, pixels
+		DW	hicon	;Icon height, pixels
+		DW	xtext	;0 (high res) / 4 (low res)
+		DW	ytext	;Should be the same as icon height
+		DW	wtext	;Width of caption. Should be 72.
+		DW	htext	;Height of caption. Should be 10.
+
+  For other icon sizes, "xicon" should equal ((78 - wicon) / 2).
+
+Special entries are:
+
+Icon  0: Floppy drive
+Icon  1: Hard drive
+Icon  2: Folder
+Icon  3: Trashcan (GEM/1 and FreeGEM)
+Icon  3 bitmap: drive highlight  (GEM/2, GEM/3, ViewMAX)
+Icon  3 mask:   folder highlight (GEM/2, GEM/3, ViewMAX)
+Icon  4: Network drive (ViewMAX only)
+Icons 5-7 may be used for 5.25" floppies or CD drives in some FreeGEM
+         desktops.
+Icon  8 bitmap: application highlight (GEM/2, GEM/3, ViewMAX)
+Icon 40 bitmap: document highlight    (GEM/2, GEM/3, ViewMAX)
+
+Bitmaps:
+
+A bitmap is stored line-by-line, with each line being stored as two or three
+little-endian words. To get it into more conventional raster lines, each odd-
+numbered byte in the line must be swapped with the even-numbered byte
+to its right (this is the GEM device-independent raster format).
+
+The idea of the @pointer is a reflection of Digital Research's original build 
+process for the icons; the icons were compiled from the RCS format into an
+EXE file, which would then write out the .ICN file. The "@pointers" are
+relative to the EXE file's data segment, and "offset" is the address of
+the ICN file within that data segment.
+

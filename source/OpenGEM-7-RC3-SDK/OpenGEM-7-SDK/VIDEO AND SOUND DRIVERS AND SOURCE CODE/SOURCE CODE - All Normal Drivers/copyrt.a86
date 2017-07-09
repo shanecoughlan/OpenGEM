@@ -1,0 +1,5 @@
+
+	db	'Serial No. XXXX-0000-654321  Copying policy: GNU GPL v2 '
+	db	'Copyright (C) 1985,1986,1987,1988,2006,2007,2008  '
+	db	'Digital Research Inc./Caldera/Lineo/John Elliott'
+	db	0

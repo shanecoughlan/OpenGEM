@@ -1,0 +1,180 @@
+#! /bin/sh
+TXT2PSF=txt2psf
+PSFS2CPI=/home/jce/C/PSFtools/tools/psfs2cpi
+TARGETS=gem.cpi gsans.cpi gsans.cpx gsans06.psf \
+	gsans08.psf gsans14.psf gsans16.psf 
+
+ZIPFILES=COPYING.txt README.txt mkcpi.bat gemcpi.inp \
+	 gsans06.txt gsans08.txt gsans14.txt gsans16.txt gem28605.uni \
+	 gem28591.uni \
+	 gem437.uni  gem852.uni	gem860.uni  gem865.uni	pcgem.uni \
+	 gem850.uni  gem857.uni	gem863.uni  gem866.uni  gem858.uni \
+	 psfs2cpi.exe txt2psf.exe \
+	 gsans.inp Makefile $(TARGETS)
+
+BINZIP=COPYING.txt README.txt $(TARGETS)
+
+all:	$(TARGETS)
+
+zip:	gsanscpi.zip gsanscpi_s.zip
+
+%.cpx:	%.cpi
+	cp -f $< tmp.com
+	upx --best --8086 tmp.com
+	mv -f tmp.com $@
+
+gsanscpi_s.zip:	$(ZIPFILES)
+	zip -k $@ $(ZIPFILES)
+
+gsanscpi.zip:	$(BINZIP)
+	zip -k $@ $(BINZIP)
+#
+# The great thing about the DRFONT format is that it's very easy to alias
+# codepages - so you can have both 819 and 28591 as ISO-8859-1 without
+# bloating the file immensely.
+#
+gem.cpi:	gsans06.psf gsans08.psf gsans14.psf gsans16.psf Makefile
+	$(PSFS2CPI) --drfont \
+	  --device=GEM \
+         +437=gem437.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +850=gem850.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +858=gem858.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +852=gem852.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +857=gem857.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +860=gem860.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +863=gem863.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +865=gem865.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +866=gem866.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +819=gem28591.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +28591=gem28591.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +28605=gem28605.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         +65280=pcgem.uni gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+         $@
+
+gsans.cpi:	gsans06.psf gsans08.psf gsans14.psf gsans16.psf Makefile
+	$(PSFS2CPI) --drfont \
+	+437 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+850 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+852 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+857 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+858 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+860 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+863 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+865 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+866 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+819=8859-1 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+912=8859-2 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+913=8859-3 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+914=8859-4 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+919=8859-10 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+920=8859-9 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28591=8859-1 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28592=8859-2 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28593=8859-3 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28594=8859-4 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28595=8859-5 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28597=8859-7 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28599=8859-9 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28600=8859-10 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28603=8859-13 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	+28605=8859-15 gsans16.psf gsans14.psf gsans08.psf gsans06.psf \
+	$@
+#
+# This generates PCDOS-compatible CPI files. If you want these use CPPREP
+# on the DRFONT one.
+#
+#gsans1.cpi:	gsans08.psf gsans14.psf gsans16.psf Makefile
+#	$(PSFS2CPI) \
+#	+437 gsans16.psf gsans14.psf gsans08.psf \
+#	+850 gsans16.psf gsans14.psf gsans08.psf \
+#	+860 gsans16.psf gsans14.psf gsans08.psf \
+#	+863 gsans16.psf gsans14.psf gsans08.psf \
+#	+865 gsans16.psf gsans14.psf gsans08.psf \
+#	$@
+#
+#gsans2.cpi:	gsans08.psf gsans14.psf gsans16.psf Makefile
+#	$(PSFS2CPI) \
+#	+850 gsans16.psf gsans14.psf gsans08.psf \
+#	+852 gsans16.psf gsans14.psf gsans08.psf \
+#	+857 gsans16.psf gsans14.psf gsans08.psf \
+#	+861 gsans16.psf gsans14.psf gsans08.psf \
+#	+869 gsans16.psf gsans14.psf gsans08.psf \
+#	+737 gsans16.psf gsans14.psf gsans08.psf \
+#	$@
+#
+#gsans3.cpi:	gsans08.psf gsans14.psf gsans16.psf Makefile
+#	$(PSFS2CPI) \
+#	+437 gsans16.psf gsans14.psf gsans08.psf \
+#	+850 gsans16.psf gsans14.psf gsans08.psf \
+#	+852 gsans16.psf gsans14.psf gsans08.psf \
+#	+855 gsans16.psf gsans14.psf gsans08.psf \
+#	+866 gsans16.psf gsans14.psf gsans08.psf \
+#	$@
+
+#
+# This generates a Windows NT-style CPI file. If you want this use 
+# cpidcomp on the DRFONT one.
+#
+#gsans_nt.cpi:	gsans08.psf gsans14.psf gsans16.psf Makefile
+#	$(PSFS2CPI) --nt \
+#        +437 gsans16.psf gsans14.psf gsans08.psf \
+#        +737 gsans16.psf gsans14.psf gsans08.psf \
+#        +775 gsans16.psf gsans14.psf gsans08.psf \
+#        +850 gsans16.psf gsans14.psf gsans08.psf \
+#        +852 gsans16.psf gsans14.psf gsans08.psf \
+#        +855 gsans16.psf gsans14.psf gsans08.psf \
+#        +857 gsans16.psf gsans14.psf gsans08.psf \
+#        +860 gsans16.psf gsans14.psf gsans08.psf \
+#        +861 gsans16.psf gsans14.psf gsans08.psf \
+#        +863 gsans16.psf gsans14.psf gsans08.psf \
+#        +865 gsans16.psf gsans14.psf gsans08.psf \
+#        +866 gsans16.psf gsans14.psf gsans08.psf \
+#        +869 gsans16.psf gsans14.psf gsans08.psf \
+#	$@
+#
+# Codepages for ISO-8859 fonts.
+#
+# As for the standard ones, use CPPREP to generate these
+#
+#gsans_iso1.cpi:	gsans08.psf gsans14.psf gsans16.psf Makefile
+#	$(PSFS2CPI) \
+#	+819=8859-1 gsans16.psf gsans14.psf gsans08.psf \
+#	+912=8859-2 gsans16.psf gsans14.psf gsans08.psf \
+#	+913=8859-3 gsans16.psf gsans14.psf gsans08.psf \
+#	+914=8859-4 gsans16.psf gsans14.psf gsans08.psf \
+#	+919=8859-10 gsans16.psf gsans14.psf gsans08.psf \
+#	+920=8859-9 gsans16.psf gsans14.psf gsans08.psf \
+#	$@	
+#
+# gsans_iso2 and gsans_iso3 use the codepage numbers from MS-Windows.
+#
+#gsans_iso2.cpi:	gsans08.psf gsans14.psf gsans16.psf Makefile
+#	$(PSFS2CPI) \
+#	+28591=8859-1 gsans16.psf gsans14.psf gsans08.psf \
+#	+28592=8859-2 gsans16.psf gsans14.psf gsans08.psf \
+#	+28593=8859-3 gsans16.psf gsans14.psf gsans08.psf \
+#	+28594=8859-4 gsans16.psf gsans14.psf gsans08.psf \
+#	+28595=8859-5 gsans16.psf gsans14.psf gsans08.psf \
+#	+28605=8859-15 gsans16.psf gsans14.psf gsans08.psf \
+#	$@
+#
+#gsans_iso3.cpi:	gsans08.psf gsans14.psf gsans16.psf Makefile
+#	$(PSFS2CPI) \
+#	+28591=8859-1 gsans16.psf gsans14.psf gsans08.psf \
+#	+28597=8859-7 gsans16.psf gsans14.psf gsans08.psf \
+#	+28599=8859-9 gsans16.psf gsans14.psf gsans08.psf \
+#	+28600=8859-10 gsans16.psf gsans14.psf gsans08.psf \
+#	+28603=8859-13 gsans16.psf gsans14.psf gsans08.psf \
+#	$@
+
+##	+28596=8859-6 gsans16.psf gsans14.psf gsans08.psf \
+##	+28598=8859-8 gsans16.psf gsans14.psf gsans08.psf \
+##	+28604=8859-14 gsans16.psf gsans14.psf gsans08.psf \
+##	+28606=8859-16 gsans16.psf gsans14.psf gsans08.psf \
+	$@	
+
+%.psf:	%.txt
+	$(TXT2PSF) $< $@
+
+clean:
+	rm $(TARGETS)

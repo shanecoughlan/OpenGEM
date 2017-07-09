@@ -1,0 +1,13 @@
+0.0:Waits for the user to press a key, from a list of choices
+0.1:choices
+0.2:text
+0.3:Specifies allowable keys.  Default is:
+0.4:Do not display the choices at end of prompt
+0.5:Be case-sensitive
+0.6:Automatically choose key c after nn seconds
+0.7:The text to display as a prompt
+0.8:Sound an alert (beep) at prompt
+3.0:yn
+
+0.9:Incorrect timeout syntax. Expected form Tc,nn or T:c,nn
+0.10:Timeout default not in specified (or default) choices

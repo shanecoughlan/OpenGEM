@@ -1,0 +1,1982 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+EJECT
+;Hist
+;
+dseg
+	extrn	ptsin_ptr:dword, intin_ptr:dword
+cseg
+	extrn	txtblt_rrot_table_1:word
+	public	read_ptsin, read_intin, write_ptsin
+;
+; These three appear to be new in SDPSC9, and I'm not sure which source file
+; they ultimately belong in.
+;
+read_ptsin: 
+	push	bp
+	mov	bp, sp
+	mov	ax, 4[bp]
+	mov	bx, ds
+	mov	es, bx
+	mov	si, offset PTSIN
+	cmp	ax, 100h
+	jc	read_ptsin1
+	les	si, ptsin_ptr
+read_ptsin1:
+	shl	ax, 1
+	add	si, ax
+	mov	ax, es:[si]
+	pop	bp
+	retn	
+
+write_ptsin:
+	push	bp
+	mov	bp, sp
+	mov	ax, 4[bp]
+	mov	cx, 6[bp]
+	mov	bx, ds
+	mov	es, bx
+	mov	si, offset PTSIN
+	cmp	ax, 100h
+	jc	write_ptsin1
+	les	si, ptsin_ptr
+write_ptsin1:
+	shl	ax, 1
+	add	si, ax
+	mov	es:[si], cx
+	pop	bp
+	retn	
+
+read_intin:
+	push	bp
+	mov	bp, sp
+	mov	ax, 4[bp]
+	les	si, intin_ptr
+	shl	ax, 1
+	add	si, ax
+	mov	ax, es:[si]
+	pop	bp
+	retn	
+
+
+
+	public	vec_len
+	public	GET_DS
+	public	ABLINE
+	public	HABLINE
+	public	DIS_CUR
+	public	HIDE_CUR
+	public	MOV_CUR
+	public	SMUL_DIV
+	public	CLC_FLIT
+	if not GSX
+	 public	XFM_CRFM
+	 public	XFM_UDFL
+	 public	VEX_BUTV
+	 public	VEX_MOTV
+	 public	VEX_CURV
+	endif
+	public	RECTFILL
+	public  BOX_FILL
+if mono_port
+	public	next_seg_pgdown
+next_seg_pgdown:
+	sub	di, true_plane_size			;wrap back to 0 offset base
+	push	dx
+	push	ax
+	mov	dx, plane_sel_port
+	mov	al, ss:current_bank
+	inc	al
+	out	dx, al
+	mov	ss:current_bank, al
+	pop	ax
+	pop	dx
+	ret
+endif
+vec_len:
+		push	bp
+		mov	bp, sp
+
+; Check for zeroes.
+		cmp	word ptr 4[bp], 0
+		jne	x_squared
+		cmp	word ptr 6[bp], 0
+		jne	x_squared
+		xor	bx, bx				; return value
+		jmp	search_loop_end
+
+; Calculate delta_x squared.
+x_squared:
+		mov	dx, 4[bp]		; delta_x parameter
+		mov	ax, dx
+		imul	dx
+		mov	vec_len_high, dx		; save high word of square
+		mov	vec_len_low, ax			; save low word of square
+
+; Calculate delta_y squared and add to delta_x squared.
+		mov	dx, 6[bp]		; delta_y parameter
+		mov	ax, dx
+		imul	dx
+
+		add	vec_len_low, ax
+		adc	vec_len_high, dx		; high/low = sum of squares
+
+; Get the initial binary search boundaries.  This is done by taking an
+;   approximate square root based on the highest order set bit in the
+;   high/low bit string.
+		cmp	vec_len_high, 0
+		je	no_high_byte
+
+		mov	ax, vec_len_high		; check on high order byte
+		mov	cl, 16
+		jmp	bounds_loop
+
+no_high_byte:
+		mov	ax, vec_len_low			; check on low order byte
+		sub	cl, cl
+
+bounds_loop:
+		cmp	ax, 1			; done yet?
+		je	bounds_loop_end
+		inc	cl
+		shr	ax, 1
+		jmp	bounds_loop
+
+bounds_loop_end:
+		shr	cl, 1
+		mov	bx, 1
+		shl	bx, cl			; bx = initial low bound
+		mov	cx, bx
+		shl	cx, 1			; cx = initial high bound
+
+; Perform a binary search for a square root (somewhat brutishly).
+search_loop:
+		mov	ax, cx
+		sub	ax, bx
+		cmp	ax, 1			; done with the search?
+		jle	search_loop_end
+
+		shr	ax, 1
+		add	ax, bx			; candidate = (high+low)/2
+		mov	si, ax			; save a copy for next pass
+		mul	ax			; dx/ax = candidate square
+
+		cmp	dx, vec_len_high		; check against high word
+		ja	high_adjust
+		jb	low_adjust
+
+		cmp	ax, vec_len_low			; check against low word
+		ja	high_adjust
+		jb	low_adjust
+
+		mov	bx, si			; exact root found!
+		jmp	search_loop_end
+
+high_adjust:
+		mov	cx, si			; adjust high value down
+		jmp	search_loop
+
+low_adjust:
+		mov	bx, si			; adjust low value up
+		jmp	search_loop
+
+search_loop_end:
+		mov	ax, bx			; ax = solution
+
+		pop	bp
+		ret
+
+;
+;***************************************************************************
+;
+; SMUL_DIV (m1,m2,d1)
+;
+;	 ( ( ( m1 * m2 ) / d1 ) + 1 / 2	
+;	m1 = signed 16 bit integer
+;	m2 = snsigned 15 bit integer
+;	d1 = signed 16 bit integer
+;
+;***************************************************************************
+SMUL_DIV:
+	push	bp		;save the callers bp
+	mov	bp,sp
+	mov	ax,06[bp]
+	mov	bx,04[bp]
+	imul	bx		; m2 * m1
+	mov	si, 1
+	and	dx, dx
+	jns	smul_div_1
+	neg	si
+smul_div_1:
+	mov	bx,08[bp]
+	idiv	bx		; m2 * m1 / d1
+	pop	bp
+	and	bx, bx		; test if divisor is negative
+	jns	smul_div_2
+	neg	si
+	neg	bx		; make it positive
+smul_div_2:
+	and	dx, dx		; test if remainder is negative
+	jns	smul_div_3
+	neg	dx		; make remainder positive
+smul_div_3:
+	shl	dx, 1		; see if 2 * remainder is > divisor
+	cmp	dx, bx
+	jl	smul_div_4
+	add	ax, si
+smul_div_4:
+	ret
+eject
+EJECT
+;************************************************************************
+;TENNIS 								*
+;	Entry	CX - delta count for ABLINE (count includes last point) *
+;	Exit	CX is decremented by one if:				*
+;			XOR writing mode and the line about to be	*
+;			drawn is not the last of the poly line		*
+;			else Cx is left alone				*
+;	Purpose:  Xor does not Xor itself at intersection points of	*
+;		  polline or plydpl of fill				*
+;************************************************************************
+tennis:
+	cmp	WRT_MODE, 2		; check if xor
+	jnz	jimmy	 
+	cmp	LSTLIN, 0		; check if XOR and last line of pollin
+	jnz	jimmy			; if false go around 
+	cmp	cx, 1
+	jz	jimmy
+	dec	cx
+jimmy:	ret
+;
+EJECT
+;****************************************************************
+;Subroutine	HABLINE						*
+;	Entry:	X1-coordinate					*
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		patptr - pointer to fill pattern table		*
+;								*	
+;	Purpose:						*
+;		This routine will draw a line from (X1,Y1) to	*
+;		(X2,Y1) using a horizontal line algorithm.	*
+;****************************************************************
+HABLINE:
+	push	bp
+	if	manual_update
+	 call	touch_x1y1
+	endif
+	push	Y2
+	mov	ax, Y1
+	mov	Y2, ax
+	call	BOX_FILL
+	pop	Y2
+	pop	bp
+	ret
+
+GET_DS:
+	mov	ax,ds
+	ret
+;
+;******************************************************************************
+;
+; PROCEDURE:	RECTFIL		Fill Rectangle
+;
+; Inputs:	X1,Y1 = upper left
+;		X2,Y2 = lower right
+;
+;******************************************************************************
+;
+RECTFILL:
+	mov	ax, CLIP		; is clipping on?
+	and	ax, ax
+	jnz	rectfill_clip_1
+	jmp 	BOX_FILL		; goto horizontal line draw routine
+rectfill_clip_1:
+	mov	 ax, XMN_CLIP
+	mov	 bx, X1
+	mov	 cx, X2
+	cmp	bx, ax			; is x1 < xmn_clip
+	jnl	rectfill_clip_3	
+	cmp	cx, ax			; is x2 >= xmn_clip
+	jl	rectfill_clip_2
+	mov	X1, ax 
+rectfill_clip_3:
+	mov	ax, XMX_CLIP
+	cmp	cx, ax			; is x2 > xmx_clip
+	jle	rectfill_clip_4
+	cmp	bx, ax			; is x1 <= xmx_clip
+	jg	rectfill_clip_2
+	mov	X2, ax
+	jmps	rectfill_clip_4
+rectfill_clip_2:
+	ret				; if x2 not > xmn_clip exit
+rectfill_clip_4:
+	mov	 ax, YMN_CLIP
+	mov	 bx, Y1
+	mov	 cx, Y2
+	cmp	bx, ax			; is y1 < ymn_clip
+	jnl	rectfill_clip_5	
+	cmp	cx, ax			; is y2 >= ymn_clip
+	jl	rectfill_clip_2
+	mov	Y1, ax 
+rectfill_clip_5:
+	mov	ax, YMX_CLIP
+	cmp	cx, ax			; is y2 > ymx_clip
+	jle	rectfill_clip_6
+	cmp	bx, ax			; is y1 <= ymx_clip
+	jg	rectfill_clip_2
+	mov	Y2, ax
+rectfill_clip_6:
+	jmps	BOX_FILL
+
+;******************************************************************************
+; BOX_FILL
+;	Fill a rectangular area with pattern
+;
+;	Entry	X1,Y1 = upper left corner  inclusive
+;		X2,Y2 = lower right corner inclusive
+;
+;******************************************************************************
+BOX_FILL:
+	if	manual_update
+	 call	touch_x1y1
+	endif
+	mov	bx, X1
+	and	bx, 0fff0h	; make sure it lines up on a word boundary
+	mov	ax, Y1		; find the physical address
+	call	concat		; di = display memory pointer
+	and	di, 0fffch	; make sure it points to low byte
+	mov	cx, Y2
+	sub	cx, Y1
+	inc	cx
+box_fill_1:
+	mov	si, Y1
+	push	bp
+box_fill_2:
+	push	ds
+	push	cx
+	push	di
+	and	si, patmsk
+	push	si
+	shl	si, 1
+	add	si, patptr
+	call	box_fill_line
+	pop	si
+	inc	si
+	pop	di
+if next_plane gt 0
+	add	di, next_plane
+	jnc	box_fill1	
+endif
+	add	di, bytes_line
+box_fill1:
+	pop	cx
+	pop	ds
+	loop	box_fill_2
+	pop	bp
+	ret
+;
+if num_planes gt 2
+BOX_FILL_LINE:
+	mov	ax, [si]	;Pattern
+	cmp	WRT_MODE, 3
+	jnz	box_fill_line1
+	not	ax
+box_fill_line1:
+	xchg	ah, al
+	mov	box_pattern, ax
+	xchg	ah, al
+	mov	box_pl0, ax
+	mov	box_pl1, ax
+	mov	box_pl2, ax
+	mov	box_pl3, ax
+	cmp	WRT_MODE, 0
+	jnz	box_fill_line2
+;
+	cmp	NEXT_PAT, 0
+	jz	box_fill_line2
+	add	si, NEXT_PAT
+	mov	ax, [si]
+	mov	box_pl1, ax
+	add	si, NEXT_PAT
+	mov	ax, [si]
+	mov	box_pl2, ax
+	add	si, NEXT_PAT
+	mov	ax, [si]
+	mov	box_pl3, ax
+box_fill_line2:
+	mov	si, 0FFFFh	;XOR: Fixed invert on all planes
+	cmp	WRT_MODE, 2
+	jz	box_fill_line3
+	mov	si, FG_BP_1
+box_fill_line3:
+	xor	ax, ax
+	xor	bx, bx
+	mov	cx, box_pl0
+	mov	dx, box_pl1
+	ror	si, 1
+	jnc	box_fill_line4
+	mov	al, ch		;Plane 0: Populate from CX
+	mov	bl, cl
+box_fill_line4:
+	ror	si, 1
+	jnc	box_fill_line5
+	mov	ah, dh		;Plane 1: Populate from DX
+	mov	bh, dl
+box_fill_line5:
+	mov	box_pl0, ax
+	mov	box_pl1, bx
+	xor	ax, ax
+	xor	bx, bx
+	mov	cx, box_pl2
+	mov	dx, box_pl3
+	ror	si, 1
+	jnc	box_fill_line6
+	mov	al, ch		;Plane 2: Populate from CX
+	mov	bl, cl
+box_fill_line6:
+	ror	si, 1
+	jnc	box_fill_line7
+	mov	ah, dh		;Plane 3: Populate from DX
+	mov	bh, dl
+box_fill_line7:
+	if	num_planes eq 3
+	 xchg	ah, al		;In the 3-plane driver, plane 0 is R, 1 is G
+	 xchg	bh, bl		;3 is B and 2 is unused. So swap the plane 2
+	endif			;and 3 values here.
+	mov	box_pl2, ax
+	mov	box_pl3, bx
+	mov	si, X1
+	mov	cx, X2
+	sub	cx, si
+	inc	cx
+	and	si, 0Fh
+	mov	ax, graph_plane
+	mov	es, ax
+	mov	box_di, di	
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	jmp	box_optbl[bx]
+;
+box_replace_mode:
+	cmp	si, 0	;Width of left fringe
+	jnz	box_rep_isleft
+	jmp	box_rep_noleft
+
+box_rep_isleft:
+	mov	bx, 10h
+	sub	bx, si
+	sub	cx, bx
+	jg	box_rep_left2
+;
+; OK, there is a left fringe and nothing else.
+;
+	add	cx, bx
+	mov	bx, cx
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	mov	cx, si
+	ror	ax, cl
+	mov	bx, ax
+	mov	al, ah
+	mov	bh, bl
+	mov	bp, box_pl0
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	mov	bp, box_pl1
+	add	di, 2
+	xor	es:[di], bp
+	and	es:[di], bx
+	xor	es:[di], bp
+	mov	dx, graph_plane_high
+	mov	es, dx
+	sub	di, 2
+	mov	bp, box_pl2
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	mov	bp, box_pl3
+	add	di, 2
+	xor	es:[di], bp
+	and	es:[di], bx
+	xor	es:[di], bp
+	ret
+;
+box_rep_left2:
+	shl	bx, 1
+	mov	ax, left_masks[bx]
+	xchg	ah, al
+	mov	bl, ah
+	mov	ah, al
+	mov	bh, bl
+	mov	bp, box_pl0
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	add	di, 2
+	mov	bp, box_pl1	
+	xor	es:[di], bp
+	and	es:[di], bx
+	xor	es:[di], bp
+	sub	di, 2
+	mov	dx, graph_plane_high
+	mov	es, dx
+	mov	bp, box_pl2
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	add	di, 2
+	mov	bp, box_pl3
+	xor	es:[di], bp
+	and	es:[di], bx
+	xor	es:[di], bp
+	add	di, 2
+	mov	box_di, di
+	mov	dx, graph_plane
+	mov	es, dx
+box_rep_noleft:
+	mov	bx, cx
+	shr	cx, 1	
+	shr	cx, 1	
+	shr	cx, 1	
+	shr	cx, 1		;/16
+	or	cx, cx
+	jnz	box_rep_mid1
+	jmp	box_rep_nomid
+;
+box_rep_mid1:
+	xor	ax, ax
+	mov	dx, box_pl0
+	mov	bp, box_pl1
+	cmp	dx, bp		;Are both patterns the same?
+	jnz	box_rep_mid2
+	push	di
+	push	cx
+	shl	cx, 1		;If so, we can use a REP
+	mov	ax, dx
+	rep	stosw
+	mov	box_di, di
+	mov	ax, 1
+	pop	cx
+	pop	di
+box_rep_mid2:
+	mov	dx, box_pl2
+	cmp	dx, box_pl3
+	jnz	box_rep_mid3
+	push	ax
+	push	di
+	push	cx
+	shl	cx, 1
+	mov	ax, graph_plane_high
+	mov	es, ax
+	mov	ax, dx
+	rep	stosw
+	mov	box_di, di
+	mov	ax, graph_plane
+	mov	es, ax
+	pop	cx
+	pop	di
+	pop	ax
+	or	ax, 2		;Planes 2,3 painted
+	test	ax, 1		;Have planes 0,1 been painted too?
+	jz	box_rep_mid3	
+	jmp	box_rep_nomid
+;
+box_rep_mid3:
+	cmp	ax, 0		;Have any planes been painted?
+	jnz	box_rep_mid5
+	push	bx		;No. Have to do the whole lot.
+	push	ds
+	mov	dx, graph_plane_high
+	push	dx
+	mov	bp, box_pl0
+	mov	bx, box_pl1
+	mov	dx, box_pl2
+	mov	si, box_pl3
+	pop	ds
+box_rep_mid4:
+	mov	ax, bp		;Write planes 0,1
+	stosw
+	mov	ax, bx
+	stosw
+	sub	di, 4
+	mov	[di], dx	;and planes 2,3
+	mov	2[di], si
+	add	di, 4
+	loop	box_rep_mid4
+	pop	ds
+	pop	bx
+	mov	box_di, di
+	jmp	box_rep_nomid
+;
+box_rep_mid5:
+	mov	dx, box_pl0
+	mov	bp, box_pl1
+	cmp	ax, 1
+	jnz	box_rep_mid6
+	mov	dx, box_pl2
+	mov	bp, box_pl3
+	mov	ax, graph_plane_high
+	mov	es, ax
+box_rep_mid6:
+	mov	ax, dx		;Write planes 0,1
+	stosw
+	mov	ax, bp
+	stosw
+	loop	box_rep_mid6
+	mov	box_di, di
+box_rep_nomid:
+	mov	di, box_di
+	and	bx, 0Fh
+	mov	cx, bx	
+	jcxz	box_rep_noright
+	mov	ax, graph_plane
+	mov	es, ax
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	xchg	ah, al
+	mov	bl, ah
+	mov	ah, al
+	mov	bh, bl
+	mov	bp, box_pl0
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	mov	bp, box_pl1
+	add	di, 2
+	xor	es:[di], bp
+	and	es:[di], bx
+	xor	es:[di], bp
+	sub	di, 2
+	mov	dx, graph_plane_high
+	mov	es, dx
+	mov	bp, box_pl2
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	mov	bp, box_pl3
+	add	di, 2
+	xor	es:[di], bp
+	and	es:[di], bx
+	xor	es:[di], bp
+box_rep_noright:	
+	ret
+
+box_invtran_mode:
+box_tran_mode:
+	cmp	si, 0
+	jnz	box_tran_left
+	jmp	box_tran_noleft	;Jump out of range?
+
+box_tran_left:
+	mov	bx, 10h	
+	sub	bx, si
+	sub	cx, bx
+	jg	box_tran_left2
+	add	cx, bx
+	mov	bx, cx
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	mov	cx, si
+	ror	ax, cl
+	mov	bx, ax
+	mov	al, ah
+	mov	bh, bl
+	mov	cx, box_pattern
+	not	cx
+	mov	ch, cl
+	or	cx, ax
+	and	es:[di], cx
+	mov	si, graph_plane_high
+	mov	es, si
+	and	es:[di], cx
+	mov	cx, box_pattern
+	not	cx
+	mov	cl, ch
+	or	cx, bx
+	and	es:2[di], cx
+	mov	si, graph_plane
+	mov	es, si
+	and	es:2[di], cx
+	not	ax
+	mov	cx, ax
+	not	bx
+	mov	dx, bx
+	and	ax, box_pl0
+	and	cx, box_pl2
+	and	bx, box_pl1
+	and	dx, box_pl3
+	or	es:[di], ax
+	or	es:2[di], bx
+	mov	si, graph_plane_high
+	mov	es, si
+	or	es:[di], cx
+	or	es:2[di], dx
+	ret
+;
+box_tran_left2:
+	mov	ax, box_pattern
+	not	ax
+	push	cx
+	mov	cl, al
+	mov	ch, cl
+	mov	dl, ah
+	mov	dh, dl
+	shl	bx, 1
+	mov	ax, left_masks[bx]
+	xchg	ah, al
+	mov	bl, ah
+	mov	ah, al
+	mov	bh, bl
+	or	cx, ax
+	and	es:[di], cx
+	or	dx, bx
+	and	es:2[di], dx
+	mov	bp, graph_plane_high
+	mov	es, bp
+	and	es:[di], cx
+	and	es:2[di], dx
+	mov	bp, box_pl2
+	mov	dx, box_pl3
+	not	ax
+	not	bx
+	and	bp, ax
+	and	dx, bx
+	or	es:[di], bp
+	or	es:2[di], dx
+	mov	dx, graph_plane
+	mov	es, dx
+	mov	bp, box_pl0
+	mov	dx, box_pl1
+	and	bp, ax
+	and	dx, bx
+	or	es:[di], bp
+	or	es:2[di], dx
+	add	di, 4
+	pop	cx
+box_tran_noleft:
+	mov	bx, cx
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	jcxz	box_tran_nomid
+	push	bx
+	push	ds
+	push	cx
+	push	di
+	mov	ax, box_pattern
+	not	ax
+	mov	bl, ah
+	mov	ah, al
+	mov	bh, bl
+	mov	bp, box_pl0
+	mov	dx, box_pl1
+	mov	si, graph_plane
+	mov	ds, si
+box_tran_mid1:
+	and	[di], ax
+	or	[di], bp
+	and	2[di], bx
+	or	2[di], dx
+	add	di, 4
+	loop	box_tran_mid1
+	pop	di
+	pop	cx
+	pop	ds
+	mov	bp, box_pl2
+	mov	dx, box_pl3
+	push	ds
+	mov	si, graph_plane_high
+	mov	ds, si
+box_tran_mid2:
+	and	[di], ax
+	or	[di], bp
+	and	2[di], bx
+	or	2[di], dx
+	add	di, 4
+	loop	box_tran_mid2
+	pop	ds
+	pop	bx
+box_tran_nomid:	
+	mov	bp, graph_plane
+	mov	es, bp
+	and	bx, 0Fh
+	mov	cx, bx
+	jcxz	box_tran_noright
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	xchg	ah, al
+	mov	bl, ah
+	mov	bh, bl
+	mov	ah, al
+	mov	dx, box_pattern
+	not	dx
+	mov	cl, dl
+	mov	ch, cl
+	mov	dl, dh
+	or	cx, ax
+	and	es:[di], cx
+	or	dx, bx
+	and	es:2[di], dx
+	mov	si, graph_plane_high
+	mov	es, si
+	and	es:[di], cx
+	and	es:2[di], dx
+	not	ax
+	not	bx
+	mov	cx, box_pl2
+	mov	dx, box_pl3
+	and	cx, ax
+	and	dx, bx
+	or	es:[di], cx
+	or	es:2[di], dx
+	mov	si, graph_plane
+	mov	es, si
+	mov	cx, box_pl0
+	mov	dx, box_pl1
+	and	cx, ax
+	and	dx, bx
+	or	es:[di], cx
+	or	es:2[di], dx
+box_tran_noright:
+	ret
+;
+;
+;
+box_xor_mode:
+	cmp	si, 0
+	jz	box_xor_noleft
+	mov	bx, 10h
+	sub	bx, si
+	sub	cx, bx
+	or	cx, cx
+	jg	box_xor_left2
+	add	cx, bx
+	mov	bx, cx
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	mov	cx, si
+	ror	ax, cl
+	mov	bx, ax
+	mov	al, ah
+	mov	bh, bl
+	not	ax
+	not	bx
+	mov	bp, box_pl0
+	mov	dx, box_pl1
+	and	ax, bp
+	and	bx, dx
+	xor	es:[di], ax
+	xor	es:2[di], bx
+	mov	cx, graph_plane_high
+	mov	es, cx
+	xor	es:[di], ax
+	xor	es:2[di], bx
+	ret
+;
+box_xor_left2:
+	shl	bx, 1
+	mov	ax, left_masks[bx]
+	xchg	ah, al
+	mov	bl, ah
+	mov	ah, al
+	mov	bh, bl
+	not	ax
+	not	bx
+	and	ax, box_pl0
+	xor	es:[di], ax
+	and	bx, box_pl1
+	xor	es:2[di], bx
+	mov	dx, graph_plane_high
+	mov	es, dx
+	xor	es:[di], ax
+	xor	es:2[di], bx
+	mov	si, graph_plane
+	mov	es, si
+	add	di, 4
+
+box_xor_noleft:
+	mov	bx, cx
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	jcxz	box_xor_nomid
+	push	ds
+	mov	bp, box_pl0
+	mov	dx, box_pl1
+	mov	ax, graph_plane_high
+	mov	ds, ax
+box_xor_mid:
+	xor	es:[di], bp
+	xor	es:2[di], dx
+	xor	[di], bp
+	xor	2[di], dx
+	add	di, 4
+	loop	box_xor_mid
+	pop	ds
+box_xor_nomid:
+	and	bx, 0Fh
+	mov	cx, bx
+	jcxz	box_xor_noright
+	shl	bx, 1
+	mov	ax,right_masks[bx]
+	xchg	ah, al
+	not	ax
+	mov	bl, ah
+	mov	ah, al
+	mov	bh, bl
+	and	ax, box_pl2
+	and	bx, box_pl3
+	xor	es:[di], ax
+	xor	es:2[di], bx
+	mov	cx, graph_plane_high
+	mov	es,cx
+	xor	es:[di], ax
+	xor	es:2[di], bx
+box_xor_noright:
+	ret	
+
+else	;--------------------- num_planes gt 2 ----------------------------
+
+BOX_FILL_LINE:
+	mov	dx, [si]	;Pattern
+	cmp	WRT_MODE, 3
+	jnz	box_fill_line1
+	not	dx
+box_fill_line1:
+	xchg	dh, dl
+	mov	box_pattern, dx
+	mov	ax, graph_plane
+	mov	es, ax
+	cmp	WRT_MODE, 0
+	jnz	box_fill_line5
+;
+; In replace mode, we have to generate foreground and background masks for
+; two planes.
+;
+	mov	dx, [si]	;Pattern for first plane
+	mov	ax, dx		;By default both are the same
+	cmp	NEXT_PAT, 0
+	jz	box_fill_line2
+	mov	ax, 32[si]	;Pattern for second plane
+box_fill_line2: 	
+	mov	si, X1
+	mov	cx, X2
+	sub	cx, si
+	inc	cx		;Width of line
+	push	cx
+	mov	cx, ax
+	xchg	dl, dh
+	xchg	cl, ch
+	and	si, 0Fh
+	push	si
+	mov	si, FG_BP_1
+	xor	ax, ax
+	xor	bx, bx
+	ror	si, 1
+	jnc	box_fill_line3
+	mov	al, dl
+	mov	bl, dh
+box_fill_line3:
+	ror	si, 1
+	jnc	box_fill_line4
+	mov	ah, cl
+	mov	bh, ch
+box_fill_line4:
+	xchg	dx, bx
+	pop	si
+	pop	cx
+	mov	bp, ax
+	jmp	box_replace_mode
+;
+; Code for TRAN, XOR and ITRAN modes
+;
+box_fill_line5:
+	mov	dx, [si]
+	mov	si, X1
+	mov	cx, X2
+	sub	cx, si
+	inc	cx
+	xchg	dl, dh
+	cmp	WRT_MODE, 3	;INVTRAN, invert the mask
+	jnz	box_fill_line6
+	not	dx
+box_fill_line6:
+	and	si, 0Fh
+	push	si
+	cmp	WRT_MODE, 2
+	jnz	box_fill_line7
+	mov	si, 0FFFFh	;XOR, foreground is always solid
+	jmps	box_fill_line8
+;
+box_fill_line7:
+	mov	si, FG_BP_1
+box_fill_line8:
+	xor	ax, ax
+	xor	bx, bx
+	ror	si, 1
+	jnc	box_fill_line9
+	mov	al, dl
+	mov	bl, dh
+box_fill_line9:
+	ror	si, 1
+	jnc	box_fill_line10
+	mov	ah, dl
+	mov	bh, dh
+box_fill_line10:
+	xchg	dx, bx
+	pop	si
+	mov	bp, ax
+	mov	bx, WRT_MODE
+	shl	bx, 1
+	jmp	box_optbl[bx]
+;
+box_replace_mode:
+	cmp	si, 0	;Width of left fringe
+	jz	box_rep_noleft
+	mov	bx, 10h
+	sub	bx, si
+	sub	cx, bx
+	jg	box_rep_left2
+;
+; OK, there is a left fringe and nothing else.
+;
+	add	cx, bx
+	mov	bx, cx
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	mov	cx, si
+	ror	ax, cl
+	mov	bx, ax
+	mov	al, ah
+	mov	bh, bl
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	add	di, 2
+	xor	es:[di], dx
+	and	es:[di], bx
+	xor	es:[di], dx
+	ret
+;
+box_rep_left2:
+	shl	bx, 1
+	inc	bx
+	mov	al, byte ptr left_masks[bx]
+	mov	ah, al
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp	
+	dec	bx
+	mov	al, byte ptr left_masks[bx]
+	mov	ah, al
+	add	di, 2
+	xor	es:[di], dx
+	and	es:[di], ax
+	xor	es:[di], dx
+	add	di, 2
+box_rep_noleft:
+	mov	bx, cx
+	shr	cx, 1	
+	shr	cx, 1	
+	shr	cx, 1	
+	shr	cx, 1		;/16
+	jcxz	box_rep_nomid
+	cmp	dx, bp		;Are both patterns the same?
+	jnz	box_rep_mid2
+	shl	cx, 1		;If so, we can use a REP
+	mov	ax, dx
+	rep	stosw
+	jmp	box_rep_nomid
+;
+box_rep_mid2:
+	mov	ax, bp
+	stosw
+	mov	ax, dx
+	stosw
+	loop	box_rep_mid2
+;
+box_rep_nomid:
+	and	bx, 0Fh
+	mov	cx, bx
+	jcxz	box_rep_noright
+	shl	bx, 1
+	inc	bx
+	mov	al, byte ptr right_masks[bx]
+	mov	ah, al
+	xor	es:[di], bp
+	and	es:[di], ax
+	xor	es:[di], bp
+	dec	bx
+	mov	al, byte ptr right_masks[bx]
+	mov	ah, al
+	add	di, 2
+	xor	es:[di], dx	
+	and	es:[di], ax	
+	xor	es:[di], dx	
+box_rep_noright:	
+	ret
+
+box_invtran_mode:
+box_tran_mode:
+	cmp	si, 0
+	jnz	box_tran_left
+	jmp	box_tran_noleft	;Jump out of range?
+
+box_tran_left:
+	mov	bx, 10h	
+	sub	bx, si
+	sub	cx, bx
+	jg	box_tran_left2
+	add	cx, bx
+	mov	bx, cx
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	mov	cx, si
+	ror	ax, cl
+	mov	bx, ax
+	mov	al, ah
+	mov	bh, bl
+	mov	cx, box_pattern
+	not	cx
+	mov	ch, cl
+	or	cx, ax
+	and	es:[di], cx
+	mov	cx, box_pattern
+	not	cx
+	mov	cl, ch
+	or	cx, bx
+	and	es:2[di], cx
+	not	ax
+	not	bx
+	and	ax, bp
+	and	bx, dx
+	or	es:[di], ax
+	add	di, 2
+	or	es:[di], bx
+	ret
+;
+box_tran_left2:
+	mov	ax, box_pattern
+	not	ax
+	push	dx
+	push	cx
+	mov	cl, al
+	mov	ch, cl
+	mov	dl, ah
+	mov	dh, dl
+	shl	bx, 1
+	inc	bx
+	mov	al, byte ptr left_masks[bx]
+	mov	ah, al
+	or	cx, ax
+	and	es:[di], cx
+	not	ax
+	and	ax, bp
+	or	es:[di], ax
+	add	di, 2
+	dec	bx
+	mov	al, byte ptr left_masks[bx]
+	mov	ah, al
+	or	dx, ax
+	and	es:[di], dx
+	not	ax
+	pop	cx
+	pop	dx
+	and	ax, dx
+	or	es:[di], ax
+	add	di, 2
+box_tran_noleft:
+	mov	bx, cx
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	jcxz	box_tran_nomid
+	mov	ax, ds
+	mov	es, ax
+	mov	ax, graph_plane
+	mov	ds, ax
+	mov	ax, es:box_pattern
+	not	ax
+	xchg	cx, si
+	mov	cl, al
+	mov	ch, cl
+	xchg	cx, si
+	mov	al, ah
+box_tran_mid:
+	and	[di], si
+	or	[di], bp
+	and	2[di], ax
+	or	2[di], dx
+	add	di, 4
+	loop	box_tran_mid
+	mov	cx, es
+	mov	ds, cx
+	mov	cx, graph_plane
+	mov	es, cx
+box_tran_nomid:	
+	and	bx, 0Fh
+	mov	cx, bx
+	jcxz	box_tran_noright
+if f1_colour
+	mov	ax, box_pattern
+	not	ax
+	mov	cl, al	;Reordered compared to the FP drivers. I wonder
+	mov	ch, cl	;why?
+	mov	al, ah
+	xchg	cx, si
+endif
+	shl	bx, 1
+	inc	bx
+	push	bx
+	mov	bl, byte ptr right_masks[bx]
+	mov	bh, bl
+if not f1_colour
+	mov	ax, box_pattern
+	not	ax
+	mov	cl, al
+	mov	ch, cl
+	mov	al, ah
+if num_planes gt 1
+	mov	si, cx	;Bugfix in PORTCOL2?
+else
+	xchg	cx, si
+endif
+endif
+	or	si, bx
+	and	es:[di], si
+	not	bx
+	and	bp, bx
+	or	es:[di], bp
+	add	di, 2
+	pop	bx
+	dec	bx
+	mov	bl, byte ptr right_masks[bx]
+	mov	bh, bl
+	or	ax, bx
+	and	es:[di], ax
+	not	bx
+	and	dx, bx
+	or	es:[di], dx
+box_tran_noright:
+	ret
+;
+;
+box_xor_mode:
+	mov	bx, bp		;Anything XOR with zero is untouched
+	or	bx, dx		;so optimise that case right away
+	jnz	box_xor_not0
+	ret
+;
+box_xor_not0:
+	cmp	si, 0
+	jz	box_xor_noleft
+	mov	bx, 10h
+	sub	bx, si
+	sub	cx, bx
+	or	cx, cx
+	jg	box_xor_left2
+	add	cx, bx
+	mov	bx, cx
+	shl	bx, 1
+	mov	ax, right_masks[bx]
+	mov	cx, si
+	ror	ax, cl
+	mov	bx, ax
+	mov	al, ah
+	mov	bh, bl
+	not	ax
+	not	bx
+	and	ax, bp
+	and	bx, dx
+	xor	es:[di], ax
+	add	di, 2
+	xor	es:[di], bx
+	ret
+;
+box_xor_left2:
+	shl	bx, 1
+	inc	bx
+	mov	al, byte ptr left_masks[bx]
+	mov	ah, al
+	not	ax
+	and	ax, bp
+	xor	es:[di], ax
+	add	di, 2
+	dec	bx
+	mov	al, byte ptr left_masks[bx]
+	mov	ah, al
+	not	ax
+	and	ax, dx
+	xor	es:[di], ax
+	add	di, 2
+box_xor_noleft:
+	mov	bx, cx
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1
+	jcxz	box_xor_nomid
+box_xor_mid:
+	xor	es:[di], bp
+	xor	es:2[di], dx
+	add	di, 4
+	loop	box_xor_mid
+box_xor_nomid:
+	and	bx, 0Fh
+	mov	cx, bx
+	jcxz	box_xor_noright
+	shl	bx, 1
+	inc	bx
+	mov	al, byte ptr right_masks[bx]
+	mov	ah, al
+	not	ax
+	and	ax, bp
+	xor	es:[di], ax
+	add	di, 2
+	dec	bx
+	mov	al, byte ptr right_masks[bx]
+	mov	ah, al
+	not	ax
+	and	ax, dx
+	xor	es:[di], ax
+box_xor_noright:
+	ret	
+
+endif ; num_planes gt 2
+
+;
+;******************************************************************************
+;
+; VEX_BUTV
+;
+; Exchange button change vector
+;	
+;	Entry	contrl(7),contrl(8) = pointer to user defined routine
+;
+;	Exit	contrl(9),contrl(10) = old pointer to button routine
+;
+;
+;******************************************************************************
+VEX_BUTV:	
+	mov	si, offset userbut
+	call	exchg_vector
+	ret
+
+exchg_vector:
+	pushf
+	cli
+	push	es
+	push	ds
+	mov	ax, seg contrl
+	mov	ds, ax
+	les	di,contrl_ptr
+	mov	ax,[si]			;get the offset 
+	mov	es:word ptr 18[di],ax
+	mov	ax,2[si]
+	mov	es:word ptr 20[di],ax	;get the segment 
+	mov	ax,contrl+14
+	mov	[si],ax
+	mov	ax,contrl+16
+	mov	2[si],ax		;load the new offset/segment 
+	pop	ds
+	pop	es
+	popf	
+	ret
+;
+;******************************************************************************
+;
+; VEX_MOTV
+;
+; Exchange coordinate change vector
+;	
+;	Entry	contrl(7),contrl(8) = pointer to user defined routine
+;
+;	Exit	contrl(9),contrl(10) = old pointer to button routine
+;
+;
+;******************************************************************************
+VEX_MOTV:	
+	mov	si, offset usermot
+	call	exchg_vector
+	ret
+;
+;******************************************************************************
+;
+; VEX_CURV
+;
+; Exchange cursor draw vector
+;	
+;	Entry	contrl(7),contrl(8) = pointer to user defined routine
+;
+;	Exit	contrl(9),contrl(10) = old pointer to button routine
+;
+;
+;******************************************************************************
+VEX_CURV:	
+	mov	si, offset usercur
+	call	exchg_vector
+	ret
+
+
+;
+;***********************************************************************
+;XFM_CRFM
+;        Transform the user defined cursor form to device spec format
+;
+;	Entry	CONTRL[7]
+;		CONTRL[8] = long pointer to input data
+;
+;	Exit	
+;		
+;
+;***********************************************************************
+XFM_CRFM:
+	push	ds			;make sure es=ds
+	pop	es
+	mov	di,offset mxhot		;point at dest
+	mov	si,offset intin
+	mov	cx,37
+	rep	movsw			;copy the data
+	mov	bx, mous_ci_mask	; get the color index val
+	shl	bx,1
+	mov	ax, MAP_COL[bx]
+	mov	bx, mous_ci_data
+	shl	bx,1
+	mov	bx, MAP_COL[bx]
+	mov	cx, 4
+xfm_crlp:
+	ror	al,1
+	rcr	ah,1
+	ror	bl,1
+	rcr	ah,1
+	loop	xfm_crlp
+	mov	mous_col_map,ah
+	push	ds
+	pop	es
+	call	fp_mouse_fixup
+	ret
+eject
+;***********************************************************************
+;XFM_UDFL
+;        Transform the user defined fill pattern to device spec format
+;
+;	Entry	INTIN[0] - INTIN[15] = fill pattern
+;		
+;
+;***********************************************************************
+XFM_UDFL:
+	mov	dx, CONTRL+6		;get the intin count
+	mov	cx, dx			; save away the count
+	xor	al, al
+xfm_udfl_size_ck:
+	inc	al
+	sub	dx, 16
+	jc	xfm_udfl_bad
+	jz	xfm_udfl_size
+	jmps	xfm_udfl_size_ck
+xfm_udfl_size:
+	cmp	al, 1			; 1 is always ok
+	jz	xfm_udfl_ok
+	cmp	al, num_planes
+	jle	xfm_udfl_ok1
+xfm_udfl_bad:				;must be integral of 16
+	mov	ax, -1
+	ret
+xfm_udfl_ok:
+	mov	udpt_np, 0
+	jmps	xfm_udfl_ok2
+xfm_udfl_ok1:	
+	mov	udpt_np, 32
+xfm_udfl_ok2:
+	mov	dx, cx
+	push	ds			;make sure es=ds
+	pop	es
+	mov	di, offset ud_patrn
+	xor	ax, ax			;Blank all planes of ud_patrn
+	mov	cx, 10h * num_planes
+	cld
+	rep	stosw
+	mov	di, offset ud_patrn	;point at dest
+	mov	si, offset INTIN
+	mov	cx, dx
+	rep	movsw			;copy the data
+	mov	si,offset ud_patrn
+if (msb_first and byte_swap)
+	mov	cx, dx			;swap 16 words
+xfm_udfl_loop:
+	mov	ax,[si]
+	xchg	ah,al
+	mov	[si],ax
+	inc	si
+	inc	si
+	loop	xfm_udfl_loop
+	ret
+endif	
+if (msb_first and not byte_swap)
+	ret
+endif
+if (not msb_first and not byte_swap)
+	mov	cx, dx
+xfm_udfl_loop:
+	push	cx
+	mov	ax,[si]
+	mov	cx,16
+xfm_udfl_ilp:
+	rol	ax,1
+	rcr	bx,1
+	loop	xfm_udfl_ilp
+	mov	[si],bx
+	pop	cx
+	inc	si
+	inc	si
+	loop	xfm_udfl_loop
+	ret
+endif
+eject
+
+clc_flitsub:
+	cmp	ss:plygn_bez,0
+	jle	clc_flitsub1
+	dec	ss:plygn_bez
+	mov	ax,ss:plygn_bez
+	shl	ax,1
+	push	es
+	les	bx,ss:intin_ptr
+	add	bx,ax
+	mov	bx,es:[bx]
+	pop	es
+	add	bx,2
+	shl	bx,1
+	add	bx,ss:flit_bez_off
+	mov	ss:flit_bez,bx
+	ret
+
+clc_flitsub1:
+	mov	ss:flit_bez, -1
+	ret
+
+
+clc_flitsub2:
+	mov	ss:plygn_rrot,1
+	mov	ax,cs
+	mov	ds,ax
+	mov	ax,offset txtblt_rrot_table_1
+	mov	di,ax
+	push	si
+	push	cx
+	mov	si,offset INTIN
+	mov	cx,80h
+clc_flitsub3:
+	mov	ax,ss:[si]
+	mov	[di],ax
+	inc	si
+	inc	si
+	inc	di
+	inc	di
+	loop	clc_flitsub3
+	pop	cx
+	pop	si
+	ret
+
+;***********************************************************************
+;CLC_FLIT
+;        Find the Intersection points for each raster line y
+;
+;	Entry	CONTRL[1] = vectex count
+;		PTSIN[]   = verticies
+;		y	  = scan line to intersect
+;		fill_int  = 0
+;
+;	Exit	fill_int  = count of intersections
+;		INTIN  = x values of intersections
+;
+;***********************************************************************
+CLC_FLIT:
+	mov	cx,CONTRL+2	; get points count
+	mov	ax,ds
+	mov	es,ax
+	mov	si,offset PTSIN
+	mov	di,offset INTIN
+	cmp	cx,80h
+	jc	flit_init1
+	les	si,ptsin_ptr
+flit_init1:
+	mov	ss:flit_bez_off,si
+	call	clc_flitsub
+flit_lp:
+	cmp	si,ss:flit_bez
+	jnz	flit_lp1
+	call	clc_flitsub
+	add	si,4
+	dec	cx
+	jnz	flit_lp1
+	jmp	sort_fill_int
+
+flit_lp1:
+	push	cx
+	mov	cx, es:6[si]
+;;	test	ch, 80h		; look at the flag if not a required edge
+;;	jnz	no_fill_int
+	mov	dx, es:2[si] 
+;;	and	dx, 7fffh	; get rid of flag if any
+	sub	cx, dx     	; get delta y
+	jz	fillit_zero	; goto next x,y if deltay = 0
+	mov	bx, ss:Y1
+	mov	ax, bx
+	sub	ax, dx   	; delta y1
+	sub	bx, es:6[si]	; delta y2
+	mov	dx,ax
+	xor	dx,bx		; check if signs =
+	jns	fillit_done
+	mov	dx, es:4[si]
+	sub	dx, es:[si]	; dx = delta x
+	add	dx,dx		; 2 * delta x
+	imul	dx		; ax = dx * 2 * deltay1
+	idiv	cx		; ax = dx * 2 * deltay1 / deltay
+	and	ax,ax		; test if negative
+	js	int_neg
+	inc	ax
+	shr	ax,1
+load_fill_int:
+	add	ax, es:[si]	; add in x1
+	mov	[di],ax
+	inc	di
+	inc	di
+	inc	ss:fill_int	; increment fill count  and buffer pointer
+	cmp	ss:word ptr fill_int,80h
+	jnz	fillit_done
+	call	clc_flitsub2
+fillit_done:
+	inc	si
+	inc	si
+	inc	si
+	inc	si		; increment ptsin ptr
+	pop	cx
+	loop	flit_lp
+	mov	ax,ds
+	mov	es,ax
+	mov	si,offset INTIN
+	mov	bx,cs
+	cmp	ax,bx
+	jnz	flit_2
+	mov	si,offset txtblt_rrot_table_1
+flit_2:	mov	ax,ss
+	mov	ds,ax
+	jmps	sort_fill_int
+
+fillit_zero:
+;;	or	6[si], 8000h	; set the flag for done with edge
+	jmps	fillit_done
+
+int_neg:
+	neg	ax
+	inc	ax
+	shr	ax,1
+	neg	ax
+	jmps	load_fill_int
+
+sort_fill_int:
+	mov	cx, fill_int		
+	cmp	cx, 2
+	jz	fast_fill_int		; if 2 then simple sort and draw
+	jl	fill_no_int		; if less than 2 then do nothing
+	dec	cx			; make it 0 based	
+	jmp	full_fill_sort
+fill_no_int:
+	ret
+fast_fill_int:
+	mov	ax, es:[si]		; get the first x
+	mov	bx, es:2[si]
+	cmp	ax, bx
+	jle	fast_fill_int_1
+	xchg	ax, bx			; if x1 > x2 exchange them
+fast_fill_int_1:
+	mov	X1, ax
+	mov	X2, bx
+	call	HLINE_CLIP
+	ret
+
+full_fill_sort:
+	mov	dx, cx
+	mov	di, si
+full_fill_sort_outlp:
+	push	cx			; save the full count
+	mov	si, di
+	mov	ax, es:word ptr 0[si]	; get the initial lower word
+full_fill_sort_inlp:
+	mov	bx, es:word ptr 2[si]
+	cmp	ax, bx			; is ax <= bx
+	jle	full_fill_sort_inlp_1
+	mov	es:word ptr 0[si], bx	; if ax > bx then exchange
+	mov	es:word ptr 2[si], ax
+	mov	bx, ax			; set up for next word
+full_fill_sort_inlp_1:
+	mov	ax, bx			; already have lower word
+	inc	si
+	inc	si			; point upwards
+	loop	full_fill_sort_inlp
+	pop	cx
+	dec	dx
+	jnz	full_fill_sort_outlp
+	mov	cx, fill_int
+	shr	cx, 1			; make count of word pairs
+full_fill_drawlp:
+	mov	ax, es:[di]
+	mov	bx, es:2[di]
+	mov	X1, ax
+	mov	X2, bx
+	push	es
+	push	di
+	push	cx
+	call	HLINE_CLIP
+	pop	cx
+	pop	di
+	pop	es
+	add	di,4			; point to the next pair
+	loop	full_fill_drawlp
+	ret
+HLINE_CLIP:
+	mov	ax, CLIP		; is clipping on?
+	and	ax, ax
+	jnz	hline_clip_1
+	jmp 	HABLINE			; goto horizontal line draw routine
+hline_clip_1:
+	mov	 ax, XMN_CLIP
+	mov	 bx, X1
+	mov	 cx, X2
+	cmp	bx, ax			; is x1 < xmn_clip
+	jnl	hline_clip_3	
+	cmp	cx, ax			; is x2 >= xmn_clip
+	jl	hline_clip_2
+	mov	X1, ax 
+hline_clip_3:
+	mov	ax, XMX_CLIP
+	cmp	cx, ax			; is x2 > xmx_clip
+	jle	hline_clip_4
+	cmp	bx, ax			; is x1 <= xmx_clip
+	jg	hline_clip_2
+	mov	X2, ax
+hline_clip_4:
+	jmp	HABLINE
+hline_clip_2:
+	ret				; if x2 not > xmn_clip exit
+eject
+
+
+if 0
+vec_len:
+	push	bp
+	mov	bp, sp
+
+; Check for zeroes.
+	cmp	word ptr 4[bp], 0
+	jnz	x_squared
+	cmp	word ptr 6[bp], 0
+	jnz	x_squared
+	xor	bx, bx				; return value
+	jmp	search_loop_end
+
+; Calculate delta_x squared.
+x_squared:
+	mov	dx, 4[bp]
+	mov	ax, dx				; delta_x parameter
+	imul	dx
+	mov	vec_len_high, dx		; save high word of square
+	mov	vec_len_low, ax			; save low word of square
+
+; Calculate delta_y squared and add to delta_x squared.
+	mov	dx, 6[bp]			; delta_y parameter
+	mov	ax, dx
+	imul	dx
+
+	add	vec_len_low, ax
+	adc	vec_len_high, dx		; high/low = sum of squares
+
+; Get the initial binary search boundaries.  This is done by taking an
+;   approximate square root based on the highest order set bit in the
+;   high/low bit string.
+	cmp	vec_len_high, 0
+	je	no_high_byte
+
+	mov	ax, vec_len_high		; check on high order byte
+	mov	cl, 16
+	jmp	bounds_loop
+
+no_high_byte:
+	mov	ax, vec_len_low			; check on low order byte
+	sub	cl, cl
+
+bounds_loop:
+	cmp	ax, 1			; done yet?
+	je	bounds_loop_end
+	inc	cl
+	shr	ax, 1
+	jmp	bounds_loop
+
+bounds_loop_end:
+	shr	cl, 1
+	mov	bx, 1
+	shl	bx, cl			; bx = initial low bound
+	mov	cx, bx
+	shl	cx, 1			; cx = initial high bound
+
+; Perform a binary search for a square root (somewhat brutishly).
+search_loop:
+	mov	ax, cx
+	sub	ax, bx
+	cmp	ax, 1			; done with the search?
+	jle	search_loop_end
+
+	shr	ax, 1
+	add	ax, bx			; candidate = (high+low)/2
+	mov	si, ax			; save a copy for next pass
+	mul	ax			; dx/ax = candidate square
+
+	cmp	dx, vec_len_high		; check against high word
+	ja	high_adjust
+	jb	low_adjust
+
+	cmp	ax, vec_len_low			; check against low word
+	ja	high_adjust
+	jb	low_adjust
+
+	mov	bx, si			; exact root found!
+	jmp	search_loop_end
+
+high_adjust:
+	mov	cx, si			; adjust high value down
+	jmp	search_loop
+
+low_adjust:
+	mov	bx, si			; adjust low value up
+	jmp	search_loop
+
+search_loop_end:
+	mov	ax, bx			; ax = solution
+
+	pop	bp
+	ret
+
+;
+;***************************************************************************
+;
+; SMUL_DIV (m1,m2,d1)
+;
+;	 ( ( ( m1 * m2 ) / d1 ) + 1 / 2	
+;	m1 = signed 16 bit integer
+;	m2 = snsigned 15 bit integer
+;	d1 = signed 16 bit integer
+;
+;***************************************************************************
+SMUL_DIV:
+	push	bp		;save the callers bp
+	mov	bp,sp
+	mov	ax,06[bp]
+	mov	bx,04[bp]
+	imul	bx		; m2 * m1
+	mov	si, 1
+	and	dx, dx
+	jns	smul_div_1
+	neg	si
+smul_div_1:
+	mov	bx,08[bp]
+	idiv	bx		; m2 * m1 / d1
+	pop	bp
+	and	bx, bx		; test if divisor is negative
+	jns	smul_div_2
+	neg	si
+	neg	bx		; make it positive
+smul_div_2:
+	and	dx, dx		; test if remainder is negative
+	jns	smul_div_3
+	neg	dx		; make remainder positive
+smul_div_3:
+	shl	dx, 1		; see if 2 * remainder is > divisor
+	cmp	dx, bx
+	jl	smul_div_4
+	add	ax, si
+smul_div_4:
+	ret
+eject
+
+;************************************************************************
+;TENNIS 								*
+;	Entry	CX - delta count for ABLINE (count includes last point) *
+;	Exit	CX is decremented by one if:				*
+;			XOR writing mode and the line about to be	*
+;			drawn is not the last of the poly line		*
+;			else Cx is left alone				*
+;	Purpose:  Xor does not Xor itself at intersection points of	*
+;		  polline or plydpl of fill				*
+;************************************************************************
+tennis:
+	cmp	WRT_MODE, 2		; check if xor
+	jnz	jimmy	 
+	cmp	LSTLIN, 0		; check if XOR and last line of pollin
+if next_plane gt 0
+	jz	jimmy			; if false go around 
+else	
+	jnz	jimmy			; if true go around 
+endif
+	cmp	cx, 1
+	jz	jimmy
+	dec	cx
+jimmy:	ret
+;
+;****************************************************************
+;Subroutine	HABLINE						*
+;	Entry:	X1-coordinate					*
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		patptr - pointer to fill pattern table		*
+;								*	
+;	Purpose:						*
+;		This routine will draw a line from (X1,Y1) to	*
+;		(X2,Y1) using a horizontal line algorithm.	*
+;****************************************************************
+HABLINE:
+	push	bp
+	push	Y2
+	mov	ax, Y1
+	mov	Y2, ax
+	call	BOX_FILL
+	pop	Y2
+	pop	bp
+	ret
+endif ; 0
+
+if num_planes gt 2
+	dseg
+box_di	dw	0
+box_pl0	dw	0
+box_pl1	dw	0
+box_pl2	dw	0
+box_pl3	dw	0
+
+	cseg
+endif
+

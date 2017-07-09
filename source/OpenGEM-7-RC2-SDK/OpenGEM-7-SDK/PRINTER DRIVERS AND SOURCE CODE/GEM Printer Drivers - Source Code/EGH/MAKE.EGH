@@ -1,0 +1,197 @@
+#
+#	make.EGH  (Epson GQ-3500 Laser)
+#
+#-----------------------
+# Build the whole driver
+#-----------------------
+pdegh8.b30:	obj\devdep.obj		\
+	    	obj\buf.obj		\
+	    	obj\pentry.obj		\
+	    	obj\textblt.obj		\
+	    	obj\image.obj		\
+	    	obj\jmptbl.obj		\
+		obj\monoprin.obj	\
+	    	obj\monout.obj		\
+	    	obj\text.obj		\
+	    	obj\alphtext.obj		\
+	    	..\common\obj\devtext.obj	\
+		..\common\obj\dvtasm.obj	\
+	    	..\common\obj\io.obj		\
+		..\common\obj\imageasm.obj	\
+	    	..\common\obj\enddseg.obj	\
+	    	..\common\obj\isin.obj		\
+		..\styles\300x300.obj		\
+		pdegh8.inp
+	cd obj
+	copy ..\pdegh8.inp/v
+	copy ..\..\common\obj\*.*/v
+	copy ..\..\styles\300x300.obj/v
+	link /dosseg /map @pdegh8.inp, pdegh8.b30, pdegh8.sym;
+	mv pdegh8.* ..
+	del io.obj
+	del imageasm.obj
+	del enddseg.obj
+	del isin.obj
+	del 300x300.obj
+	cd ..\..\common
+	del externs.a86
+	del devinfo.a86
+	del dvtasm.a86
+	del devtext.c
+	del gsxdef.h
+	cd ..\egh
+	del *.a86
+
+#------------------------
+# Device dependent files 
+#------------------------
+obj\devdep.obj: devdep.egh	\
+	    	devdata.egh	\
+		externs.egh	\
+		..\common\devind.a86
+	copy devdep.egh *.a86/v
+	copy devdata.egh *.a86/v
+	copy externs.egh *.a86/v
+	copy ..\common\devind.a86/v
+	rasm86 DEVDEP $pz sz
+	mv devdep.obj obj
+
+..\common\obj\dvtasm.obj:	..\common\dvtasm.bit
+	cd ..\common
+	copy dvtasm.bit *.a86/v
+	rasm86 DVTASM $pz sz
+	mv dvtasm.obj obj
+	cd ..\egh
+
+..\styles\300x300.obj:	..\styles\300x300.a86
+	cd ..\styles
+	rasm86 300x300 $pz sz
+	cd ..\egh
+
+..\common\obj\devtext.obj: 	..\common\devtext.bit	\
+		 		..\common\portab.h	\
+				..\common\fontdef.h	\
+				..\common\gsxextrn.h
+	cd ..\common
+	copy devtext.bit *.c/v
+	hc devtext -mm Compact
+	mv devtext.obj obj
+	cd ..\egh
+
+#------------------------
+# Common code RASM files
+#------------------------
+..\common\obj\io.obj: ..\common\io.a86
+	cd ..\common
+	rasm86 io $pz sz
+	mv io.obj obj
+	cd ..\egh
+
+obj\buf.obj: 	..\common\buf.a86	\
+		externs.egh
+	cd ..\common
+	copy ..\egh\externs.egh *.a86/v
+	rasm86 buf $pz sz
+	mv buf.obj ..\egh\obj
+	cd ..\egh
+
+obj\pentry.obj: ..\common\pentry.a86	\
+		externs.egh	\
+		devinfo.egh
+	cd ..\common
+	copy ..\egh\externs.egh *.a86/v
+	copy ..\egh\devinfo.egh *.a86/v
+	rasm86 pentry $pz sz
+	mv pentry.obj ..\egh\obj
+	cd ..\egh
+
+obj\textblt.obj: ..\common\textblt.a86	\
+		..\common\fhinc.a86	\
+		externs.egh	
+	cd ..\common
+	copy ..\egh\externs.egh *.a86/v
+	rasm86 textblt $pz sz
+	mv textblt.obj ..\egh\obj
+	cd ..\egh
+
+..\common\obj\imageasm.obj:	..\common\imageasm.a86
+	cd ..\common
+	rasm86 imageasm $pz sz
+	mv imageasm.obj obj
+	cd ..\egh
+
+..\common\obj\enddseg.obj: ..\common\enddseg.a86
+	cd ..\common
+	rasm86 enddseg $pz sz
+	mv enddseg.obj obj
+	cd ..\egh
+
+#---------------------
+# Common code C files
+#---------------------
+obj\monoprin.obj:	..\common\monoprin.c	\
+			..\common\portab.h	\
+			gsxdef.egh
+	cd ..\common
+	copy ..\egh\gsxdef.egh gsxdef.h/v
+	hc monoprin
+	mv monoprin.obj ..\egh\obj
+	cd ..\egh
+
+..\common\obj\isin.obj: ..\common\isin.c	\
+			..\common\portab.h
+	cd ..\common
+	hc isin
+	mv isin.obj obj
+	cd ..\egh
+
+obj\jmptbl.obj:	..\common\jmptbl.c	\
+		..\common\portab.h	\
+		..\common\gsxextrn.h	\
+		..\common\jmptbl.h	\
+		gsxdef.egh
+	cd ..\common
+	copy ..\egh\gsxdef.egh gsxdef.h/v
+	hc jmptbl
+	mv jmptbl.obj ..\egh\obj
+	cd ..\egh
+
+obj\monout.obj:	..\common\monout.c	\
+		..\common\portab.h	\
+		..\common\gsxextrn.h	\
+		gsxdef.egh
+	cd ..\common
+	copy ..\egh\gsxdef.egh gsxdef.h/v
+	hc monout
+	mv monout.obj ..\egh\obj
+	cd ..\egh
+
+obj\text.obj: 	..\common\text.c	\
+		..\common\portab.h	\
+		..\common\fontdef.h	\
+		..\common\gsxextrn.h	\
+		gsxdef.egh
+	cd ..\common
+	copy ..\egh\gsxdef.egh gsxdef.h/v
+	hc text -mm Compact
+	mv text.obj ..\egh\obj
+	cd ..\egh
+
+obj\image.obj: 	..\common\image.c	\
+		..\common\portab.h	\
+		gsxdef.egh
+	cd ..\common
+	copy ..\egh\gsxdef.egh gsxdef.h/v
+	hc image -mm Compact
+	mv image.obj ..\egh\obj
+	cd ..\egh
+
+obj\alphtext.obj:	..\common\alphtext.c	\
+			..\common\portab.h	\
+			gsxdef.egh
+	cd ..\common
+	copy ..\egh\gsxdef.egh gsxdef.h/v
+	hc alphtext -mm Compact
+	mv alphtext.obj ..\egh\obj
+	cd ..\egh
+

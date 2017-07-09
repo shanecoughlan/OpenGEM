@@ -1,0 +1,38 @@
+USERDEF objects in DJGPP
+========================
+
+  USERDEF objects are objects drawn by the calling program rather than by
+GEM. They contain the address of a callback function that draws them. The
+code to handle the 16bit -> 32bit callbacks has been put in the library.
+
+  To set up a USERDEF object, use the following call:
+
+  WORD dj_userdef(LPTREE tree, WORD nobj, DJUSERBLK *ub);
+
+  The first two parameters define the object in which you are interested. The
+third points to a structure of type DJUSERBLK; you must use this instead of
+the USERBLK or APPLBLK structures. You should set its ub_code and ub_parm
+members, as if it were a USERBLK.
+
+  The dj_userdef() function sets the type of the object to G_USERDEF, and
+creates the necessary callback functions. Your code will be passed a PARMBLK
+in which the pb_tree member is a linear pointer and the pb_parm member will
+be the ub_parm you supplied. dj_userdef() returns 0 if it failed and 1 if it
+succeeded.
+
+  Each call to dj_userdef() does a dos_alloc(); this is very inefficient if
+you want to have a lot of USERDEF objects. The call
+
+  WORD dj_userdef_prealloc(WORD count)
+
+sets aside space for <count> callbacks, so that only one dos_alloc() call
+needs to be made.
+
+  To deactivate a callback, use
+
+  VOID dj_unuserdef(DJUSERBLK *ub);
+
+  You will then have to change the type of the object by hand.
+If dj_userdef_prealloc() was used on a group of objects, then they must all
+be dj_unuserdef()ed at the same time, and in the reverse order that they were
+dj_userdef()ed.

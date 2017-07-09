@@ -1,0 +1,2148 @@
+;/*		HEADERS.A86	3/7/87 - 4/14/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	adjust_for_paged_headers
+		public	calc_delta
+		public	check_big_data
+		public	check_files
+		public	check_font_count
+		public	closest_printer_header
+		public	closest_screen_header
+		public	fetch_and_update
+		public	font_op_get
+		public	font_op_set
+		public	get_header_room
+		public	header_manager
+		public	header_patch_write
+		public	link_headers
+		public	page_best
+		public	page_find
+		public	page_in_header
+		public	page_link
+		public	page_out
+		public	read_headers
+		public	remove_full
+		public	remove_paged
+		public	set_absolute
+		public	set_face
+		public	set_point
+		public	shuffle_full
+		public	shuffle_paged
+		public	unlink_font
+		public	update_lru
+		public	write_headers
+		public	write_multi_set
+
+; External entry points.
+		extrn	build_info_file:near
+		extrn	close_file:near
+		extrn	ds_font_info:near
+		extrn	es_font_info:near
+		extrn	find_first_font:near
+		extrn	name_check:near
+		extrn	open_string_file:near
+		extrn	read_file:near
+		extrn	read_string_data:near
+		extrn	remove_lfu:near
+		extrn	reset_current_directory:near
+		extrn	seek_file:near
+		extrn	set_font_directory:near
+
+; External data.
+include externs.a86
+
+
+;************************************************************************
+;* adjust_for_paged_headers						*
+;************************************************************************
+adjust_for_paged_headers:
+		push	ds
+		push	es
+
+; Shuffle the paged headers down, if necessary.
+		mov	ax, FHDR_SIZE/16
+		mul	fhdr_count
+		mov	di, ax			; di = header paragraphs
+		shl	di, 1
+		shl	di, 1
+		shl	di, 1
+		shl	di, 1			; di = header bytes
+		mov	ax, fb_seg
+		inc	ax			; ax:0 -> base segment
+		mov	es, ax			; es:di -> first free byte
+		mov	ds, ax			; ds:phdr_low -> paged header
+		xor	dx, dx			; dx = shuffle distance
+		cmp	di, phdr_low		; already shuffled down?
+		je	afph_update_globals
+		mov	si, phdr_low		; ds:si -> paged headers
+		mov	dx, si
+		sub	dx, di			; dx = how far to shuffle down
+		mov	phdr_low, di		; new paged headers location
+		mov	ax, PGHD_LENGTH
+		push	dx
+		mul	phdr_count
+		pop	dx
+		mov	cx, ax			; cx = bytes to shuffle down
+		cld
+	rep	movsb
+		shr	dx, 1
+		shr	dx, 1
+		shr	dx, 1
+		shr	dx, 1			; dx = distance in paragraphs
+
+; Update the current free pointer (this_font_addr) and the free size.
+afph_update_globals:
+		mov	ax, fb_seg
+		add	ax, FHDR_MAX/16
+		sub	ax, dx			; adjust by shuffle distance
+		mov	this_font_seg, ax
+		mov	ax, fb_size
+		sub	ax, (FHDR_MAX/16) + 1
+		add	ax, dx			; adjust by shuffle distance
+		mov	fb_free_size, ax
+
+; That's all!
+end_adjust_for_paged_headers:
+		pop	es
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* calc_delta								*
+;*	bx = current value						*
+;*	dx = desired value						*
+;*	Returns delta in bx						*
+;************************************************************************
+calc_delta:
+		cmp	bx, dx			; current > desired?
+		jg	cd_too_big
+		neg	bx
+		add	bx, dx			; bx = delta size
+		jmps	end_calc_delta
+cd_too_big:
+		sub	bx, dx			; bx = delta size
+		or	bx, 8000h		; make less desirable
+end_calc_delta:
+		ret
+
+
+;************************************************************************
+;* check_big_data							*
+;************************************************************************
+check_big_data:
+		push	ds
+
+; Calculate how much free space will exist after the text effects buffer
+; has been allocated.
+		mov	ax, FHDR_SIZE
+		mul	fhdr_count
+		mov	bx, ax			; bx = size of headers
+		mov	ax, PGHD_LENGTH
+		mul	phdr_count		; ax = size of paged headers
+		add	ax, bx			; ax = headers + paged headers
+		add	ax, 31			; add info paragraph and round
+		and	ax, 0fff0h		; round to next paragraph
+		add	ax, text_buffer_size	; add in effects buffer size
+		mov	cl, 4
+		shr	ax, cl			; convert to paragraphs
+		mov	dx, fb_size
+		sub	dx, ax			; dx = free space
+		test	dx, 0f000h		; more than 64k bytes free?
+		jz	cbd_convert_to_bytes
+		mov	dx, 0ffffh		; "unlimited" space
+		jmps	cbd_prep_loop
+cbd_convert_to_bytes:
+		shl	dx, cl			; convert to bytes
+
+
+; Throw out any full headers for fonts with data which will not fit in
+; the free space.
+cbd_prep_loop:
+		mov	bx, ws_index
+		mov	ds, ws_font_seg[bx]
+		mov	last_font_seg, 0
+cbd_full_headers_loop:
+		mov	bp, ds			; bp = this header segment
+cbd_multi_loop:
+		cmp	.FONT_FILE_DATA_SIZE, dx
+		jnb	cbd_full_too_big
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	cbd_next_full
+		mov	ds, .NEXT_SET_SEG	; ds:0 -> next multi segment
+		jmps	cbd_multi_loop
+cbd_full_too_big:
+		call	remove_full		; removes all related multis
+		mov	ax, ds
+		cmp	ax, 0
+		je	cbd_check_paged_headers
+		jmps	cbd_full_headers_loop
+cbd_next_full:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	cbd_check_paged_headers
+		mov	last_font_seg, ds
+		mov	ds, .FONT_PTR_SEG	; ds:0 -> next header segment
+		jmps	cbd_full_headers_loop
+
+; Check any paged headers.
+cbd_check_paged_headers:
+		mov	ds, ws_font_block[bx]
+cbd_prep_paged_loop:
+		cmp	phdr_count, 0
+		je	end_check_big_data
+		mov	si, phdr_low		; ds:si -> first paged header
+		mov	cx, phdr_count		; cx = paged header count
+cbd_paged_headers_loop:
+		cmp	PGHD_DATASIZE[si], dx
+		jb	cbd_next_paged
+		call	remove_paged		; removes all related multis
+		jmps	cbd_prep_paged_loop	; start over
+cbd_next_paged:
+		add	si, PGHD_LENGTH
+		loop	cbd_paged_headers_loop
+
+; That's all!
+end_check_big_data:
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* check_files								*
+;*	Carry flag set if error						*
+;************************************************************************
+check_files:
+		push	di
+		push	ds
+
+; Open the headers string file.
+		call	open_string_file	; bx = string file handle
+		jc	end_check_files
+
+; Prepare for the verification loop.
+		mov	file_count, 0
+		mov	dx, cs
+		mov	ds, dx
+
+; Top of the verification loop.  Get the next string file record.
+cf_loop:
+		mov	dx, offset str_buf	; ds:dx -> string buffer
+		mov	cx, STR_BUFSIZ		; cx = string record size
+		mov	ah, FILE_READ
+		int	PCDOS			; read the data
+		cmp	ax, cx
+		jne	cf_success		; end-of-file
+
+; Does the file exist?
+		mov	dx, offset str_buf + STR_FILENAME
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		jc	cf_done
+
+; Make sure the date and time match.
+		mov	di, offset str_buf
+		mov	ax, word ptr gdos_dta + 24
+		cmp	ax, cs:STR_DATE[di]	; check file date stamp
+		stc
+		jne	cf_done
+		mov	ax, word ptr gdos_dta + 22
+		cmp	ax, cs:STR_TIME[di]	; check file time stamp
+		stc
+		jne	cf_done
+		inc	file_count		; count the file
+		jmps	cf_loop
+
+; Copacetic.  Set success status.
+cf_success:
+		clc				; indicate success
+
+; Close the headers string file.
+cf_done:
+		pushf
+		mov	bx, str_handle
+		call	close_file
+		popf
+
+; That's all!
+end_check_files:
+		pop	ds
+		pop	di
+		ret
+
+
+;************************************************************************
+;* check_font_count							*
+;*	Carry flag set if error						*
+;************************************************************************
+check_font_count:
+		push	di
+		push	ds
+
+; Set up for the font search loop.
+		call	find_first_font		; returns status
+		jc	end_check_font_count
+
+; Top of the font search loop.  Make sure the "font" file is not
+; really a driver.
+cfc_loop:
+		call	name_check		; make sure not driver
+		jc	cfc_next
+		dec	file_count		; good: count it
+cfc_next:
+		mov	ah, FIND_NEXT
+		int	PCDOS			; find the next match
+		jnc	cfc_loop
+
+; If the count doesn't match the number of headers, no go.
+		cmp	file_count, 0
+		clc				; matches: return success
+		je	end_check_font_count
+		stc				; no match: return failure
+
+; That's all!
+end_check_font_count:
+		pop	ds
+		pop	di
+		ret
+
+
+
+;************************************************************************
+;* closest_printer_header						*
+;************************************************************************
+closest_printer_header:
+
+; Prepare variables for processing.
+		mov	ds, first_font_seg
+		mov	ax, cur_face		; al = font id
+		mov	bp, selmode		; bp = selection mode
+		mov	dx, cur_point		; dx = point size
+		cmp	bp, SEL_POINT
+		je	cph_res_face_loop
+		mov	dx, cur_absize		; dx = absolute size
+
+; Scan the resident headers first:  look for the first instance of a
+; matching type face.
+cph_res_face_loop:
+		call	ds_font_info
+		cmp	font_val, ax
+		je	cph_prep_res
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	cph_pg_face_prep
+		mov	ds, .FONT_PTR_SEG
+		jmps	cph_res_face_loop
+
+; No matching face was found in the resident headers.  Look for the first
+; matching paged header.  Bail out if none is found.
+cph_pg_face_prep:
+		mov	ds, font_block_seg
+		mov	si, phdr_low		; ds:si -> first paged header
+		mov	cx, phdr_count		; cx = paged header count
+cph_pg_face_loop:
+		cmp	word ptr PGHD_FACE[si], ax
+		jne	cph_pfl_next
+		mov	bl, PGHD_SIZE[si]
+		xor	bh, bh
+		cmp	bp, SEL_POINT
+		je	cph_pfl_found
+		mov	bx, PGHD_TOP[si]
+cph_pfl_found:
+		mov	di, bx			; di = "actual" value
+		call	calc_delta
+		mov	best_normal, di		; save best value
+		mov	best_normal_del, bx	; save best delta value
+		jmp	cph_pg_loop
+cph_pfl_next:
+		add	si, PGHD_LENGTH		; bump to next paged header
+		loop	cph_pg_face_loop
+		jmp	end_closest_printer_header	; no luck
+
+; Prepare to scan the resident font headers.
+cph_prep_res:
+		mov	bx, .POINT_SIZE
+		cmp	bp, SEL_POINT
+		je	cph_prep_res_deltas
+		mov	bx, .FONT_TOP
+cph_prep_res_deltas:
+		mov	di, bx			; di = "actual" value
+		call	calc_delta
+		mov	best_normal, di		; save best value
+		mov	best_normal_del, bx	; save best delta value
+
+; Scan paged headers.
+cph_res_loop:
+		call	ds_font_info
+		cmp	font_val, ax		; matching type face?
+		jne	cph_prep_pg_loop
+		mov	bx, .POINT_SIZE
+		cmp	bp, SEL_POINT
+		je	cph_rl_check_exact
+		mov	bx, .FONT_TOP
+cph_rl_check_exact:
+		cmp	bx, dx			; exact match?
+		je	cph_fetch_and_update
+		call	calc_delta
+		cmp	bx, best_normal_del	; better choice?
+		ja	cph_rl_next
+		mov	best_normal, di		; save best value
+		mov	best_normal_del, bx	; save best delta value
+cph_rl_next:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	cph_prep_pg_loop
+		mov	ds, .FONT_PTR_SEG	; check next font header
+		jmps	cph_res_loop
+
+; Prepare to scan the paged headers.
+cph_prep_pg_loop:
+		mov	ds, font_block_seg
+		mov	si, phdr_low		; ds:si -> first paged header
+		mov	cx, phdr_count		; cx = paged header count
+
+; Scan paged headers.
+cph_pg_loop:
+		cmp	word ptr PGHD_FACE[si], ax
+		jne	cph_pl_next
+		mov	bl, PGHD_SIZE[si]
+		xor	bh, bh
+		cmp	bp, SEL_POINT
+		je	cph_pl_check_exact
+		mov	bx, PGHD_TOP[si]
+cph_pl_check_exact:
+		cmp	bx, dx			; exact match?
+		je	cph_fetch_and_update
+		call	calc_delta
+		cmp	bx, best_normal_del	; better choice?
+		ja	cph_pl_next
+		mov	best_normal, di		; save best value
+		mov	best_normal_del, bx	; save best delta value
+cph_pl_next:
+		add	si, PGHD_LENGTH		; bump to next paged header
+		loop	cph_pg_loop
+
+; Page in all matching headers and update the LRU count.
+		mov	dx, best_normal
+cph_fetch_and_update:
+		call	fetch_and_update
+
+; That's all!
+end_closest_printer_header:
+		ret
+
+
+;************************************************************************
+;* closest_screen_header						*
+;************************************************************************
+closest_screen_header:
+
+; Prepare variables for processing.
+		mov	ds, first_font_seg
+		mov	ax, cur_face		; al = font id
+		mov	bp, selmode		; bp = selection mode
+		mov	dx, cur_point		; dx = point size
+		cmp	bp, SEL_POINT
+		je	csh_res_face_loop
+		mov	dx, cur_absize		; dx = absolute size
+
+; Scan the resident headers first:  look for the first instance of a
+; matching type face.
+csh_res_face_loop:
+		call	ds_font_info
+		cmp	font_val, ax
+		je	csh_prep_res
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	csh_pg_face_prep
+		mov	ds, .FONT_PTR_SEG
+		jmps	csh_res_face_loop
+
+; No matching face was found in the resident headers.  Look for the first
+; matching paged header.  Bail out if none is found.
+csh_pg_face_prep:
+		mov	ds, font_block_seg
+		mov	si, phdr_low		; ds:si -> first paged header
+		mov	cx, phdr_count		; cx = paged header count
+csh_pg_face_loop:
+		cmp	word ptr PGHD_FACE[si], ax
+		jne	csh_pfl_next
+		mov	bl, PGHD_SIZE[si]
+		xor	bh, bh
+		cmp	bp, SEL_POINT
+		je	csh_pfl_found
+		mov	bx, PGHD_TOP[si]
+		inc	bx			; screens do this
+csh_pfl_found:
+		mov	di, bx			; di = "actual" value
+		call	calc_delta
+		mov	best_normal, di		; save best normal value
+		mov	best_normal_del, bx	; save best normal delta value
+		mov	best_normal_off, si	; save best normal offset
+		mov	best_normal_seg, ds	; save best normal segment
+		mov	bx, di			; restore actual value
+		shl	bx, 1
+		call	calc_delta
+		mov	best_double, di		; save best double value
+		mov	best_double_del, bx	; save best double delta value
+		mov	best_double_off, si	; save best double offset
+		mov	best_double_seg, ds	; save best double segment
+		mov	bl, PGHD_SIZE[si]
+		mov	best_normal_pts, bl	; save best normal points size
+		mov	best_double_pts, bl	; save best double points size
+		jmp	csh_pg_loop
+csh_pfl_next:
+		add	si, PGHD_LENGTH		; bump to next paged header
+		loop	csh_pg_face_loop
+		jmp	end_closest_screen_header	; no luck
+
+; Prepare to scan the resident font headers.
+csh_prep_res:
+		mov	bx, .POINT_SIZE
+		cmp	bp, SEL_POINT
+		je	csh_prep_res_deltas
+		mov	bx, .FONT_TOP
+		inc	bx			; screens do this
+csh_prep_res_deltas:
+		mov	di, bx			; di = "actual" value
+		call	calc_delta
+		mov	best_normal, di		; save best normal value
+		mov	best_normal_del, bx	; save best normal delta value
+		mov	best_normal_off, 0	; save best normal offset
+		mov	best_normal_seg, ds	; save best normal segment
+		mov	bx, di			; restore actual value
+		shl	bx, 1
+		call	calc_delta
+		mov	best_double, di		; save best double value
+		mov	best_double_del, bx	; save best double delta value
+		mov	best_double_off, 0	; save best double offset
+		mov	best_double_seg, ds	; save best double segment
+		mov	bl, .POINT_SIZE
+		mov	best_normal_pts, bl	; save best normal points size
+		mov	best_double_pts, bl	; save best double points size
+
+; Scan paged headers.
+csh_res_loop:
+		call	ds_font_info
+		cmp	font_val, ax
+		je	csh_rl_get_size
+		jmp	csh_prep_pg_loop
+csh_rl_get_size:
+		mov	bx, .POINT_SIZE
+		cmp	bp, SEL_POINT
+		je	csh_rl_check_normal_exact
+		mov	bx, .FONT_TOP
+		inc	bx			; screens do this
+csh_rl_check_normal_exact:
+		cmp	bx, dx			; exact match?
+		jne	csh_rl_check_double_exact
+		mov	dx, .POINT_SIZE
+		xor	si, si
+		jmp	csh_fetch_and_update
+csh_rl_check_double_exact:
+		mov	di, bx			; di = "actual" value
+		shl	bx, 1			; look at double
+		cmp	bx, dx			; exact match?
+		jne	csh_rl_check_normal
+		cmp	best_double_del, 0	; already been found?
+		je	csh_rl_next
+		mov	best_double, di		; save best double value
+		mov	best_double_del, 0	; save best double delta value
+		mov	best_double_off, 0	; save best double offset
+		mov	best_double_seg, ds	; save best double segment
+		mov	bl, .POINT_SIZE
+		mov	best_double_pts, bl	; save best double points size
+		jmps	csh_rl_next
+csh_rl_check_normal:
+		mov	bx, di			; restore actual value
+		call	calc_delta
+		cmp	bx, best_normal_del	; better choice?
+		jnb	csh_rl_next
+		mov	best_normal, di		; save best normal value
+		mov	best_normal_del, bx	; save best normal delta value
+		mov	best_normal_off, 0	; save best normal offset
+		mov	best_normal_seg, ds	; save best normal segment
+		mov	bl, .POINT_SIZE
+		mov	best_normal_pts, bl	; save best normal points size
+csh_rl_next:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	csh_prep_pg_loop
+		mov	ds, .FONT_PTR_SEG	; check next font header
+		jmp	csh_res_loop
+
+; Prepare to scan the paged headers.
+csh_prep_pg_loop:
+		mov	ds, font_block_seg
+		mov	si, phdr_low		; ds:si -> first paged header
+		mov	cx, phdr_count		; cx = paged header count
+
+; Scan paged headers.
+csh_pg_loop:
+		cmp	word ptr PGHD_FACE[si], ax
+		jne	csh_pl_next
+		mov	bl, PGHD_SIZE[si]
+		xor	bh, bh
+		cmp	bp, SEL_POINT
+		je	csh_pl_check_normal_exact
+		mov	bx, PGHD_TOP[si]
+		inc	bx			; screens do this
+csh_pl_check_normal_exact:
+		cmp	bx, dx			; exact match?
+		jne	csh_pl_check_double_exact
+		mov	dl, PGHD_SIZE[si]
+		jmp	csh_fetch_and_update
+csh_pl_check_double_exact:
+		mov	di, bx			; di = "actual" value
+		shl	bx, 1			; look at double
+		cmp	bx, dx			; exact match?
+		jne	csh_pl_check_normal
+		mov	bl, PGHD_SIZE[si]
+		cmp	best_double_del, 0	; already been found?
+		jne	csh_pl_save_double_exact
+		cmp	bl, best_double_pts
+		jnb	csh_pl_next
+csh_pl_save_double_exact:
+		mov	best_double, di		; save best double value
+		mov	best_double_del, 0	; save best double delta value
+		mov	best_double_off, si	; save best double offset
+		mov	best_double_seg, ds	; save best double segment
+		mov	best_double_pts, bl	; save best double points size
+		jmps	csh_pl_next
+csh_pl_check_normal:
+		mov	bx, di			; restore actual value
+		call	calc_delta
+		cmp	bx, best_normal_del	; better choice?
+		jnb	csh_pl_next
+		mov	best_normal, di		; save best normal value
+		mov	best_normal_del, bx	; save best normal delta value
+		mov	best_normal_off, si	; save best normal offset
+		mov	best_normal_seg, ds	; save best normal segment
+		mov	bl, PGHD_SIZE[si]
+		mov	best_normal_pts, bl	; save best normal points size
+csh_pl_next:
+		add	si, PGHD_LENGTH		; bump to next paged header
+		dec	cx
+		jcxz	csh_prep_fetch
+		jmp	csh_pg_loop
+
+; Page in all matching headers and update the LRU count. (Note: other than
+; when the requested size is larger than the largest doubled size, the only
+; time a doubled font is chosen is if an exact double is found, and no
+; exact normal is found).
+csh_prep_fetch:
+		mov	bl, best_normal_pts
+		cmp	bl, best_double_pts	; best normal = best double?
+		je	csh_fau_double
+csh_fau_check_for_double:
+		cmp	best_double_del, 0
+		jne	csh_fau_normal
+		cmp	best_normal_del, 0
+		jne	csh_fau_double
+csh_fau_normal:
+		mov	dl, best_normal_pts
+		mov	ds, best_normal_seg
+		mov	si, best_normal_off
+		jmps	csh_fetch_and_update
+csh_fau_double:
+		mov	dl, best_double_pts
+		mov	ds, best_double_seg
+		mov	si, best_double_off
+csh_fetch_and_update:
+		cmp	si, 0			; paged header?
+		jne	csh_do_fetch		; yes: fetch required
+		test	word ptr .FONT_GDOS_FLAGS, ALL_RESIDENT
+		jnz	end_closest_screen_header
+csh_do_fetch:
+		xor	dh, dh
+		mov	bp, SEL_POINT
+		call	fetch_and_update
+
+; That's all!
+end_closest_screen_header:
+		ret
+
+
+;************************************************************************
+;* fetch_and_update							*
+;*	bp = selection mode						*
+;*	ax = font id							*
+;*	dx = point size or top height (depending on bp)			*
+;************************************************************************
+fetch_and_update:
+
+; If this is a screen font absolute mode selection, the top height size
+; must be decremented by one to find header values (a one-greater value
+; was saved).
+		cmp	screen_font, 0
+		je	fau_page_and_update
+		cmp	bp, SEL_POINT
+		je	fau_page_and_update
+		dec	dx
+
+; Page the headers in and update the LRU counters.
+fau_page_and_update:
+		push	ax
+		push	dx
+		call	set_font_directory
+		pop	dx
+		pop	ax
+		call	page_best
+		call	update_lru
+		call	reset_current_directory
+		ret
+
+
+;************************************************************************
+;* font_op_get								*
+;*	Carry flag set if nothing needs to be done			*
+;*	Printer/screen routine address returned in bx			*
+;************************************************************************
+font_op_get:
+
+; Return carry flag set if no fonts are loaded for the workstation
+; or no paged headers exist.
+		mov	bx, ws_index
+		cmp	ws_font_seg[bx], 0
+		je	fog_nogo
+		mov	ax, ws_font_block[bx]
+		dec	ax
+		mov	es, ax
+		cmp	es:word ptr .FHFH_PHDCOUNT, 0
+		je	fog_nogo
+
+; If this is not a screen or printer, return with the carry flag set.
+		mov	si, ws_root[bx]
+		dec	si
+		shl	si, 1			; si = table index of root
+		mov	ax, ws_id[si]		; dx = workstation identifier
+		mov	si, bx
+		mov	work_identifier, ax	; save workstation identifier
+		cmp	ax, 10
+		jb	fog_screen
+		cmp	ax, 20
+		jb	end_font_op_get
+		cmp	ax, 30
+		jb	fog_printer
+fog_nogo:
+		stc
+		jmps	end_font_op_get
+fog_screen:
+		mov	bx, offset closest_screen_header
+		mov	screen_font, 1
+		jmps	fog_variables
+fog_printer:
+		mov	screen_font, 0
+		mov	bx, offset closest_printer_header
+
+; Set up "local" copies of workstation variables.
+fog_variables:
+		mov	ax, ws_face[si]
+		mov	cur_face, ax
+		mov	ax, ws_point[si]
+		mov	cur_point, ax
+		mov	ax, ws_absize[si]
+		mov	cur_absize, ax
+		mov	ax, ws_selmode[si]
+		mov	selmode, ax
+		mov	ax, ws_font_block[si]
+		mov	font_block_seg, ax
+		mov	ax, ws_font_seg[si]
+		mov	first_font_seg, ax
+		mov	ax, ws_lrulo[si]
+		mov	lrulo, ax
+		mov	ax, ws_lruhi[si]
+		mov	lruhi, ax
+
+		mov	ax, es:.FHFH_PHDLOW
+		mov	phdr_low, ax
+		mov	ax, es:.FHFH_PHDCOUNT
+		mov	phdr_count, ax
+
+		clc
+
+; That's all!
+end_font_op_get:
+		ret
+
+
+;************************************************************************
+;* font_op_set								*
+;************************************************************************
+font_op_set:
+
+; Update workstation variables.
+		mov	bx, ws_index
+		mov	ax, cur_face
+		mov	ws_face[bx], ax
+		mov	ax, cur_point
+		mov	ws_point[bx], ax
+		mov	ax, cur_absize
+		mov	ws_absize[bx], ax
+		mov	ax, selmode
+		mov	ws_selmode[bx], ax
+		mov	ax, lrulo
+		mov	ws_lrulo[bx], ax
+		mov	ax, lruhi
+		mov	ws_lruhi[bx], ax
+		ret
+
+
+;************************************************************************
+;* get_header_room							*
+;*	Carry flag set if no more room					*
+;************************************************************************
+get_header_room:
+		push	ax
+		push	bx
+		push	dx
+		push	bp
+		push	si
+		push	di
+		push	ds
+		push	es
+
+; Is there sufficient room for a font header and a paged font header?
+ghr_check_space:
+		cmp	header_space, FHDR_SIZE + PGHD_LENGTH
+		jna	ghr_check_min
+		jmp	end_get_header_room
+
+; Will removing another header violate the minimum requirement for
+; font header space?
+ghr_check_min:
+		cmp	phdr_count, (FHDR_MAX - FHDR_MIN)/PGHD_LENGTH
+		jb	ghr_check_first_in_chain
+		jmp	ghr_no_room
+
+; If the previous header is the first in the chain, it cannot be removed.
+; Handle that case with care.
+ghr_check_first_in_chain:
+		mov	ax, this_font_seg
+		sub	ax, FHDR_SIZE/16	; ax = page header segment
+		mov	ds, ax			; ds:0 -> last font header
+		xor	bp, bp			; bp = first-in-chain flag
+		mov	bx, ws_index
+		cmp	ax, ws_font_seg[bx]
+		jne	ghr_copy_to_paged_header
+		sub	ax, FHDR_SIZE/16	; ax = page header segment
+		mov	ds, ax			; ds:0 -> second to last
+		inc	bp			; bp = first-in-chain
+
+; Copy appropriate information to a new paged header.
+ghr_copy_to_paged_header:
+		mov	es, ws_font_block[bx]	; es = paged headers segment
+		mov	di, phdr_low
+		cmp	di, 0
+		jne	ghr_copy_to_paged
+		mov	di, FHDR_MAX - 16	; es:di -> upper end
+ghr_copy_to_paged:
+		sub	di, PGHD_LENGTH		; es:di -> new paged item
+		mov	phdr_low, di
+		inc	phdr_count
+		mov	dx, .FONT_STRINDEX
+		mov	es:PGHD_INDEX[di], dx
+		call	ds_font_info
+		mov	dx, font_val
+		mov	es:word ptr PGHD_FACE[di], dx
+		mov	dl, .POINT_SIZE
+		mov	es:PGHD_SIZE[di], dl
+		mov	dx, .FONT_TOP
+		mov	es:PGHD_TOP[di], dx
+		mov	dx, .FONT_FILE_DATA_SIZE
+		mov	es:PGHD_DATASIZE[di], dx
+
+; Update links.
+		mov	es, ws_font_seg[bx]	; es:0 -> first font in chain
+ghr_find_link_loop:
+		mov	dx, es:.FONT_PTR_SEG
+		cmp	dx, ax
+		je	ghr_normal_link_found
+		mov	dx, es:.NEXT_SET_SEG
+		cmp	dx, 0
+		je	ghr_check_next_header
+		cmp	dx, ax
+		je	ghr_multi_link_found
+		mov	es, es:.NEXT_SET_SEG
+		jmps	ghr_find_link_loop
+ghr_check_next_header:
+		mov	es, es:.FONT_PTR_SEG
+		jmps	ghr_find_link_loop
+
+; The header being paged is in a multi-section chain.  Unlink it.
+ghr_multi_link_found:
+		mov	dx, .NEXT_SET_SEG	; dx = paged header next multi
+		mov	es:.NEXT_SET_SEG, dx
+		jmps	ghr_link_done
+
+; The header being paged is a normal header.  Unlink it.
+ghr_normal_link_found:
+		mov	dx, .FONT_PTR_SEG	; dx = paged header next ptr
+ghr_multi_link_loop:
+		mov	es:.FONT_PTR_SEG, dx
+		cmp	es:word ptr .NEXT_SET_SEG, 0
+		je	ghr_link_done
+		mov	es, es:.NEXT_SET_SEG
+		jmps	ghr_multi_link_loop
+
+; If this was the next-to-last font header in memory, shuffle down
+; the next one.
+ghr_link_done:
+		cmp	bp, 0
+		je	ghr_update_variables
+		mov	ax, ds
+		mov	es, ax
+		add	ax, FHDR_SIZE/16
+		mov	ds, ax
+		xor	si, si			; ds:si -> last header
+		mov	di, si			; es:di -> new location
+		mov	cx, FHDR_SIZE
+		cld
+	rep	movsb
+		mov	ws_font_seg[bx], es
+
+; Done allocating space.  Find out if enough is free.
+ghr_update_variables:
+		dec	fhdr_count		; lost a header
+		add	header_space, FHDR_SIZE - PGHD_LENGTH
+		mov	this_font_seg, ds	; new free header location
+		jmp	ghr_check_space
+
+; No luck.  Indicate failure.
+ghr_no_room:
+		mov	incomplete_load, 1
+		stc
+
+; That's all!
+end_get_header_room:
+		pop	es
+		pop	ds
+		pop	di
+		pop	si
+		pop	bp
+		pop	dx
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* header_manager (called externally by drivers)			*
+;*	ax = operation: 0 = set font, 1 = set point, 2 = set absolute	*
+;*	dx = font/size							*
+;************************************************************************
+header_manager:
+		push	bp
+		push	bx
+		push	cx
+		push	si
+		push	di
+		push	ds
+		push	es
+ 		cld
+
+; Initialize "local" variables and update with the parameter passed in.
+		push	ax
+		push	dx
+		call	font_op_get		; bx = find_??_header address
+		pop	dx
+		pop	ax
+		jc	end_header_manager
+		and	ax, ax
+		jnz	hm_check_point_size
+		mov	cur_face, dx
+		jmps	hm_find_header
+hm_check_point_size:
+		dec	ax
+		jnz	hm_check_absolute_size
+		mov	cur_point, dx		; save the new point size
+		mov	selmode, SEL_POINT
+		jmps	hm_find_header
+hm_check_absolute_size:
+		dec	ax
+		jnz	end_header_manager
+		mov	cur_absize, dx		; save the new absolute size
+		mov	selmode, SEL_ABSOLUTE
+
+; Find the header.  If an exact match exists, all done.  Otherwise,
+; something close must be found.
+hm_find_header:
+		call	bx
+		call	font_op_set
+
+; Clean up and return.
+end_header_manager:
+		pop	es
+		pop	ds
+		pop	di
+		pop	si
+		pop	cx
+		pop	bx
+		pop	bp
+		retf
+
+
+;************************************************************************
+;* header_patch_write							*
+;*	ds:0 -> font header						*
+;************************************************************************
+header_patch_write:
+		xor	ax, ax
+		mov	.USE_COUNT_LO, ax
+		mov	.USE_COUNT_HI, ax
+		mov	.HOR_TABLE_SEG, ax
+		mov	.OFF_TABLE_SEG, ax
+		mov	.DAT_TABLE_SEG, ax
+		or	word ptr .FLAGS_WORD, DATA_PAGED
+
+; That's all!
+end_header_patch_write:
+		ret
+
+
+;************************************************************************
+;* link_headers								*
+;*	ds:0 -> first font header					*
+;************************************************************************
+link_headers:
+		push	di
+		push	ds
+
+; Link the headers.
+		mov	si, ds
+		inc	si
+		mov	ds, si
+		xor	si, si			; ds:si -> first font header
+		mov	bp, ds			; bp:0 -> next header
+lh_headers_loop:
+		push	ds
+		push	si
+lh_multi_set_loop:
+		mov	.FONT_HDRLRU_LO, si
+		mov	.FONT_HDRLRU_HI, si	; zero the LRU
+		mov	.FONT_GDOS_FLAGS, si	; zero the header GDOS flags
+		inc	fhdr_count		; count the header
+		add	bp, FHDR_SIZE/16	; bp:0 -> next header
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	lh_check_next_header
+		mov	.NEXT_SET_SEG, bp
+		mov	.NEXT_SET_OFF, si
+		mov	ds, bp			; ds:si -> next header
+		jmps	lh_multi_set_loop
+lh_check_next_header:
+		pop	si
+		pop	ds
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	end_link_headers
+
+; Update multi-set next font pointers.
+		push	ds
+		push	si
+lh_multi_set_pointer_loop:
+		mov	.FONT_PTR_SEG, bp
+		mov	.FONT_PTR_OFF, si
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	lh_prep_next_loop
+		mov	ds, .NEXT_SET_SEG
+		jmps	lh_multi_set_pointer_loop
+lh_prep_next_loop:
+		pop	si
+		pop	ds
+		mov	ds, bp			; ds:si -> next header
+		jmps	lh_headers_loop
+
+; That's all!
+end_link_headers:
+		pop	ds
+		pop	di
+		ret
+
+
+;************************************************************************
+;* page_best								*
+;*	bp = selection mode						*
+;*	ax = font id							*
+;*	dx = point size or top height (depending on bp)			*
+;************************************************************************
+page_best:
+		push	bx
+
+; Loop over paged headers and page in those with matching font and size.
+		mov	ds, font_block_seg
+		mov	si, phdr_low		; ds:si -> first paged header
+		mov	cx, phdr_count		; cx = paged header count
+pb_loop:
+		cmp	word ptr PGHD_FACE[si], ax
+		jne	pb_next
+		cmp	bp, SEL_POINT
+		jne	pb_absolute
+		cmp	PGHD_SIZE[si], dl
+		jne	pb_next
+		call	page_in_header
+		jmps	pb_next
+pb_absolute:
+		cmp	PGHD_TOP[si], dx
+		jne	pb_next
+		call	page_in_header
+pb_next:
+		add	si, PGHD_LENGTH		; bump to next paged header
+		loop	pb_loop
+
+; That's all!
+end_page_best:
+		pop	bx
+		ret
+
+
+;************************************************************************
+;* page_find								*
+;*	bp = selection mode						*
+;*	ax = font id							*
+;*	dx = point size or top height (depending on bp)			*
+;*	Returns ds:0 -> pageable header location			*
+;************************************************************************
+page_find:
+		push	di
+
+; Find a header to page out:  can't be the first header and can't match
+; the specified font id and point size.
+		mov	ds, first_font_seg	; ds:0 -> first header
+		mov	bx, 0ffffh
+		mov	cx, bx			; bx:cx = lowest LRU
+pf_loop:
+		mov	ds, .FONT_PTR_SEG	; ds:0 -> next header
+		call	ds_font_info
+		cmp	font_val, ax
+		jne	pf_check_lru
+		cmp	bp, SEL_POINT
+		jne	pf_absolute
+		cmp	.POINT_SIZE, dx
+		je	pf_next_loop
+		jmps	pf_check_lru
+pf_absolute:
+		cmp	.FONT_TOP, dx
+		je	pf_next_loop
+pf_check_lru:
+		cmp	.FONT_HDRLRU_HI, bx
+		ja	pf_next_loop
+		cmp	.FONT_HDRLRU_LO, cx
+		jnb	pf_next_loop
+		mov	bx, .FONT_HDRLRU_HI
+		mov	cx, .FONT_HDRLRU_LO	; bx:cx = lowest LRU
+		mov	di, ds			; di = best segment
+pf_next_loop:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		jne	pf_loop
+		mov	ds, di			; ds = pageable header segment
+
+; Update associated headers to indicate that the font is not entirely
+; resident any more.
+		push	ds
+		push	ax
+		call	ds_font_info
+		mov	ax, font_val
+		mov	bx, .POINT_SIZE
+pf_assoc_loop:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	pf_assoc_next_header
+		mov	ds, .NEXT_SET_SEG
+		jmps	pf_update_assoc
+pf_assoc_next_header:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	pf_assoc_done
+		mov	ds, .FONT_PTR_SEG
+		cmp	.POINT_SIZE, bx
+		jne	pf_assoc_done
+		call	ds_font_info
+		cmp	font_val, ax
+		jne	pf_assoc_done
+pf_update_assoc:
+		and	word ptr .FONT_GDOS_FLAGS, NOT ALL_RESIDENT
+		jmps	pf_assoc_loop
+pf_assoc_done:
+		pop	ax
+		pop	ds
+
+; That's all!
+end_page_find:
+		pop	di
+		ret
+
+
+;************************************************************************
+;* page_in_header							*
+;*	ds:si -> paged header to load					*
+;*	bp = selection mode						*
+;*	ax = font id							*
+;*	dx = point size or top height (depending on bp)			*
+;************************************************************************
+page_in_header:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+		push	si
+		push	bp
+		push	ds
+
+; Save the paged header.
+		mov	di, cs
+		mov	es, di
+		mov	di, offset phdr_buf	; es:di -> paged header buffer
+		mov	cx, PGHD_LENGTH		; cx = buffer size
+		push	si			; save paged header address
+		cld
+	rep	movsb
+		pop	si			; restore paged header address
+
+; Find a header to page out and remove it.
+		call	page_out		; ds = free header segment
+
+; Open the font file and seek to the appropriate header.
+		call	open_string_file
+		mov	ax, word ptr phdr_buf + PGHD_INDEX
+		call	read_string_data
+		call	close_file
+		mov	dx, offset str_buf + STR_FILENAME
+		push	ds			; save header segment
+		mov	ax, cs
+		mov	ds, ax			; ds:dx -> string file name
+		mov	ax, 256*FILE_OPEN
+		int	PCDOS			; open the file (read access)
+		pop	ds			; restore header segment
+		mov	cx, word ptr str_buf + STR_SEEK_HI
+		mov	header_segment, cx
+		mov	dx, word ptr str_buf + STR_SEEK_LO
+		mov	header_offset, dx
+		call	seek_file
+
+; Read in the font header.
+		xor	dx, dx			; ds:dx -> font header loc
+		mov	cx, 88			; "standard" header size
+		call	read_file
+		cmp	word ptr .HOR_TABLE_OFF, 88
+		jg	pih_prep_extension_read
+		mov	word ptr .NEXT_SET_OFF, 0
+		mov	word ptr .NEXT_SET_SEG, 0
+		jmps	pih_close_file
+pih_prep_extension_read:
+		mov	cx, .HOR_TABLE_OFF
+		cmp	cx, FHDR_SIZE
+		jle	pih_read_extension
+		mov	cx, FHDR_SIZE
+pih_read_extension:
+		mov	dx, 88			; ds:dx -> additional space
+		sub	cx, dx			; cx = additional bytes
+		call	read_file
+pih_close_file:
+		call	close_file
+
+; Link the header into the font header chain and patch the header.
+		xor	ax, ax
+		mov	.NEXT_SET_SEG, ax
+		mov	.NEXT_SET_OFF, ax
+		call	page_link
+		or	word ptr .FLAGS_WORD, DATA_PAGED
+		mov	dx, .HOR_TABLE_OFF
+		mov	ax, .HOR_TABLE_SEG
+		add	dx, header_offset
+		adc	ax, header_segment
+		mov	.FONT_FILE_DATA_OFF, dx
+		mov	.FONT_FILE_DATA_SEG, ax
+		mov	ax, .FORM_WIDTH
+		mul	word ptr .FORM_HEIGHT	; ax = font form size
+		add	ax, .DAT_TABLE_OFF	; ax -> end of font form
+		sub	ax, .HOR_TABLE_OFF	; ax = total font data size
+		mov	.FONT_FILE_DATA_SIZE, ax
+		xor	ax, ax
+		mov	dx, .HOR_TABLE_OFF
+		mov	.HOR_TABLE_OFF, ax
+		mov	.HOR_TABLE_SEG, ax
+		sub	.OFF_TABLE_OFF, dx	; relative to horz offsets
+		mov	.OFF_TABLE_SEG, ax
+		sub	.DAT_TABLE_OFF, dx	; relative to horz offsets
+		mov	.DAT_TABLE_SEG, ax
+		mov	.USE_COUNT_HI, ax
+		mov	.USE_COUNT_LO, ax
+		mov	ax, word ptr phdr_buf + PGHD_INDEX
+		mov	.FONT_STRINDEX, ax
+
+; That's all!
+end_page_in_header:
+		pop	ds
+		pop	bp
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* page_link								*
+;*	ds:0 -> header to link in					*
+;************************************************************************
+page_link:
+		push	ds
+
+; Prepare for the search loop.
+		mov	bx, ws_index		; bx = workstation table index
+		mov	ax, ds
+		mov	es, ax			; es:0 -> new font header
+		call	es_font_info
+		mov	si, font_val		; si = font id
+		mov	ch, attr_val		; ch = attribute value
+		mov	dx, es:.POINT_SIZE	; dx = font point size
+		mov	bp, es:.FONT_FIRST_ADE	; bp = lowest ADE
+		mov	ds, ws_font_seg[bx]
+		xor	di, di			; ds:di -> first font
+		jmps	pl_check_face
+
+; Chain down the font list and insert the font at the appropriate location.
+pl_header_loop:
+		cmp	.FONT_PTR_SEG, di	; end of the chain?
+		jne	pl_more_chain
+		mov	es:.FONT_PTR_SEG, di
+		mov	es:.FONT_PTR_OFF, di
+		jmps	pl_update_prev_link
+pl_more_chain:
+		mov	ax, ds			; save current segment
+		mov	ds, .FONT_PTR_SEG	; chain to next
+pl_check_face:
+		call	ds_font_info
+		cmp	font_val, si
+		jb	pl_header_loop
+		ja	pl_header_insert
+		cmp	.POINT_SIZE, dx
+		jl	pl_header_loop
+		jg	pl_header_insert
+		cmp	attr_val, ch		; attributed?
+		ja	pl_header_insert
+		jb	pl_header_loop
+
+; Take care of multi-section insertion.
+		mov	dx, .FONT_PTR_SEG
+		mov	es:.FONT_PTR_SEG, dx	; same next segment
+		mov	es:.FONT_PTR_OFF, di
+		cmp	.FONT_FIRST_ADE, bp	; before first?
+		jb	pl_multi_loop
+		mov	es:.NEXT_SET_SEG, ds
+		mov	ds, ax
+		jmps	pl_update_prev_link
+pl_multi_loop:
+		cmp	.FONT_FIRST_ADE, bp
+		jb	pl_next_multi
+		mov	es:.NEXT_SET_SEG, ds
+		mov	ds, ax
+		jmps	pl_update_prev_multi
+pl_next_multi:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	pl_update_prev_multi
+		mov	ax, ds			; save current segment
+		mov	ds, .NEXT_SET_SEG
+		jmps	pl_multi_loop
+pl_update_prev_multi:
+		mov	.NEXT_SET_SEG, es
+		jmps	end_page_link
+
+; Standard link insertion.
+pl_header_insert:
+		mov	es:.FONT_PTR_SEG, ds
+		mov	es:.FONT_PTR_OFF, di
+		mov	ds, ax			; get previous segment
+
+; Update previous link.
+pl_update_prev_link:
+		mov	.FONT_PTR_SEG, es
+		mov	.FONT_PTR_OFF, di
+		cmp	.NEXT_SET_SEG, di
+		je	end_page_link
+		mov	ds, .NEXT_SET_SEG
+		jmps	pl_update_prev_link
+
+; That's all!
+end_page_link:
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* page_out								*
+;*	ds:si -> location to put paged header				*
+;*	bp = selection mode						*
+;*	ax = font id							*
+;*	dx = point size or top height (depending on bp)			*
+;*	Returns ds:0 -> free header location				*
+;************************************************************************
+page_out:
+
+; Find a header to page out.
+		mov	di, ds
+		mov	es, di
+		mov	di, si			; es:di -> paged header
+		call	page_find		; ds:0 -> pageable header
+
+; Update the paged header item.
+		mov	dx, .FONT_STRINDEX
+		mov	es:.PGHD_INDEX[di], dx
+; JG:  1.11-24  startblock
+		call	ds_font_info
+		mov	dx, font_val
+		mov	es:word ptr PGHD_FACE[di], dx
+		mov	dx, .POINT_SIZE
+		mov	es:PGHD_SIZE[di], dl
+		mov	dx, .FONT_TOP
+		mov	es:PGHD_TOP[di], dx
+		mov	dx, .FONT_FILE_DATA_SIZE
+		mov	es:PGHD_DATASIZE[di], dx
+; JG:  1.11-24  endblock
+; JG:  1.11-24  deleteblock
+;		mov	dx, .FONT_ID
+;		mov	es:.PGHD_FACE[di], dl
+;		mov	dx, .POINT_SIZE
+;		mov	es:.PGHD_SIZE[di], dl
+;		mov	dx, .FONT_TOP
+;		mov	es:.PGHD_TOP[di], dx
+;		mov	dx, .FONT_FILE_DATA_SIZE
+;		mov	es:.PGHD_DATASIZE[di], dx
+; JG:  1.11-24  endblock
+
+; Unload data, if necessary
+		test	word ptr .FLAGS_WORD, DATA_PAGED
+		jnz	po_unlink
+		push	ds
+		call	remove_lfu
+		pop	ds
+
+; Unlink the font header.
+po_unlink:
+		mov	dx, ds			; dx = pageable header segment
+		mov	es, dx			; es = pageable header segment
+		mov	ds, first_font_seg
+po_unlink_loop:
+		mov	ax, ds			; ax = current header segment
+po_unlink_multi_loop:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	po_unlink_not_multi
+		cmp	.NEXT_SET_SEG, dx	; found it?
+		je	po_multi_unlink
+		mov	ds, .NEXT_SET_SEG
+		jmps	po_unlink_multi_loop
+po_unlink_not_multi:
+		mov	ds, ax			; ds = current header segment
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	po_done			; should never happen...
+		cmp	.FONT_PTR_SEG, dx	; found it?
+		je	po_header_unlink
+		mov	ds, .FONT_PTR_SEG	; ds:0 -> next header
+		jmps	po_unlink_loop
+
+; Unlink a multi-segment header.
+po_multi_unlink:
+		mov	ax, es:.NEXT_SET_SEG
+		mov	.NEXT_SET_SEG, es
+		jmps	po_done
+
+; Unlink a standard font header.
+po_header_unlink:
+		mov	ax, es:.FONT_PTR_SEG
+		cmp	es:word ptr .NEXT_SET_SEG, 0
+		je	po_header_unlink_loop	; not multi-section
+		mov	ax, es:.NEXT_SET_SEG	; point to next multi in chain
+po_header_unlink_loop:
+		mov	.FONT_PTR_SEG, ax
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	po_done
+		mov	ds, .NEXT_SET_SEG
+		jmps	po_header_unlink_loop
+
+; Return the pageable header segment.
+po_done:
+		mov	ds, dx			; ds = pageable header segment
+
+; That's all!
+end_page_out:
+		ret
+
+
+;************************************************************************
+;* read_headers								*
+;************************************************************************
+read_headers:
+		push	ds
+
+; Make sure the font string file exists.
+		mov	di, offset info_file	; di -> destination path
+		mov	dx, offset str_suffix	; dx -> "FSTR.INF"
+		call	build_info_file
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset info_file
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		jnc	rh_open_string
+		jmp	rh_error
+rh_open_string:
+		mov	ax, 256*FILE_OPEN
+		int	PCDOS
+		jnc	rh_close_string_file
+		jmp	rh_error
+rh_close_string_file:
+		mov	bx, ax			; bx = file handle
+		mov	ah, FILE_CLOSE
+		int	PCDOS
+
+; Try to open the headers file.
+		mov	di, offset info_file	; di -> destination path
+		mov	dx, offset font_suffix	; dx -> "FHDR.INF"
+		call	build_info_file
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset info_file
+		mov	bp, word ptr gdos_dta + 24	; bp = string date
+		mov	si, word ptr gdos_dta + 22	; si = string time
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		jnc	rh_check_date
+		jmp	rh_error
+rh_check_date:
+		cmp	bp, word ptr gdos_dta + 24	; header date earlier?
+		jna	rh_check_time
+		jmp	rh_error
+rh_check_time:
+		cmp	si, word ptr gdos_dta + 22	; header time earlier?
+		jna	rh_open_header
+		jmp	rh_error
+rh_open_header:
+		mov	ax, 256*FILE_OPEN
+		int	PCDOS
+		jnc	rh_save_handle
+		jmp	rh_error
+rh_save_handle:
+		mov	bx, ax			; bx = file handle
+
+; Get the size of the headers file.
+		xor	cx, cx
+		mov	dx, cx
+		mov	ax, 256*FILE_SEEK + 2
+		int	PCDOS			; dx:ax = file size
+		jnc	rh_check_for_long
+		jmp	rh_error_close
+rh_check_for_long:
+		cmp	dx, 0			; long value is error
+		je	rh_set_to_beginning
+		jmp	rh_error_close
+rh_set_to_beginning:
+		mov	di, ax			; di = file size
+		mov	ax, 256*FILE_SEEK
+		int	PCDOS			; restore to beginning
+
+; Make sure there is sufficient memory for the headers.
+		mov	cx, di			; cx = file size
+		add	di, 15			; for rounding up
+		shr	di, 1
+		shr	di, 1
+		shr	di, 1
+		shr	di, 1			; di = file size in paragraphs
+		cmp	di, fb_free_size
+		jnb	rh_error_close
+
+; Read the file into memory and close it.
+		mov	ds, this_font_seg
+		xor	dx, dx			; ds:dx -> font memory
+		mov	ah, FILE_READ
+		int	PCDOS
+		jc	rh_error_close
+		mov	ah, FILE_CLOSE
+		int	PCDOS
+
+; Link the headers, verify file names, and calculate the size requirement
+; for the text effects buffer.
+		call	link_headers
+		call	check_files		; returns status
+		jc	end_read_headers
+		call	check_font_count	; returns status
+		jc	end_read_headers
+
+; Get the paged header information.
+		mov	ax, .FHFH_PHDLOW
+		mov	phdr_low, ax
+		mov	ax, .FHFH_PHDCOUNT
+		mov	phdr_count, ax
+		mov	ax, .FHFH_EFFSIZE
+		mov	text_buffer_size, ax
+
+; Update variables:  this_font_seg needs to point to the beginning of
+; the paged headers.
+		mov	ax, PGHD_LENGTH
+		mul	phdr_count
+		add	ax, 15
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; ax = paged header paragraphs
+		sub	di, ax			; di -> first paged header
+		sub	fb_free_size, di
+		mov	bx, ws_index
+		mov	ax, ds
+		inc	ax
+		mov	ws_font_seg[bx], ax
+		mov	ws_font_block[bx], ax
+		add	this_font_seg, di
+		xor	ax, ax
+		mov	this_font_off, ax
+		clc
+		jmps	end_read_headers
+
+; Error:  close file.
+rh_error_close:
+		mov	ah, FILE_CLOSE
+		int	PCDOS
+
+; Error:  indicate no load.
+rh_error:
+		stc				; no load:  return status
+
+; That's all!
+end_read_headers:
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* remove_full								*
+;*	bp:0 -> base header of (possibly) multi-set to remove		*
+;*	ds updated to point to next header				*
+;************************************************************************
+remove_full:
+		push	bx
+		push	dx
+
+; Unlink the font header.
+		mov	incomplete_load, 1
+		mov	ds, bp
+		call	unlink_font
+
+; Point to the next header.
+		cmp	last_font_seg, 0
+		je	rf_first_seg
+		mov	ds, last_font_seg	; ds:0 -> previous header
+		mov	ax, .FONT_PTR_SEG	; ax:0 -> next header
+		jmps	rf_shuffle_headers
+rf_first_seg:
+		mov	bx, ws_index
+		mov	ax, ws_font_seg[bx]	; ax:0 -> next header
+
+; Remove dead headers.
+rf_shuffle_headers:
+		mov	ds, bp			; ds:0 -> first dead header
+rf_shuffle_loop:
+		mov	di, ds
+		push	ds
+rf_patch_multi_loop:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	rf_save_next
+		mov	si, .NEXT_SET_SEG
+		cmp	si, di			; will next multi be shuffled?
+		jb	rf_next_multi_patch
+		sub	word ptr .NEXT_SET_SEG, FHDR_SIZE/16
+rf_next_multi_patch:
+		mov	ds, si
+		jmps	rf_patch_multi_loop
+rf_save_next:
+		pop	ds
+		push	word ptr .NEXT_SET_SEG
+		call	shuffle_full
+		pop	dx			; dx = next multi segment
+		cmp	dx, 0
+		je	rf_shuffle_done
+		mov	ds, dx			; ds:0 -> next dead header
+		jmps	rf_shuffle_loop
+rf_shuffle_done:
+		mov	ds, ax			; ds:0 -> next header
+
+; That's all!
+end_remove_full:
+		pop	dx
+		pop	bx
+		ret
+
+
+;************************************************************************
+;* remove_paged								*
+;*	ds:si -> paged header to remove					*
+;************************************************************************
+remove_paged:
+		push	bx
+		push	dx
+
+; Get the face and size of the paged header to be removed.  Prepare
+; for the shuffle loop.
+		mov	bx, word ptr PGHD_FACE[si]	; bx = font id
+		mov	dl, PGHD_SIZE[si]	; dl = size
+		mov	ax, ds
+		mov	es, ax
+		mov	si, phdr_low		; ds:si -> first paged header
+		mov	cx, phdr_count		; cx = header count
+
+; Find all occurrences of the face/size combination and remove them.
+rp_shuffle_loop:
+		cmp	word ptr PGHD_FACE[si], bx	; matching face?
+		jne	rp_next_shuffle
+		cmp	PGHD_SIZE[si], dl	; matching size?
+		jne	rp_next_shuffle
+		call	shuffle_paged
+rp_next_shuffle:
+		add	si, PGHD_LENGTH		; bump to next paged header
+		loop	rp_shuffle_loop
+
+; That's all!
+end_remove_paged:
+		pop	dx
+		pop	bx
+		ret
+
+
+;************************************************************************
+;* set_absolute								*
+;************************************************************************
+set_absolute:
+
+; Verify validity of the call and initialize "local" variables.
+		call	font_op_get		; bx = find_??_header address
+		jc	end_set_absolute
+
+; Extract the new data.  If it's not really new, ignore it.
+		lds	si, ptsin
+		mov	ax, 2[si]		; ax = absolute size
+		cmp	ax, cur_absize
+		jne	sabs_new_size
+		cmp	selmode, SEL_ABSOLUTE	; same as old?
+		je	sabs_done
+sabs_new_size:
+		mov	cur_absize, ax		; save the new absolute size
+		mov	selmode, SEL_ABSOLUTE
+
+; Find the header.  If an exact match exists, all done.  Otherwise,
+; something close must be found.
+		call	bx
+
+; Update workstation variables.
+sabs_done:
+		call	font_op_set
+
+; That's all!
+end_set_absolute:
+		ret
+
+
+;************************************************************************
+;* set_face								*
+;************************************************************************
+set_face:
+
+; Verify validity of the call and initialize "local" variables.
+		call	font_op_get		; bx = find_??_header address
+		jc	end_set_face
+
+; Extract the new data.  If it's not really new, ignore it.
+		lds	si, intin
+		mov	ax, [si]		; ax = font id
+		cmp	ax, cur_face
+		je	sfac_done
+		mov	cur_face, ax		; save the new font id
+
+; Find the header.  If an exact match exists, all done.  Otherwise,
+; something close must be found.
+		call	bx
+
+; Update workstation variables.
+sfac_done:
+		call	font_op_set
+
+; That's all!
+end_set_face:
+		ret
+
+
+;************************************************************************
+;* set_point								*
+;************************************************************************
+set_point:
+
+; Verify validity of the call and initialize "local" variables.
+		call	font_op_get		; bx = find_??_header address
+		jc	end_set_point
+
+; Extract the new data.  If it's not really new, ignore it.
+		lds	si, intin
+		mov	ax, [si]		; ax = point size
+		cmp	ax, cur_point
+		jne	spnt_new_size
+		cmp	selmode, SEL_POINT	; same as old?
+		je	spnt_done
+spnt_new_size:
+		mov	cur_point, ax		; save the new point size
+		mov	selmode, SEL_POINT
+
+; Find the header.  If an exact match exists, all done.  Otherwise,
+; something close must be found.
+		call	bx
+
+; Update workstation variables.
+spnt_done:
+		call	font_op_set
+
+; That's all!
+end_set_point:
+		ret
+
+
+;************************************************************************
+;* shuffle_full								*
+;*	ds:0 -> header to remove					*
+;*	ax = next header (must be updated if shuffled)			*
+;*	fhdr_count, this_font_seg, and ws_font_seg updated		*
+;************************************************************************
+shuffle_full:
+
+; Update any pointers to headers which will be shuffled.
+		mov	dx, ds			; dx = shuffle segment
+		cmp	ax, dx			; next header shuffled?
+		jb	sf_check_last_font_seg
+		sub	ax, FHDR_SIZE/16	; update next header segment
+sf_check_last_font_seg:
+		cmp	last_font_seg, dx	; last_font_seg shuffled?
+		jb	sf_prep_patch_loop
+		sub	last_font_seg, FHDR_SIZE/16
+sf_prep_patch_loop:
+		mov	bx, ws_index
+		mov	ds, ws_font_seg[bx]
+		cmp	ws_font_seg[bx], dx	; first font shuffled?
+		jb	sf_patch_loop
+		sub	ws_font_seg[bx], FHDR_SIZE/16
+sf_patch_loop:
+		mov	si, .FONT_PTR_SEG	; si = next header segment
+		mov	di, .NEXT_SET_SEG	; di = next multi segment
+		cmp	si, dx			; shuffle next header?
+		jb	sf_check_multi
+		sub	word ptr .FONT_PTR_SEG, FHDR_SIZE/16
+sf_check_multi:
+		cmp	di, dx			; shuffle next multi segment?
+		jb	sf_next_multi
+		sub	word ptr .NEXT_SET_SEG, FHDR_SIZE/16
+sf_next_multi:
+		cmp	di, 0			; more multi?
+		je	sf_next_header
+		mov	ds, di			; ds:0 -> next multi
+		jmps	sf_patch_loop
+sf_next_header:
+		cmp	si, 0			; more headers?
+		je	sf_shuffle_down
+		mov	ds, si			; ds:0 -> next header
+		jmps	sf_patch_loop
+
+; Shuffle headers down.
+sf_shuffle_down:
+		push	ax			; save next header
+		mov	es, dx			; es = shuffle dest segment
+		add	dx, FHDR_SIZE/16
+		mov	ds, dx			; ds = shuffle source segment
+		mov	ax, FHDR_SIZE
+		mul	fhdr_count
+		mov	cx, ax			; cx = total size of headers
+		mov	ax, ds
+		sub	ax, ws_font_block[bx]
+		shl	ax, 1
+		shl	ax, 1
+		shl	ax, 1
+		shl	ax, 1			; ax = shuffle source offset
+		sub	cx, ax			; cx = amount to shuffle
+		jcxz	sf_done
+		xor	si, si			; ds:si -> shuffle source
+		xor	di, di			; es:di -> shuffle destination
+		cld
+	rep	movsb				; shuffle down
+sf_done:
+		dec	fhdr_count		; one less header
+		sub	this_font_seg, FHDR_SIZE/16
+		pop	ax			; restore next header
+
+; That's all!
+end_shuffle_full:
+		ret
+
+
+;************************************************************************
+;* shuffle_paged							*
+;*	ds:si -> paged header to remove					*
+;*	es = paged headers segment					*
+;*	phdr_count and phdr_low updated					*
+;************************************************************************
+shuffle_paged:
+		push	cx
+		push	si
+
+; Shuffle paged headers up.
+		mov	cx, si
+		sub	cx, phdr_low		; cx = shuffle count
+		jcxz	sp_done
+		dec	si			; ds:si -> end of move block
+		mov	di, si
+		add	di, PGHD_LENGTH		; es:di -> destination
+		std
+	rep	movsb				; shuffle up
+		cld
+sp_done:
+		dec	phdr_count		; one less paged header
+		add	phdr_low, PGHD_LENGTH	; base has moved up
+
+; That's all!
+end_shuffle_paged:
+		pop	si
+		pop	cx
+		ret
+
+
+;************************************************************************
+;* unlink_font								*
+;*	ds:0 -> font header to unlink.					*
+;*	last_font_seg must be valid					*
+;************************************************************************
+unlink_font:
+		push	ax
+		push	bx
+		push	di
+		push	ds
+		push	es
+
+; Take care of the case where this is the first font.
+		cmp	last_font_seg, 0
+		jne	uf_not_first_font
+		mov	bx, ws_index
+		mov	ds, ws_font_seg[bx]
+		mov	ax, .FONT_PTR_SEG
+		mov	ws_font_seg[bx], ax	; fix up first font segment
+		jmps	end_unlink_font
+
+; The current font is not the first in the chain.  Fix up the previous font.
+uf_not_first_font:
+		mov	es, .FONT_PTR_SEG	; es:0 -> next font
+		mov	ds, last_font_seg	; ds:0 -> previous font
+uf_multi_loop:
+		mov	.FONT_PTR_SEG, es	; fix up next segment pointer
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	end_unlink_font
+		mov	ds, .NEXT_SET_SEG	; ds:0 -> "previous" font
+		jmps	uf_multi_loop
+
+; That's all!
+end_unlink_font:
+		pop	es
+		pop	ds
+		pop	di
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* update_lru								*
+;*	bp = selection mode						*
+;*	ax = font id							*
+;*	dx = point size or top height (depending on bp)			*
+;************************************************************************
+update_lru:
+		push	bx
+		push	cx
+
+; Scan resident headers for matching face and size.  Update the
+; LRU count of all matching headers (including multi-section) and
+; indicate that all associated headers are resident.
+		mov	ds, first_font_seg	; ds:0 -> first header
+		add	lrulo, 1
+		mov	bx, lrulo
+		adc	lruhi, 0		; bump the LRU counter
+		mov	cx, lruhi
+ul_loop:
+		call	ds_font_info
+		cmp	font_val, ax
+		jne	ul_next_multi
+		cmp	bp, SEL_POINT
+		jne	ul_absolute
+		cmp	.POINT_SIZE, dx
+		jne	ul_next_multi
+		jmps	ul_update
+ul_absolute:
+		cmp	.FONT_TOP, dx
+		jne	ul_next_multi
+ul_update:
+		mov	.FONT_HDRLRU_LO, bx	; update header LRU
+		mov	.FONT_HDRLRU_HI, cx
+		or	word ptr .FONT_GDOS_FLAGS, ALL_RESIDENT
+ul_next_multi:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	ul_next_header
+		mov	ds, .NEXT_SET_SEG
+		jmps	ul_loop
+ul_next_header:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	end_update_lru
+		mov	ds, .FONT_PTR_SEG
+		jmps	ul_loop
+
+; That's all!
+end_update_lru:
+		pop	cx
+		pop	bx
+		ret
+
+
+;************************************************************************
+;* write_headers							*
+;************************************************************************
+write_headers:
+		push	ds
+
+; Create a headers file.
+		mov	di, offset info_file	; di -> destination path
+		mov	dx, offset font_suffix	; dx -> "FONT.INF"
+		call	build_info_file
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset info_file
+		xor	cx, cx
+		mov	ah, FILE_CREATE
+		int	PCDOS			; create the output file
+		jnc	wh_save_handle
+		jmp	end_write_headers
+wh_save_handle:
+		mov	bx, ax			; bx = file handle
+
+; Output the miscellaneous data in the first paragraph of the
+; font data area.
+		mov	si, ws_index		; si = table index
+		mov	dx, ws_font_block[si]
+		dec	dx
+		mov	ds, dx
+		xor	dx, dx			; ds:dx -> misc buffer
+		mov	cx, 16			; cx = paragraph length
+		mov	ah, FILE_WRITE
+		int	PCDOS
+
+; Get the pointer to the first header.
+		mov	ds, ws_font_seg[si]	; ds = first header segment
+
+; Top of the font chain loop.  Save pointers and patch them to either
+; be 0:0 (end-of-chain) or ffff:0 (next exists).
+wh_font_chain_loop:
+		mov	dx, .FONT_PTR_SEG	; dx:0 -> next font
+		mov	bp, .NEXT_SET_SEG	; bp:0 -> next mutli-set
+		cmp	bp, 0
+		je	wh_patch_next_font
+		mov	word ptr .NEXT_SET_SEG, 0ffffh
+		jmps	wh_output_header
+wh_patch_next_font:
+		cmp	dx, 0
+		je	wh_output_header
+		mov	word ptr .FONT_PTR_SEG, 0ffffh
+
+; Write the header to the file.
+wh_output_header:
+		push	dx
+		call	header_patch_write
+		xor	dx, dx			; ds:dx -> data to write
+		mov	cx, FHDR_SIZE		; cx = header length
+		mov	ah, FILE_WRITE
+		int	PCDOS
+		pop	dx
+
+; Is this a multi-set font?
+		cmp	bp, 0
+		je	wh_check_next_font
+		call	write_multi_set
+
+; Prepare for the next font header.
+wh_check_next_font:
+		cmp	dx, 0			; done with font chain?
+		je	wh_resident_headers_done
+		mov	ds, dx			; ds:0 -> next font header
+		jmps	wh_font_chain_loop
+
+; Done with the resident font headers.  Output paged ones.
+wh_resident_headers_done:
+		cmp	phdr_count, 0
+		je	wh_done
+		mov	ax, PGHD_LENGTH
+		mul	phdr_count
+		mov	cx, ax			; cx = size of paged headers
+		mov	si, ws_index
+		mov	ds, ws_font_block[si]
+		mov	dx, phdr_low		; ds:dx -> first paged header
+		mov	ah, FILE_WRITE
+		int	PCDOS
+
+; Close the file.
+wh_done:
+		mov	ah, FILE_CLOSE
+		int	PCDOS			; close the font header file
+
+; That's all!
+end_write_headers:
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* write_multi_set							*
+;*	bx = file handle						*
+;*	dx:0 -> next font (must be saved)				*
+;*	bp:0 -> next multi-set						*
+;************************************************************************
+write_multi_set:
+		push	dx
+		push	si
+		push	ds
+
+; Get the pointer to the first multi-set header.
+		mov	ds, bp		; ds:si -> first mutli-set header
+
+; Top of the multi-set header output loop. Save the pointer to the
+; next multi-set header and patch to either be 0:0 (end-of-chain) or
+; ffff:0 (next exists).
+wms_loop:
+		mov	ax, .NEXT_SET_OFF
+		mov	dx, .NEXT_SET_SEG	; dx:0 -> next mutli-set
+		cmp	dx, 0
+		je	wms_output_header
+		mov	word ptr .NEXT_SET_SEG, 0ffffh
+
+; Write the header to the file.
+wms_output_header:
+		push	ax
+		push	dx
+		call	header_patch_write
+		xor	dx, dx			; ds:dx -> data to write
+		mov	cx, FHDR_SIZE		; cx = header length
+		mov	ah, FILE_WRITE
+		int	PCDOS
+		pop	dx
+		pop	ax
+
+; Prepare for the next font header.
+		cmp	dx, 0			; done with multi-set chain?
+		je	end_write_multi_set
+		mov	ds, dx			; ds:si -> next header
+		jmps	wms_loop
+
+; That's all!
+end_write_multi_set:
+		pop	ds
+		pop	si
+		pop	dx
+		ret
+
+		end

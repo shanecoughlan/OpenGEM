@@ -1,0 +1,533 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+;
+; Based on the disassembly of UDUNI9.VGA from ViewMAX/II: Loading fonts
+; based on a CPI file rather than hardcoding it.
+;
+		cseg
+		public	cpi_load
+
+		if	GSX
+
+cpi_load:	ret
+
+		else
+
+
+vga_flag	db	0
+
+if viewmax
+cpi_current	dw	437		;Initial value of "current CPI"
+					;437 in ViewMAX, user-defined in GEM.
+else
+cpi_current	dw	65280	
+endif
+;
+; Load CPI data for font size 4[BP], codepage 6[BP]
+; AX=count of fonts
+;
+cpi_get_data:	push	bp
+		mov	bp,sp
+		mov	cx,ax
+		push	cx
+		mov	ax,4[bp]
+		mov	ah,al			;AH = font height
+		mov	si,offset cpi_header
+find_size:	lodsb
+		cmp	al,ah	;Size found?
+		jz	size_found
+		loop	find_size
+		pop	cx
+		stc
+		jmp	size_notfound
+;
+size_found:	pop	ax
+		push	ax
+		sub	ax,cx	;AX = number of font within file
+		add	ax,ax
+		add	ax,ax	;*4
+		pop	si
+		push	si
+		add	si,ax	;*5
+		add	si,offset cpi_header	;SI->CPI entry
+		lodsw
+		mov	l_font_offset,ax	
+		lodsw
+		mov	h_font_offset,ax	;Offset to font
+		pop	ax
+		mov	cx,5
+		mul	cl
+		mov	si,offset cpi_header
+		add	si,ax
+		mov	cx, [si]		;CX = number of codepages
+scan_pages:	push	cx
+		mov	cx,2			;Read length of info header
+		mov	dx,offset cpi_header
+		mov	ah,3Fh
+		int	21h
+		jc	size_notfound
+		mov	cx,cpi_header		;Read remainder of info header
+		sub	cx,2
+		mov	dx,offset cpi_info_entry
+		mov	ah,3Fh
+		int	21h
+		jc	size_notfound
+		mov	si,offset cpi_code_page
+		lodsw
+		cmp	ax,6[bp]		;Codepage matches?
+		jz	size_matched
+		mov	dx,cpi_info_entry
+		mov	cx,cpi_info_next
+		or	dx,cx
+		jz	cpi_end
+		mov	ax,4200h		;Seek to next codepage
+		int	21h
+		jc	size_notfound
+		pop	cx
+		loop	scan_pages
+cpi_end:	stc
+		jmps	size_notfound
+;
+size_matched:	mov	si,offset cpi_cell_sizes
+		mov	cx,2[si]		;Seek to font data header
+		mov	dx,[si]
+		mov	ax,4200h
+		int	21h
+		jc	size_notfound
+		mov	cx,6			;Read font data header
+		mov	dx,offset cpi_header
+		mov	ah,3Fh
+		int	21h
+		jc	size_notfound
+
+		xor	cx,cx
+		mov	dx,cpi_info_next
+		mov	ax,4201h
+		int	21h
+		jc	size_notfound
+
+		mov	dx,offset cpi_header
+		mov	cx,200h
+		mov	ah,3Fh
+		int	21h
+		jc	size_notfound
+		les	di,es:76[di]	;Char pointer in font header
+		mov	cx,256
+		mov	si,offset cpi_header
+		call	cpi_copyshapes
+
+size_notfound:	mov	sp,bp
+		pop	bp
+		retn
+;
+; Copy character shapes from CPI file into font
+;
+cpi_copyshapes:	lodsw
+		push	cx
+		mov	cx, 4[bp]
+		mul	cx
+;
+; Seek to CPI shapes data
+;
+		mov	dx,l_font_offset
+		mov	cx,h_font_offset
+		add	dx,ax
+		adc	cx,0
+		mov	ax,4200h
+		int	21h
+		jc	cpshape_fail	
+		mov	cx,4[bp]
+		mov	ah,3Fh
+		mov	dx,offset cpi_shape_buf
+		mov	ah,3Fh		;What, again?
+		int	21h
+		jc	cpshape_fail
+		pop	dx
+		push	dx
+		and	dl,3
+		push	si
+		mov	si,offset cpi_shape_buf
+		push	di
+		cmp	cl,6
+		jnz	load_8wide
+;
+; Merge 4 6x6 characters into 3 8x6 cells.
+;
+load_6wide:	lodsb
+		or	dl,dl
+		jnz	l6w1
+		mov	es:[di],al
+		jmps	loop_6wide
+;
+l6w1:		cmp	dl,1
+		jnz	l6w2
+		shr	al,1
+		shr	al,1
+		or	es:[di],al
+		jmps	loop_6wide
+;
+l6w2:		push	dx
+		xor	ah,ah
+l6w3:		shl	ax,1
+		shl	ax,1
+		inc	dl
+		and	dl,3
+		jnz	l6w3
+		pop	dx
+		or	es:[di],ah
+		mov	es:1[di],al
+loop_6wide:	add	di,0C0h		;Next row
+		loop	load_6wide
+		pop	di
+		or	dl,dl
+		jnz	shape_done
+		jmps	shape_alldone
+;
+load_8wide:	movsb
+		add	di,0FFh
+		loop	load_8wide
+		pop	di
+shape_done:	inc	di
+shape_alldone:	pop	si
+		pop	cx
+		loop	cpi_copyshapes
+cpshape_fail:	ret
+;
+cpi_fileget:	push	cx
+		push	dx
+		push	si
+		push	di
+		push	es
+		push	ds
+		push	bx
+		push	ax
+		mov	ax, seg cpi_path
+		mov	ds,ax
+		mov	dx,offset cpi_path
+		mov	ax,3D00h
+		int	21h		; Open CPI file
+		jc	cpi_fget_err
+		mov	bx,ax		; BX = file handle
+;
+; Load CPI header: 17h bytes for standard header
+; and 1 byte for count of DRFONT tables
+;
+		mov	ah,3Fh	
+		mov	cx,18h	
+		mov	dx,offset cpi_header
+		int	21h
+		jc	cpi_fget_err
+;
+; Check magic number is 'DRFONT'
+;
+		push	bx
+		mov	bx,offset cpi_magic
+		mov	si,offset cpi_header
+chkmagic:	mov	ah,[bx]
+		or	ah,ah
+		jz	magicok
+		lodsb
+		inc	bx
+		cmp	ah,al
+		jz	chkmagic
+		pop	bx		;Magic number was not DRFONT
+		mov	ah,3Eh		
+		int	21h
+		jmps	cpi_fget_err
+;
+magicok:	pop	bx
+		mov	cl,cpi_fontcount
+		xor	ch,ch
+		mov	ax,cx
+		push	ax
+;
+; Load (n*5) bytes of the DRFONT header, plus 2 for the codepage count. Note
+; that this means that the codepage count must immediately follow the last
+; font offset.
+;
+		add	cx,cx	;*2
+		add	cx,cx	;*4
+		add	cx,ax	;*5
+		add	cx,2	;Add count of codepages
+		mov	ah,3Fh
+		int	21h
+		jc	cpi_fget_err
+		pop	ax
+		call	cpi_get_data
+		jc	cpi_fget_err
+		mov	ah,3Eh	;Close CPI file afterwards
+		int	21h
+		jc	cpi_fget_err
+		clc
+		jmps	cpi_fget_end
+;
+cpi_fget_err:	stc
+cpi_fget_end:	pop	ax
+		pop	bx
+		pop	ds
+		pop	es
+		pop	di
+		pop	si
+		pop	dx
+		pop	cx
+		ret
+;
+; Find GEM.CPI, assuming it's in the same place as the VDI.
+;
+cpi_locate:	push	ax
+		push	bx
+		push	cx
+		push	di
+		push	si
+		push	ds
+		push	es
+		mov	ah,62h
+		int	21h	;BX = PSP seg
+		mov	ds,bx
+		mov	si,2Ch
+		lodsw		;AX = environment seg
+		mov	ds,ax
+		xor	si,si	;DS:SI->environment
+;
+; Find two 0 bytes in immediate succession
+;
+findarg0:	lodsb
+		or	al,al
+		jnz	findarg0
+		lodsb
+		or	al,al
+		jnz	findarg0
+		inc	si
+		inc	si	;SI->pathname of VDI
+		mov	ax,seg cpi_path
+		mov	es,ax
+		mov	di,offset cpi_path
+		xor	cx,cx
+cpypath:	lodsb			;Copy the pathname, setting CX
+		or	al,al		;to be its length.
+		jz	endpath
+		inc	cx
+		stosb
+		jmps	cpypath
+;
+endpath:	dec	di
+		mov	al,es:[di]
+		cmp	al,'\'
+		jz	gotsep
+if not VIEWMAX
+		cmp	al,'/'		;Naughty ViewMAX doesn't check for the
+		jz	gotsep		;'/' separator
+endif
+		cmp	al,':'
+		jz	gotsep
+		loop	endpath	
+		dec	di		;No separator found, use CWD
+gotsep:		inc	di		;Replace filename with GEM.CPI
+		push	es
+		pop	ds
+		mov	si,offset cpi_name
+		mov	cx,230h		;Overkill?
+		rep	movsb
+		pop	es
+		pop	ds
+		pop	si
+		pop	di
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+;
+usefont:	push	es
+		pop	ds
+		mov	si,bp
+		pop	di
+		pop	es
+		les	di,es:76[di]	;Char pointer in font header
+		mov	cx,256
+		cld
+cpychar1:	push	cx
+		push	di
+		mov	cx,ax
+cpychar2:	movsb
+		add	di,0FFh
+		loop	cpychar2
+		pop	di
+		pop	cx
+		inc	di
+		loop	cpychar1
+		pop	ds
+		pop	si
+		pop	bp
+		pop	dx
+		pop	cx
+		pop	bx
+		clc
+		retn
+;
+cpi_load:	push	ax
+		push	bx
+;
+; [28-Jul-2007] See if we're on DOS 3.3 or later. MS-DOS 2 doesn't seem to
+; return an error if you ask it for the current codepage, which is not good.
+
+		mov	ax, 3000h
+		int	21h
+		cmp	al, 3
+		jc	noload
+		jnz	yesload
+		cmp	ah, 30
+		jc	noload
+
+yesload:
+		mov	ax,6601h	;Get current codepage
+		int	21h
+		jc	noload
+if viewmax
+		cmp	bx,437		;ViewMAX starts off with CP437 so
+		jz	noload		;doesn't need to load a new font for it
+endif
+;;; Apricot lacks VGA hardware		call	vga_test
+		call	cpi_locate
+		call	cpi_loadbx
+noload:		pop	bx
+		pop	ax
+		retn
+;
+cpi_loadbx:
+		cmp	cs:cpi_current, bx
+; BUG: ViewMAX jumps to lbxdone, not lbxend, and therefore pops ES, DI 
+; and AX here even when it hadn't pushed them!
+if viewmax
+		jz	cpi_lbxdone
+else	
+		jz	cpi_lbxend
+endif
+		push	ax
+		push	di
+		push	es
+;
+; Load 6x6 font from file
+;
+		mov	ax, seg system6x6_hdr
+		mov	es,ax
+		mov	di,offset system6x6_hdr
+		mov	ax,6
+		call	cpi_fileget
+if not viewmax				;ViewMAX doesn't check for errors here
+		jc	cpi_lbxdone	;so that if the 6x6 load fails the 
+endif					;other one has a chance of working
+;
+; Whether to load the other 3 fonts depends on which fonts are present in
+; the driver.
+;
+if	font_use8
+		mov	ax, seg system8x8_hdr
+		mov	es,ax
+		mov	di,offset system8x8_hdr
+		mov	ax,8
+if viewmax
+		call	cpi_get		;ViewMAX prefers ROM fonts to 
+else					;file fonts.
+		call	cpi_fileget
+endif
+		jc	cpi_lbxdone
+endif
+
+if	font_use14 
+		mov	ax, seg system8x14_hdr
+		mov	es,ax
+		mov	di,offset system8x14_hdr
+		mov	ax,14
+if viewmax
+		call	cpi_get		;ViewMAX prefers ROM fonts to 
+else					;file fonts.
+		call	cpi_fileget
+endif
+		jc	cpi_lbxdone
+endif
+
+if	font_use16
+		mov	ax, seg system8x16_hdr
+		mov	es,ax
+		mov	di,offset system8x16_hdr
+		mov	ax,16
+if viewmax
+		call	cpi_get		;ViewMAX prefers ROM fonts to 
+else					;file fonts.
+		call	cpi_fileget
+endif
+		jc	cpi_lbxdone
+endif
+
+		mov	cs:cpi_current, bx
+
+cpi_lbxdone:	pop	es
+		pop	di
+		pop	ax
+cpi_lbxend:	ret
+;
+; ViewMAX uses this to use the ROM font if it had the right codepage, or 
+; the file font otherwise. In GEM, we never use the ROM font because the
+; first 32 characters are different.
+;
+if	viewmax
+cpi_get:	test	cs:vga_flag, 0FFh
+		jz	do_file
+		call	cpi_romget
+		jc	do_file
+		ret
+;
+do_file:	call	cpi_fileget
+		ret
+endif
+	
+
+		dseg
+cpi_path	rb	82h
+if viewmax			;ViewMAX uses the system EGA.CPI file.
+cpi_name	db	'EGA.CPI',0
+else
+cpi_name	db	'GEM.CPI',0
+endif
+cpi_header	dw	0
+cpi_info_entry	dw	0
+cpi_info_next	dw	0,0,0,0,0,0
+cpi_code_page	rs	7
+cpi_fontcount	db	0
+cpi_cell_sizes	rs	1E8h
+cpi_shape_buf	rs	20h
+cpi_magic	db	7Fh,'DRFONT',0
+l_font_offset	dw	0
+h_font_offset	dw	0
+
+
+		extrn	system6x6_hdr:word
+if font_use8
+		extrn	system8x8_hdr:word
+endif
+if font_use14
+		extrn	system8x14_hdr:word
+endif
+if font_use16
+		extrn	system8x16_hdr:word
+endif
+
+		endif	;GSX

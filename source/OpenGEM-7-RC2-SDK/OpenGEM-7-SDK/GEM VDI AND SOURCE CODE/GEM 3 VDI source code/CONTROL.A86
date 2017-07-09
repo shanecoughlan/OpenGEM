@@ -1,0 +1,390 @@
+;/*		CONTROL.A86	1/29/87 - 1/30/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	close_virtual
+		public	close_workstation
+		public	handle_zero
+		public	open_virtual
+		public	open_workstation
+
+; External entry points.
+		extrn	check_and_load:near
+		extrn	clear_ws_table_entry:near
+		extrn	driver:near
+		extrn	find_fonts:near
+		extrn	free_font_memory:near
+		extrn	reset_current_directory:near
+		extrn	set_gdos_directory:near
+		extrn	transform_ptsout:near
+		extrn	validate_handle:near
+
+; External data.
+include externs.a86
+
+
+;************************************************************************
+;* open_workstation							*
+;************************************************************************
+open_workstation:
+; If the workstation identifier is out of range or if the workstation is
+; already open, return a handle of zero.
+		lds	si, intin
+		cmp	word ptr [si], 0	; is the id positive?
+		jg	ws_id_positive
+		jmp	handle_zero		; no:  return zero
+
+ws_id_positive:
+		mov	ax, [si]		; ax = workstation identifier
+		mov	work_identifier, ax	; save for use later
+		mov	di, cs
+		mov	es, di
+		mov	di, offset ws_id	; es:di = workstation id table
+		mov	cx, WS_ENTRIES		; cx = workstation table size
+	repne	scasw				; scan for the id
+		jne	get_new_index		; skip following if not found
+		mov	bx, di
+		sub	bx, offset ws_id + 2	; bx = table index
+		mov	ws_index, bx		; save table index
+		test	es:ws_flags[bx],WS_OPEN	; is it open or just loaded?
+		jz	driver_loaded
+		jmp	handle_zero		; open already:  return zero
+
+; If there is no more space in the workstation table, return a handle of zero.
+get_new_index:
+		xor	ax, ax
+		mov	di, offset ws_id	; es:di = workstation id table
+		mov	cx, WS_ENTRIES		; cx = workstation table size
+	repne	scasw				; scan for an empty spot
+		jz	found_empty_spot
+		jmp	handle_zero		; table full:  return zero
+
+found_empty_spot:
+		mov	bx, di
+		sub	bx, offset ws_id + 2	; bx = table index
+		mov	ws_index, bx		; save table index
+
+; Is the workstation identifier among those in the assignment table?  If so,
+; try to load the driver.  If the driver isn't loaded successfully, return
+; a handle of zero.
+		call	set_gdos_directory
+		call	check_and_load
+		call	reset_current_directory
+		cmp	load_successful, 1	; did the load occur?
+		je	successful_driver_load
+		jmp	handle_zero		; bad load:  return zero
+
+; Store the workstation identifier, driver code segment, and driver size in
+; the workstation table.  Clear the workstation flags.
+successful_driver_load:
+		mov	bx, ws_index		; bx = table index
+		mov	ax, work_identifier
+		mov	ws_id[bx], ax		; store workstation identifier
+		mov	ax, driver_off
+		mov	ws_coff[bx], ax		; store driver code offset
+		mov	ax, driver_seg
+		mov	ws_cseg[bx], ax		; store driver code segment
+		mov	ax, driver_head
+		mov	ws_chead[bx], ax	; store driver header segment
+		mov	ax, driver_size
+		mov	ws_size[bx], ax		; store driver size
+		xor	ax, ax
+		mov	ws_flags[bx], ax	; clear workstation flags
+
+; Store the workstation root handle in the workstation table.  Update the
+; entry for external font address and indicate that the workstation is open.
+driver_loaded:
+		mov	ax, bx
+		shr	ax, 1
+		inc	ax			; ax = handle
+		mov	ws_root[bx], ax		; store root handle
+		or	ws_flags[bx],WS_OPEN	; indicate workstation open
+		xor	ax, ax
+		mov	ws_font_seg[bx], ax	; no external font address
+
+; Copy the intin array.  Store the transformation mode in the workstation
+; table.  Update the parameter block to point to the new intin array.
+		les	di, contrl		; es:di = old control array
+		mov	cx, es:word ptr 6[di]	; cx = number of intin words
+		lds	si, intin		; ds:si = old intin array
+		mov	ax, cs
+		mov	es, ax
+		mov	di, offset copy_intin	; es:di = new intin array
+		push	di			; save for later use
+	rep	movsw
+		pop	di			; restore intin array pointer
+		mov	ax, es:word ptr 20[di]
+		mov	ws_xform[bx], ax	; store transformation mode
+		mov	si, offset copy_intin	; si = intin offset
+		mov	di, offset intin	; es:di = parm block intin
+		mov	es:[di], si		; store offset
+		mov	es:2[di], es		; store segment
+
+; Copy the control array.  The current control array address must be saved
+; first so that it can be used later to return control information.  Store the
+; handle number in the control array.
+		lds	si, contrl		; ds:si = old control array
+		mov	di, offset save_contrl
+		mov	cs:[di], si		; save offset
+		mov	cs:2[di], ds		; save segment
+		mov	ax, cs
+		mov	es, ax
+		mov	di, offset copy_contrl	; es:di = new control array
+		mov	cx, 4			; contrl items to copy
+	rep	movsw
+		mov	si, offset copy_contrl	; si = contrl offset
+		mov	di, offset contrl	; es:di = parm block contrl
+		mov	es:[di], si		; store offset
+		mov	es:2[di], es		; store segment
+		mov	ax, ws_root[bx]
+		mov	es:12[si], ax		; store handle number
+
+; Pass control to the driver.  If the driver had a problem and returns a
+; handle of zero, close the workstation.
+		call	driver
+		lds	si, contrl		; ds:si = control array copy
+		cmp	word ptr 12[si], 0
+		jg	update_contrl
+		call	close_workstation
+		jmps	handle_zero
+
+; Get the address and size of the driver's data segment and store them in the
+; workstation table.  Copy the output items in the control array to the
+; caller's control array.  This includes the intout and ptsout counts,
+; as well as the handle.
+update_contrl:
+		les	di, save_contrl		; es:di = caller control array
+		mov	bx, ws_index		; bx = table index
+		mov	ax, word ptr 14[si]
+		mov	ws_dseg[bx], ax		; store data segment location
+		mov	ax, word ptr 16[si]
+		mov	ws_dsize[bx], ax	; store data segment size
+		mov	ax, 4[si]
+		mov	es:4[di], ax		; copy ptsout count
+		mov	ax, 8[si]
+		mov	es:8[di], ax		; copy intout count
+		mov	ax, 12[si]
+		mov	es:12[di], ax		; copy handle
+
+; Get the x and y resolution from the intout array.
+copy_resolution:
+		lds	si, intout		; ds:si = intout address
+		mov	ax, 0[si]
+		inc	ax
+		mov	ws_xres[bx], ax		; store the x resolution
+		mov	ax, 2[si]
+		inc	ax
+		mov	ws_yres[bx], ax		; store the y resolution
+
+; If the workstation is a metafile, force the transformation mode to RC.
+		cmp	word ptr 88[si], 4	; is it a metafile driver?
+		jne	convert_ptsout
+		mov	ws_xform[bx], 2		; force no transformation
+
+; Transform the ptsout array, if necessary.
+convert_ptsout:
+		call	transform_ptsout
+		ret
+
+
+;************************************************************************
+;* handle_zero								*
+;************************************************************************
+; Error return code.  Zero out the workstation handle and return.  Note that
+; the "load_successful" flag must be zeroed, just in case this code is entered
+; from a subroutine like "check_and_load".
+handle_zero:
+		mov	load_successful, 0	; fake unsuccessful load
+		lds	di, save_contrl		; es:di = caller control array
+		mov	word ptr 12[di], 0	; zero handle
+		ret
+
+
+;************************************************************************
+;* open_virtual								*
+;************************************************************************
+open_virtual:
+; If the handle is out of range or if no open workstation is associated with
+; the handle, return a handle of zero.
+		call	validate_handle		; bx = workstation table index
+		jnc	check_for_virt		; carry clear:  no error
+		jmp	handle_zero
+
+; If the associated workstation is a virtual workstation, return a handle
+; of zero.
+check_for_virt:
+		cmp	ws_id[bx], 0		; virtual workstation?
+		jg	workstation_fine
+		jmp	handle_zero		; virtual:  return zero
+
+; If there is no more space in the workstation table, return a handle of zero.
+workstation_fine:
+		xor	ax, ax			; look for a zero
+		mov	di, cs
+		mov	es, di
+		mov	di, offset ws_id	; es:di = workstation id table
+		mov	cx, WS_ENTRIES		; cx = workstation table size
+	repne	scasw				; scan for an empty spot
+		jz	entry_found
+		jmp	handle_zero		; table full:  return zero
+entry_found:
+		sub	di, offset ws_id + 2
+		mov	ws_index, di		; save table index
+
+; Allocate memory for the virtual workstation data segment.  If memory cannot
+; be allocated, return a handle of zero.
+		mov	si, bx			; save index for later
+		mov	bx, ws_dsize[bx]
+		mov	cx, bx			; cx = size in bytes
+		shr	bx, 1
+		shr	bx, 1
+		shr	bx, 1
+		shr	bx, 1
+		inc	bx			; bx = size in paragraphs
+		clc				; return status in carry flag
+		mov	ah, ALLOCATE
+		int	PCDOS
+		jnc	dseg_allocated		; carry flag set if error
+		jmp	handle_zero		; unsuccessful:  return zero
+
+; Copy the workstation data segment to the virtual workstation data segment.
+dseg_allocated:
+		mov	bx, si			; bx = workstation's index
+		mov	si, ws_dseg[bx]
+		mov	ds, si
+		xor	si, si			; ds:si = source data address
+		mov	es, ax
+		xor	di, di			; es:di = virtual data address
+	rep	movsb
+
+; Transfer information to the virtual workstation's table entry.
+		mov	di, cs
+		mov	ds, di			; data segment is code segment
+		mov	di, ws_index		; di = virtual entry
+		mov	ws_id[di], -1		; indicate virtual workstation
+		mov	ws_dseg[di], ax		; store data segment address
+		mov	ax, ws_dsize[bx]
+		mov	ws_dsize[di], ax	; store data segment size
+		mov	ax, ws_root[bx]
+		mov	ws_root[di], ax		; store root handle
+		mov	ws_font_seg[di], 0	; zero external font segment
+		mov	ax, ws_xres[bx]
+		mov	ws_xres[di], ax		; store x resolution
+		mov	ax, ws_yres[bx]
+		mov	ws_yres[di], ax		; store y resolution
+		mov	ax, ws_coff[bx]
+		mov	ws_coff[di], ax		; store code offset location
+		mov	ax, ws_cseg[bx]
+		mov	ws_cseg[di], ax		; store code segment location
+		mov	ax, ws_flags[bx]
+		and	ax, NOT WS_RES		; virtual cannot be resident
+		mov	ws_flags[di], ax	; store flags
+
+		lds	si, intin		; ds:si = intin array
+		mov	ax, 20[si]		; ax = transformation mode
+		mov	ws_xform[di], ax	; store transformation mode
+
+; Return the handle.
+		lds	si, contrl		; ds:si = control array
+		shr	di, 1
+		inc	di			; di = handle
+		mov	12[si], di		; store handle
+
+; Transfer control to the driver.
+		call	driver
+		ret
+
+
+;************************************************************************
+;* close_workstation							*
+;************************************************************************
+close_workstation:
+
+; Get the workstation table index and clear the "workstation open" bit in
+; the workstation flags word.  If fonts are loaded for any associated virtual
+; workstations, get the font chain pointer and save it so that the memory may
+; be released later.  If the workstation is really a virtual workstation,
+; pass control to the close virtual workstation routine.
+		mov	bx, ws_index		; bx = table index
+		cmp	ws_id[bx], -1		; virtual?
+		jne	clear_open_flag
+		jmp	close_virtual
+clear_open_flag:
+		and	ws_flags[bx], NOT WS_OPEN
+		call	find_fonts		; fonts used by others?
+		jc	check_for_vws		; not used
+		mov	ax, ws_font_seg[si]
+		mov	ws_font_seg[bx], ax	; store font pointer
+
+; If there are any virtual workstations associated with the workstation, dump
+; them, too.
+check_for_vws:
+		mov	ax, ws_root[bx]		; get the root handle
+		mov	ws_root[bx], 0		; clear root handle
+		mov	di, cs
+		mov	es, di
+		mov	di, offset ws_root	; es:di = root handles table
+		mov	cx, WS_ENTRIES		; cx = workstation table size
+free_vw_loop:
+	repne	scasw				; scan for the handle
+		jne	free_driver_mem		; skip following if not found
+		push	es			; save loop variables
+		push	di
+		push	cx
+		push	ax
+		sub	di, offset ws_root + 2	; di = table index
+		mov	es, ws_dseg[di]		; es = virtual data segment
+		mov	ah, FREE_MEM
+		int	PCDOS
+		mov	bx, di			; bx = table index for virtual
+		call	clear_ws_table_entry	; clear virtual's table
+		pop	ax			; restore loop variables
+		pop	cx
+		pop	di
+		pop	es
+		jmp	free_vw_loop		; look for more
+
+; Free the driver's memory and clear its entry in the workstation table.
+; Free the font memory associated with the driver.  If the driver is resident,
+; don't free the driver memory.
+free_driver_mem:
+		mov	bx, ws_index		; bx = table index
+		call	free_font_memory
+		mov	ws_font_seg[bx], 0	; indicate no external fonts
+		mov	ws_texbuf[bx], 0	; indicate no text buffer
+		test	ws_flags[bx], WS_RES	; is it a resident driver?
+		jnz	close_ws_done		; resident:  don't free
+
+		mov	cx, ws_chead[bx]
+		mov	es, cx			; es = start of driver
+		mov	ah, FREE_MEM
+		int	PCDOS
+		call	clear_ws_table_entry	; clear the table entry
+close_ws_done:
+		ret
+
+
+;************************************************************************
+;* close_virtual							*
+;************************************************************************
+close_virtual:
+; Release the memory for the virtual workstation.  If font memory is allocated
+; and nobody else is sharing it, release it, too.
+		mov	bx, ws_index		; bx = table index
+		mov	es, ws_dseg[bx]	; es = virtual data segment
+		mov	ah, FREE_MEM
+		int	PCDOS
+		cmp	ws_font_seg[bx], 0	; fonts loaded?
+		je	clear_virt_entry	; no:  skip font de-allocation
+		call	find_fonts		; shared?
+		jnc	clear_virt_entry	; shared:  skip de-allocation
+		call	free_font_memory	; dump the font memory
+
+clear_virt_entry:
+		call	clear_ws_table_entry
+		ret
+
+		end

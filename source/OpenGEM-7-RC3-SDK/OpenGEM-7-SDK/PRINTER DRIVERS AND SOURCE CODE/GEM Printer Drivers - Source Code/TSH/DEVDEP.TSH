@@ -1,0 +1,860 @@
+;************************************************************************
+;*			Toshiba 321/351 Printer				*
+;************************************************************************
+
+; The following file defines device dependent global constants.
+include externs.a86
+
+DGROUP	GROUP	DATA
+		dseg
+
+		public	CONTRL, INTIN, PTSIN, INTOUT, PTSOUT
+
+CONTRL		rw	CONTRL_SIZE
+INTOUT		rw	INTOUT_SIZE
+PTSOUT		rw	PTSOUT_SIZE
+INTIN		rw	INTIN_SIZE
+PTSIN		rw	0
+		db	'GEMVDI 2.3 Toshiba 321/351 Printer Driver 10/1/87'
+		db	'Serial No. XXXX-0000-654321  All Rights Reserved'
+		db	'Copyright (C) 1985-1987 Digital Research Inc.'
+ptsin_end	rw	PTSIN_SIZE + 2 - (ptsin_end - PTSIN)/2
+
+CGROUP	GROUP	CODE
+		cseg
+
+		public	adv_form
+		public	alphaout
+		public	clearmem
+		public	concat
+		public	dini_dev
+		public	enter_gr
+		public	exit_gr
+		public	init_dev
+		public	scan_out
+		public	s_orient
+		public	dev_rect
+		public	set_page
+		public	ini_page
+
+		extrn	dinit_p:near
+		extrn	init_p:near
+		extrn	pout:near
+		extrn	printer_out:near
+		extrn	alpha_map:near
+
+		public	ln_bytes
+		public	ln_next
+		public	sc_bytes
+		public	sc_off
+
+; Equates for ASCII characters used in this module:
+CR		Equ	0Dh		;ASCII carriage return
+ESC		Equ	1Bh		;ASCII escape
+FORM_FEED	Equ	0Ch		;ASCII form feed
+LF		Equ	0Ah		;ASCII line feed
+
+; The alpha text attribute escape character is a DC2.
+ALPHA_ESCAPE	equ	12h
+
+; Device dependent scan size variables:
+; These all get set in set_page() (below) as per requested page size
+ln_bytes	dw	0		; bytes per scan line
+ln_next		dw	0		; bytes to next scan line
+sc_bytes	dw	0		; bytes per slice
+sc_off		dw	0
+
+
+;************************************************************************
+;*	ini_page()							*
+;*		Initialize page information.				*
+;************************************************************************
+ini_page:
+		ret
+
+;************************************************************************
+;*  set_page()								*
+;*	Set variables to accomodate requested page size.  Called once	*
+;*	only, from v_opnwk() in monout.c				*
+;*	Set: vq_scan() outputs - a_page, g_page				*
+;************************************************************************
+set_page:
+	      	mov	ax, dev_tab	
+		inc	ax			; page width in pixels
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; page width in bytes
+		inc	ax
+		and	ax, 0fffeh		; make word boundary
+		mov	ln_bytes, ax		; bytes per line
+		mov	dln_byte, ax		; bytes per line
+		mov	ln_next, ax		; bytes to next line
+		mov	sc_off, ax		; offset to next scan line
+
+		mov	cx, G_SL_HGT
+		mul	cx			; graphics slice worth of
+		mov	sc_bytes, ax		; 	bytes/line
+
+; Number of slices that will fit on the page = chosen page size in y direction
+; divided by height of a slice.
+		mov	ax, dev_tab + 2	
+		inc	ax		
+		xor	dx, dx		
+		mov	bx, G_SL_HGT	
+		div	bx		
+		mov	g_page, ax		; graphics slices per page
+
+; Now do the same for alpha text slice height
+		mov	ax, req_y
+		add	ax, A_SL_HGT/2
+		mov	bx, A_SL_HGT
+		xor	dx, dx		
+		div	bx		
+		mov	a_page, ax		; alpha text slices per page
+		ret
+
+;************************************************************************
+;*  status = dev_rect()							*
+;*	Called ONCE ONLY, from v_updwk() in jmptbl.c			*
+;*	Return FALSE.							*
+;*  NOTE: in the hph, this routine "sets up the graphics window parms"	*
+;*	EXPLORE.							*
+;************************************************************************
+dev_rect:
+		xor	ax, ax
+		ret
+
+;************************************************************************
+;*	CONCAT								*
+;*		Convert the (x, y) pair passed in (BX, AX) into a	*
+;*		physical address (DI) and bit offset into a byte (BX).	*
+;************************************************************************
+concat:
+		push	ax
+		push	dx
+
+; Calculate the physical address and the bit offset.
+		sub	ax, ys_min		; normalize to start of slice
+		mov	dx, ln_bytes		; dx = bytes/line
+		mul	dx			; ax = bytes for y position
+		mov	di, bx
+		shr	di, 1
+		shr	di, 1
+		shr	di, 1			; adjust x to byte offset
+		add	di, ax			; di = byte offset to (x, y)
+		and	bx, 07h			; bl = bit offset into byte
+
+; Restore and leave.
+		pop	dx
+		pop	ax
+		ret
+
+;************************************************************************
+;*  init_dev()								*
+;*  dini_dev()								*
+;*  s_orient()								*
+;*       No-op for Toshiba printer.					*
+;************************************************************************
+init_dev:
+dini_dev:
+s_orient:
+		ret
+
+;************************************************************************
+;*  ENTER_GR:								*
+;*       Set vertical spacing to 2/15" and turn off auto wrap.		*
+;************************************************************************
+enter_gr:
+		mov	si, offset Enter_graph
+		call	Printer_Out
+		ret
+
+;**********************************************************************
+;*  CLEARMEM:                                                         *
+;*      Clear graphics memory.  For a printer, this means clearing    *
+;*      the display list and rasterizing buffer.                      *
+;**********************************************************************
+clearmem:
+		push	es
+
+		mov	ax, display_list_seg
+		mov	es, ax
+		xor	di, di			; clear the rasterizing buffer
+		xor	ax, ax
+		mov	cx, buffer_size
+		shr	cx, 1
+		rep	stosw
+
+		pop	es			; restore callers registers
+		ret
+
+;************************************************************************
+;*  ADV_FORM:                                                         	*
+;*      Do a form feed on the printer.  Allowable print area = length	*
+;*	  of paper, so you don't always WANT a form feed to go out.	*
+;*	Called from v_clrwk() in monout.c, and c_escape() in monoprin.c	*
+;*	  case 20: advance form, case 22: clear display list		*
+;*	First parameter: not used by Epson (no multiple copy support).	*
+;*	Second parameter: 0 = don't do form feed if vmu = 0		*
+;*			  1 = do form feed unconditionally		*
+;************************************************************************
+adv_form:
+		push	bp
+		mov	bp, sp
+		mov	bx, 4[bp]		; do form feed flag
+		cmp	bx, 1
+		je	do_ff			; do form feed unconditionally
+		cmp	vmu, 0
+		je	dont_ff
+do_ff:
+		mov	dl, FORM_FEED
+		call	pout
+		mov	vmu, 0
+dont_ff:
+		pop 	bp
+		ret
+
+;****************************************************************
+;* EXIT_GR:							*
+;* 	Reset to normal line feed spacing and turn auto wrap on	*
+;****************************************************************
+exit_gr:
+		mov	si, offset Exit_Graph
+		call	Printer_Out
+		ret
+
+;************************************************************************
+;*  ALPHAENV:								*
+;*	Verify that the alphanumeric text environment is correct.  If	*
+;*	not, output the commands to the printer to set the correct	*
+;*	environment.							*
+;************************************************************************
+alphaenv:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+		push	si
+		push	bp
+
+; Is the attribute environment correct?
+		mov	dl, reqalpha
+		mov	dh, curalpha
+		cmp	dl, dh			; requested same as current?
+		je	end_alphaenv
+
+; The attribute environment is not correct.  Find out which attributes are
+; incorrect and output the appropriate command to set that environment.
+		mov	cx, 8			; cx = number of attributes
+		xor	bx, bx			; bx = command index
+
+alphaenv_loop:
+		mov	bp, dx			; bp = saved attribute info
+		and	dl, 1			; mask next requested attrib.
+		and	dh, 1			; mask next current attribute
+		cmp	dl, dh			; are they the same?
+		je	next_alphaenv_loop
+
+		push	bx			; save the command index
+		add	bl, dl			; update index with begin/end
+		shl	bl, 1			; bx = offset into word table
+		mov	si, com_addr[bx]	; si -> command string
+		cmp	byte ptr [si], 00h
+		je	no_print		; attribute isn't supported 
+		call	printer_out		; output command string
+no_print:	pop	bx			; restore command index
+
+next_alphaenv_loop:
+		mov	dx, bp			; restore shifted attrib info
+		shr	dl, 1			; next requested attribute
+		shr	dh, 1			; next current attribute
+		inc	bx
+		inc	bx			; update command index
+		loop	alphaenv_loop
+
+; Save the new attribute set.
+		mov	al, reqalpha
+		mov	curalpha, al
+
+end_alphaenv:
+		pop	bp
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+;************************************************************************
+;*  ALPHAOUT:								*
+;*	Output the alpha text string in the INTIN array.  If any alpha	*
+;*	attribute escape sequences are encountered, process them.	*
+;************************************************************************
+alphaout:
+		push	bp
+
+; Make sure that output occurs on a printer character line.
+		call	vmu_sync
+
+; Make sure the correct alpha text environment exists on the printer.
+		call	alphaenv
+
+; Get the length of the string and start the output loop.
+		mov	cx, CONTRL + 6		; cx = number of characters
+		mov	si, offset INTIN
+		mov	bp, A_SL_HGT
+alphaout_loop:
+		lodsw				; get the next character
+		cmp	al, ALPHA_ESCAPE
+		jne	not_escape
+		cmp	cx, 1			; any more characters?
+		je	not_escape
+		mov	bl, byte ptr [si]	; check the next character
+
+		cmp	bl, '9'			; have I got a number?
+		jle	number			; convert to decimal
+		cmp	bl, 'A'			; have I got a letter?
+		jl	bad_escape		; not a number, not a letter
+		sub	bl, 7			; sub 55 to convert letter
+number:		sub	bl, 48			; sub 48 to convert number
+
+		cmp	bl, 0			; should now have a decimal
+		jl	bad_escape		; number between 0 and 35
+		cmp	bl, 35			
+		jg	bad_escape
+		
+		cmp	bl, 16			; ascii G - ascii V are
+		jl	got_escape		; reserved
+		cmp	bl, 32
+		jge	got_escape
+
+bad_escape:
+		dec	cx
+		inc	si
+		inc	si
+		jmp	next_alphaout_loop
+
+; An alpha attribute escape sequence has been found.  Process it.
+got_escape:
+		dec	cx
+		inc	si
+		inc	si
+		xor	bh, bh
+		cmp	bl, 32			; check for style setting
+		jl	attrib			; (style = W - Z, or 32 - 35)
+		sub	bl, 32			; calculate style table index
+		shl	bl, 1
+
+		push	si
+		mov	si, styl_addr[bx]	; bx = offset into word table
+		cmp	byte ptr [si], 00h	; check for unsupported style
+		je	no_style
+		call	printer_out
+no_style:	pop 	si
+		jmps	next_alphaout_loop
+
+attrib:		mov	al, alpha_clear[bx]	; al = bit clearing mask
+		and	reqalpha, al		; clear the attribute bit
+		mov	al, alpha_set[bx]	; al = bit setting mask
+		or	reqalpha, al		; set the bit appropriately
+		call	alphaenv
+		jmps	next_alphaout_loop
+
+; Not a special character.  Just output it.  Note that a formfeed does not
+; have to be replaced with anything special for this printer.
+not_escape:
+		cmp	al, 127			; International char?
+		jna	not_intl		; If so
+		push	si
+		push	ds			; save some regs
+		push	cx
+		push	ax
+		call	alpha_map		; get string in local ds
+		mov	si, ax			; offset in si
+		pop	ax
+		pop	cx
+		pop	ds
+		cmp	byte ptr [si], 0	; any to send?
+		je	no_send			; if so then
+		call	printer_out		; print them
+no_send:
+		pop	si
+		jmps	next_alphaout_loop	; and on to next
+not_intl:
+		mov	dl, al
+		call	pout			; output the character
+
+; Check for a line feed or formfeed.  Either of these characters will cause
+; an advance, in which case the vmu must be updated.
+		cmp	al, LF
+		jne	vmu_check_ff
+		add	vmu, bp			; bump by one alpha line
+		call	vmu_reset
+		jmps	next_alphaout_loop
+vmu_check_ff:
+		cmp	al, FORM_FEED
+		jne	next_alphaout_loop
+		mov	vmu, 0
+
+next_alphaout_loop:
+		dec	cx			
+		je	end_alphaout		
+		jmp	alphaout_loop		
+
+end_alphaout:
+		pop	bp
+		ret
+
+;************************************************************************
+;*  VMU_RESET:								*
+;*	Internal subroutine to reset vmu to top of new page if it's 	*
+;*	beyond end of last page.  I.E. subtract (yres + 1) from it if 	*
+;*	it's greater than or equal to (yres + 1).  Called each time the	*
+;*	vmu is increased.						*
+;************************************************************************
+vmu_reset:
+		push	dx
+		mov	dx, vmu
+		cmp	dx, dev_tab + 2		; >= yres+1, i.e. > yres
+		jle	no_reset
+		sub	dx, dev_tab + 2	  ; vmu >= (yres+1), subtract (yres+1)
+		sub	dx, 1
+		mov	vmu, dx
+no_reset:  
+		pop	dx
+		ret
+
+;************************************************************************
+;*  VMU_SYNC:								*
+;*	Adjust the position of the print head so that alpha text output	*
+;*	will occur on a text line.  ("vmu" = vertical motion units)	*
+;************************************************************************
+vmu_sync:
+; Is the current scan line the beginning of a character line?  If not,
+; send out sufficient spacing to make it so.
+		mov	ax, vmu
+		xor	dx, dx
+		mov	bx, A_SL_HGT		; bx = text slice height
+		div	bx
+		cmp	dx, 0			; check for remainder
+		je	end_vmu_sync
+		sub	bx, dx
+		add	vmu, bx			; adjust vmu to next line
+		call	vmu_reset
+		push	bx
+		call	pixel_adv
+		pop	bx
+
+end_vmu_sync:
+		ret
+
+;************************************************************************
+;*  pixel_adv()								*
+;*	Internal routine called from vmu_sync() and finish_page().	*
+;* 	Toshiba sized_lf command uses 1/48 inch increments so number of	*
+;*	pixels needs to be multiplied by 4/15				*
+;************************************************************************
+pixel_adv:
+		push	bp
+		mov	bp, sp
+		mov	ax, 4[bp]	; param = # pixels to advance
+
+		shl	ax, 1
+		shl	ax, 1		; *4
+		xor	dx, dx
+		mov	bx, 15
+		div	bx		; /15
+		mov	bx, ax		; save to temp
+		and	ax, 0fh		; mask off hi nibble
+		add	ax, '@'		; add offset
+		mov	sized_lf+5, al
+		mov	ax, bx		; process hi order nibble
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1		; get hi order nibble
+		and	ax, 0fh
+		add	ax, '@'
+		mov	sized_lf + 4, al
+		mov	si, offset sized_lf
+		call	printer_out
+
+		pop	bp
+		ret
+
+;************************************************************************
+;*  finish_page()							*
+;*	yres has to be an even multiple of G_SL_HGT, so actual length 	*
+;*	of paper may be many pixels longer.  BITMAP printers need to	*
+;*	bump the physical page up by the difference to leave printer	*
+;*	at the start of a new piece of paper.  We check whether or not	*
+;*	it's time to do this after every GRAPHICS bump of the vmu.	*
+;************************************************************************
+finish_page:
+		push	dx
+
+; I've JUST bumped the vmu by G_SL_HGT.  See if it's beyond the end of the
+;  graphics print area.
+		mov	dx, vmu
+		cmp	dx, dev_tab + 2
+		jle	fp_end			; NO - not time to finish_page
+		
+; Calculate the number of pixels to be advanced.
+		mov	ax, req_y	; true length of paper in pixels
+		sub	ax, 1		; convert to max y
+		sub	ax, dev_tab + 2	; yres = length of graphics print area
+		jz	fp_end
+
+		cmp	ax, G_SL_HGT/2	; Exactly 1/2 line off?
+		jne	fp_nothalf	; If so then
+		mov	si, offset half_lf ; use 1/2 line feed command
+		call	printer_out	; send it
+		jmps	fp_end		; all done
+fp_nothalf:
+		push	ax
+		call	pixel_adv
+		pop	ax
+
+fp_end:
+		pop	dx
+		ret
+
+;**********************************************************************
+;*  Scan_Out                                                          *
+;*      SCAN and discard any trailing blanks in an output buffer.  If *
+;*      data must be sent to the printer, convert it to printer       *
+;*      dependent format and transmit it.  Then advance the page.     *
+;*                                                                    *
+;*      The Toshba printer uses 24 pins in grahpic mode.  4 bytes of  *
+;*      data are sent to the printer, each activates 6 pins.  This is *
+;*      repeated for each 24 scan line slice in the buffer.          *
+;*                                                                    *
+;**********************************************************************
+Scan_Out:
+		push	es		; save the segment register we trash
+
+		mov	ax, yw_max
+		cmp	ys_max, ax	; does slice extend beyond the window?
+		jg	calc_cnt	; yes:  calculate the number of slices
+		mov	cx, slice_cnt	; no:  slice count is known
+		jmps	scan_parms
+calc_cnt:
+		sub	ax, ys_min
+		mov	cx, G_SL_HGT
+		add	ax, cx		; for rounding (jg - v1.1b)
+		xor	dx, dx
+		div	cx
+		mov	cx, ax		; cx = number of slices left
+scan_parms:
+		xor	bx, bx		; bx gets offset to the buffer
+					;  (always on a paragraph boundary)
+		mov	ax, Graph_Plane	; segment address of the buffer
+		mov	es, ax
+Scan_Next_Slice:
+		push	cx		; save outer loop count
+
+;Backscan the scan lines
+		mov	cx, ln_bytes	; count of bytes in line to Cx
+		mov	di, bx		; es:di point to last byte
+		add	di, cx
+		dec	di
+		call	Back_Scan
+		jcxz	Setup_Next_Scan_Line	;if blank skip output
+		mov	di, bx			; es:di point to first byte
+		call	Byte_Out
+
+Setup_Next_Scan_Line:
+		mov	si, Offset Graph_LF	; Advance the paper to start
+		call	Printer_out		; of next 24 scan lines
+
+		add	bx, sc_bytes		; bump address 24 scan lines
+		mov	ax, G_SL_HGT
+		add	vmu, ax			;  & vmu to next graphics line
+		call	finish_page
+		call	vmu_reset
+
+		pop	cx			; restore loop count
+		loop	scan_next_slice
+
+end_scan_out:
+		pop	es			; restore callers registers
+		ret
+
+;**********************************************************************
+;*  Back_Scan                                                         *
+;*       This routine checks for any trailing blanks in the data line.*
+;*       Trailing whitespace is discarted before the line is sent to  *
+;*       the printer.                                                 *
+;*                                                                    *
+;*  Input:                                                            *
+;*       Cx = Number of bytes per line                                *
+;*       Di = Address of the last byte of the first scan line         *
+;*                                                                    *
+;*  Output:                                                           *
+;*       Cx = Number of non-blank bytes in the scan lines.            *
+;*                                                                    *
+;*  Registers:                                                        *
+;*       Bx preserved, all others trashed                             *
+;**********************************************************************
+Back_Scan:
+		Mov	Dx, sc_off		; make a register for speed
+
+Check_Next_Byte:
+		Push	Cx			; save the byte count
+		Push	Di			; save the byte address
+		Mov	Cx, G_SL_HGT		; check slice of 24 wires
+Next_Byte:
+		cmp	es:Byte Ptr [Di], 0
+		jnz	Found_Non_Blank
+		add	di, dx			; byte in next pixel line
+		loop	Next_Byte
+
+		pop	di			; decrement byte address
+		dec	di
+		pop	cx			; get back loop counter
+		loop	Check_Next_Byte
+
+		ret
+
+Found_Non_Blank:
+		pop	di			; clean up stack and return
+		pop	cx			; count of non-blank bytes
+
+		ret
+
+;**********************************************************************
+;*  Byte_Out                                                          *
+;*       Scan and output bytes from the bitmap to the printer.        *
+;*                                                                    *
+;*       Graphics byte MSB = Top Wire, LSB = Bottom Wire              *
+;*                                                                    *
+;*  Input:                                                            *
+;*       Si = Address of first byte of first scan line to output      *
+;*       Cx = number of columns/8 to output                           *
+;*                                                                    *
+;*  Registers:                                                        *
+;*       Bx preserved                                                 *
+;**********************************************************************
+Byte_Out:
+		push	bx
+
+; Number of columns to be output = 8 * Cx
+		mov	ax, cx
+		shl	ax, 1
+		shl	ax, 1
+		shl	ax, 1
+
+; Convert this to 4 digit ASCII and move to buffer.
+		mov	bx, 10
+		xor	dx, dx		; [Dx,Ax] is the dividend
+		div	bx		; Quotient: Ax, Rem: Dx
+		add	dx, '0'
+		mov	N4, dl
+		xor	dx, dx
+		div	bx
+		add	dx, '0'
+		mov	N3, dl	
+		xor	dx, dx
+		div	bx
+		add	dx, '0'
+		mov	N2, dl	
+		xor	dx, dx
+		div	bx
+		add	dx, '0'
+		mov	N1, dl	
+		mov	si, (Offset Graph_mode)
+		call	Printer_out
+
+;Main output loop
+Output_Next_Byte:
+		push	cx		; Save Byte count
+		mov	cx, 8		; Always extract a whole bytes worth
+		mov	bx, 8001h	; Bl = Initial shift count
+					; Bh = Start Bitmask
+Repeat:
+		push	di
+		call	Mask_Out	; Get the desired bits from bitmap
+					; Returns the graphics byte in <DL>
+		call	Pout		; Output byte in <Dl> to printer
+		call	Mask_out	; 3 more times to get 24 vertical dots
+		call	Pout
+		call	Mask_out
+		call	Pout
+		call	Mask_out
+		call	Pout
+
+		ror	bh, 1		; update bitmask to next bit pattern
+		inc	bl		; update shift counter 
+		pop	di
+		loop	Repeat
+		pop	cx
+		inc	di		; next bitmap byte address
+		loop	Output_Next_Byte
+
+		pop	bx
+		ret
+
+;**********************************************************************
+;*  Mask_Out                                                          *
+;*       Mask out data bits from bitmap                               *
+;*                                                                    *
+;*  Input:                                                            *
+;*       Di = NBYT, start address                                     *
+;*       Bh = NBIT, mask                                              *
+;*       Bl = Rotate Count                                            *
+;*                                                                    *
+;*  Output:                                                           *
+;*	 Di = Address for next scan line
+;*       Dl  = bits of bitmap information                           *
+;*	 Bh, Bl, Cx: Preserved
+;**********************************************************************
+Mask_Out:
+		push	cx                      ; save the outer loop count
+		mov	cx, 6			; count of bits to extract
+		xor	dl, dl			; clear work register
+
+Again:
+		rol	dl, 1			; make room for next bit
+		mov	al, es:[di]		; get next byte from BITMAP
+		and	al, bh			; leave only the desired bit
+		or	dl, al			; combine with temp result
+		add	di, sc_off		; di points to dots in next
+						;   even or odd pixel line
+		loop	Again
+
+; The resulting bit pattern still needs to be rotated into correct
+; printer wire position : MSB = Top, LSB = Bottom
+		mov	cl, bl		; rotate bits until correct position
+		rol	dl, cl
+
+		pop	cx		; restore outer loop count
+		ret			; return with result in Dl
+
+;-----------------------------------------------------------------------------
+include	devind.a86
+include devdata.a86
+
+		dseg
+
+		public	Map_Col, Term_Ch, dln_byte
+
+		extrn	yw_max:word
+		extrn	buffer_size:word
+		extrn	display_list_seg:word
+		extrn	req_y:word
+
+;********************************************************
+;* Copy of code segment variable for use in image.c	*
+;********************************************************
+dln_byte	dw	0
+
+;************************************************
+;* Graphic Line Feed, ADVANCE PAPER 2/15 inch	*
+;************************************************
+Graph_LF	Db	2, Cr, Lf
+
+;************************************************
+;* Image data transfer (180 dpi)   ESC ";nnnn"	*
+;************************************************
+Graph_Mode	Db	06, ESC, ';'
+N1		Rs	01
+N2		Rs	01
+N3		Rs	01
+N4		Rs	01
+
+;********************************
+;* Graphics mode initialization	*
+;********************************
+Enter_Graph	Db	07
+		Db	ESC, 'L', '0', '7'	;2/15 vertical spacing
+		Db	ESC, 'Z'		;auto wrap off
+		Db	CR
+
+;************************************************
+;*  Exit Graphics mode is reset line spacing	*
+;************************************************
+Exit_Graph	Db	06
+		Db	ESC, 'L', '0', '8'	;1/6" vertical spacing
+		Db	ESC, 'W'		;auto wrap on
+
+;**************************************************
+;*
+;**************************************************
+Term_Ch		Dw	0
+Map_Col		Dw	0		;Black
+		Dw	1		;White
+
+
+;************************
+;*  Alpha text locals.	*
+;************************
+; alpha text attribute bit clearing/setting mask table.
+alpha_clear	db	0ffh, 0feh
+		db	0ffh, 0fdh
+		db	0ffh, 0fbh
+		db	0ffh, 0f7h
+		db	0ffh, 0efh
+		db	0ffh, 0dfh
+		db	0ffh, 0bfh
+		db	0ffh, 07fh
+alpha_set	db	01h, 0
+		db	02h, 0
+		db	04h, 0
+		db	08h, 0
+		db	10h, 0
+		db	20h, 0
+		db	40h, 0
+		db	80h, 0
+
+; Pointer table for printer commands.
+com_addr	dw	end_bold
+		dw	begin_bold
+		dw	end_italic
+		dw	begin_italic
+		dw	end_under
+		dw	begin_under
+		dw	end_super
+		dw	begin_super
+		dw	end_sub
+		dw	begin_sub
+		dw	end_lq
+		dw	begin_lq
+		dw	end_expand
+		dw	begin_expand
+		dw	end_light
+		dw	begin_light
+
+styl_addr	dw	set_pica
+		dw	set_elite
+		dw	set_cmpres
+		dw	set_propor
+
+; Printer attribute commands (length, command string).
+end_bold	db	2, ESC, 'M'
+begin_bold	db	3, ESC, 'K3'
+end_italic	db	2, ESC, 20
+begin_italic	db	2, ESC, 18
+end_under	db	2, ESC, 'J'
+begin_under	db	2, ESC, 'I'
+end_super	db	0
+begin_super	db	0
+end_sub		db	0
+begin_sub	db	0
+end_lq		db	3, ESC, '*0'
+begin_lq	db	3, ESC, '*2'
+end_expand	db	0
+begin_expand	db	0
+end_light	db	0
+begin_light	db	0
+
+set_pica	db	3, ESC, '*2'
+set_elite	db	3, ESC, '*1'
+set_cmpres	db	5, ESC, '*0', ESC, '['		; high speed font
+set_propor	db	3, ESC, '*3'
+
+; Printer spacing commands.
+sized_lf	db	5, ESC, 'V', '@', '@', '@'
+half_lf		db	2, ESC, 'U'
+
+
+		end

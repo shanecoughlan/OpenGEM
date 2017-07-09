@@ -1,0 +1,103 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Export: c2digit, digit2x, digit2c
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;	Convert ASCII character digit at any radix into binary value
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	AL			(character digit)
+; Out:	AL			(value)
+; Use:	none
+; Modf:	none
+; Call:	none
+; Hint:	if input contains too big digit or there was no valid digit/letter
+;	then AL will be greater than radix 
+;
+c2digit		macro
+	local done
+		cmp	al,'9'
+		jbe	done
+		dec	ax		; OPTIMIZE: instead DEC AL
+		and	al,not 20h	; upper case
+		sub	al,'A'-'0'-11
+done:		sub	al,'0'
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;	Convert binary digit at radix up to 16 into ASCII character digit
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	AL			(value)
+; Arg:	[case]			(none, constant 20h, byte register or
+;				 memory ptr to 0 or 20h value; 20h mean
+;				 lowercase, 0 or no argument mean uppercase)
+; Out:	AL			(character digit)
+; Use:	none
+; Modf:	none
+; Call:	none
+;
+digit2x		macro	case
+		cmp	al,10
+		sbb	al,69h
+		das
+	ifnb <case>
+	  if (.TYPE case) eq 00100100b
+	    ;; symbol is defined and expression is a constant value
+	    if case ne 20h
+	      errif case ne 0 "Only constants 0 or 20h allowed as argument!"
+	      exitm
+	    endif
+	  endif
+		or	al,case
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;	Convert binary digit at any radix into ASCII character digit
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	AL			(value)
+; Arg:	[case]			(none, constant 20h, byte register or
+;				 memory ptr to 0 or 20h value; 20h mean
+;				 lowercase, 0 or no argument mean uppercase)
+; Out:	AL			(character digit)
+; Use:	none
+; Modf:	none
+; Call:	none
+;
+digit2c		macro	case:=<0>
+	local ret
+		add	al,'0'
+		cmp	al,'9'
+		jbe	ret
+	if (.TYPE case) eq 00100100b
+	  ;; symbol is defined and expression is a constant value
+	  if case eq 20h
+		add	al,'a'-'9'-1	; lowercase
+	  else
+		errif case ne 0 "Only constants 0 or 20h allowed as argument!"
+		add	al,'A'-'9'-1	; uppercase
+	  endif
+	else
+		add	al,'A'-'9'-1
+		or	al,case		; 0-uppercase/20h-lowercase
+	endif
+ret:
+endm

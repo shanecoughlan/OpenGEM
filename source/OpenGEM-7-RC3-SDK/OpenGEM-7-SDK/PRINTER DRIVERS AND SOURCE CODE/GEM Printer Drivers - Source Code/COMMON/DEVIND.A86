@@ -1,0 +1,2535 @@
+;**       Copyright 1999, Caldera Thin Clients, Inc.                     **
+;**       This software is licenced under the GNU Public License.        **
+;**       Please see LICENSE.TXT for further information.                **
+;**                                                                      **
+;**                  Historical Copyright                                **
+;**                                                                      **
+;************************************************************************
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+CGROUP	GROUP	CODE
+		cseg
+
+		public	try_alloc
+		public	abline, habline
+		public	mul_div, clc_flit, smul_div, vec_len
+		public	arctan
+
+DOS		equ	21h		; DOS interrupt
+ALLOCATE	equ	48h		; DOS "allocate memory"
+
+;************************************************************************
+;*  Allocate memory.  Return pointer to allocated block, or amount	*
+;*   of memory available if unable to allocate requested size.		*
+;*	WORD:mem_avail = try_alloc(WORD:paragraphs)			*
+;************************************************************************
+try_alloc:
+		push	bp
+		mov	bp, sp
+
+		mov	bx, 4[bp]		; bx = paragraphs to allocate
+		mov	ah, ALLOCATE
+		int	DOS			
+		jc	allo_failed
+		mov	bx, 0			; return allocate worked
+
+allo_failed:
+		mov	ax, bx			; return size of available mem
+
+end_allo_mem:
+		pop	bp
+		ret
+
+;***********************************************************************
+;* CLC_FLIT
+;*        Find the Intersection points for each raster line y
+;*
+;*	Entry	CONTRL[1] = vectex count
+;*		PTSIN[]   = vertices
+;*		y	  = scan line to intersect
+;*		fill_intersect  = 0
+;*
+;*	Exit	fill_intersect  = count of intersections
+;*		fill_buf  = INTIN = x values of intersections
+;*
+;***********************************************************************
+clc_flit:
+		mov	cx, CONTRL + 2		; get points count
+		mov	si, offset PTSIN
+		mov	di, offset INTIN
+flit_lp:
+		push	cx
+		mov	cx, 6[si]
+		mov	dx, 2[si] 
+		sub	cx, dx     	; get delta y
+		jz	fillit_zero	; goto next x,y if deltay = 0
+		mov	bx,Y1
+		mov	ax,bx
+		sub	ax, dx   	; delta y1
+		sub	bx, 6[si]	; delta y2
+		mov	dx,ax
+		xor	dx,bx		; check if signs =
+		jns	fillit_done
+		mov	dx, 4[si]
+		sub	dx, [si]	; dx = delta x
+		add	dx,dx		; 2 * delta x
+		imul	dx		; ax = dx * 2 * deltay1
+		idiv	cx		; ax = dx * 2 * deltay1 / deltay
+		and	ax,ax		; test if negative
+		js	int_neg
+		inc	ax
+		shr	ax,1
+load_fill_int:
+		add	ax, [si]		; add in x1
+		mov	[di],ax
+		inc	di
+		inc	di
+		inc	fill_intersect		; inc fill count & buffer ptr
+no_fill_int:
+		inc	si
+		inc	si
+		inc	si
+		inc	si		; increment ptsin ptr
+		pop	cx
+		loop	flit_lp
+		jmps	sort_fill_int
+		ret
+fillit_zero:
+		jmps	no_fill_int
+fillit_done:
+		and	ax, ax
+		jns	no_fill_int
+		jmps	no_fill_int
+int_neg:
+		neg	ax
+		inc	ax
+		shr	ax,1
+		neg	ax
+		jmps	load_fill_int
+sort_fill_int:
+		mov	cx, fill_intersect		
+		cmp	cx, 2
+		jz	fast_fill_int		; simple sort and draw
+		jl	fill_no_int		; do nothing
+		dec	cx			; make it 0 based	
+		jmp	full_fill_sort
+fill_no_int:
+		ret
+fast_fill_int:
+		mov	ax, INTIN		; get the first x
+		mov	bx, INTIN+2
+		cmp	ax, bx
+		jle	fast_fill_int_1
+		xchg	ax, bx			; if x1 > x2 exchange them
+fast_fill_int_1:
+		mov	X1, ax
+		mov	X2, bx
+		call	HLINE_CLIP
+		ret
+full_fill_sort:
+		mov	dx, cx
+		mov	di, offset INTIN
+full_fill_sort_outlp:
+		push	cx			; save the full count
+		mov	si, di
+		mov	ax, word ptr 0[si]	; get the initial lower word
+full_fill_sort_inlp:
+		mov	bx, word ptr 2[si]
+		cmp	ax, bx			; is ax <= bx
+		jle	full_fill_sort_inlp_1
+		mov	 word ptr 0[si], bx	; if ax > bx then exchange
+		mov	word ptr 2[si], ax
+		mov	bx, ax			; set up for next word
+full_fill_sort_inlp_1:
+		mov	ax, bx			; already have lower word
+		inc	si
+		inc	si			; point upwards
+		loop	full_fill_sort_inlp
+		pop	cx
+		dec	dx
+		jnz	full_fill_sort_outlp
+		mov	cx, fill_intersect
+		shr	cx, 1			; make count of word pairs
+full_fill_drawlp:
+		mov	ax, [di]
+		mov	bx, 2[di]
+		mov	X1, ax
+		mov	X2, bx
+		push	di
+		push	cx
+		call	HLINE_CLIP
+		pop	cx
+		pop	di
+		add	di,4			; point to the next pair
+		loop	full_fill_drawlp
+		ret
+HLINE_CLIP:
+		mov	ax, CLIP		; is clipping on?
+		and	ax, ax
+		jnz	hline_clip_1
+		jmp 	HABLINE			; horizontal line draw routine
+hline_clip_1:
+		mov	 ax, XMN_CLIP
+		mov	 bx, X1
+		mov	 cx, X2
+		cmp	bx, ax			; is x1 < xmn_clip
+		jnl	hline_clip_3	
+		cmp	cx, ax			; is x2 >= xmn_clip
+		jl	hline_clip_2
+		mov	X1, ax 
+hline_clip_3:
+		mov	ax, XMX_CLIP
+		cmp	cx, ax			; is x2 > xmx_clip
+		jle	hline_clip_4
+		cmp	bx, ax			; is x1 <= xmx_clip
+		jg	hline_clip_2
+		mov	X2, ax
+hline_clip_4:
+		jmp	HABLINE
+hline_clip_2:
+		ret				; if x2 not > xmn_clip exit
+
+
+;************************************************************************
+;*	WORD:angle = arctan(WORD:num1, WORD:num2, WORD:den1, WORD:den2)	*
+;*	Note: num1 and den1 MUST be > 0.				*
+;************************************************************************
+arctan:
+		push	bp
+		mov	bp, sp
+
+; Perform the calculation (((1000*num1)/den1)*num2)/den2 and save the
+; parameter sign information.
+		mov	ax, 1000
+		mov	bx, 4[bp]
+		mul	bx
+		mov	bx, 8[bp]
+		div	bx
+		mov	bx, 6[bp]
+		mov	si, bx
+		and	bx, bx
+		jns	arctan_second_mul
+		neg	bx
+arctan_second_mul:
+		mul	bx
+		mov	bx, 10[bp]
+		mov	di, bx
+		cmp	bx, 0
+		je	arctan_overflow
+		and	bx, bx
+		jns	arctan_second_div
+		neg	bx
+arctan_second_div:
+		cmp	bx, dx
+		jna	arctan_overflow
+		div	bx
+
+; Look for the closest value in the tangent table.
+		cmp	ax, 32767
+		jnb	arctan_overflow
+		mov	cx, 90
+		push	si
+		mov	si, offset tan_table
+		mov	dx, ax			; dx = search value
+		xor	bx, bx			; bx = save value
+		cld
+arctan_search_loop:
+		lodsw
+		cmp	ax, dx
+		jnb	arctan_loop_done
+		mov	bx, ax			; save for later compare
+		loop	arctan_search_loop
+arctan_loop_done:
+		pop	si
+		sub	ax, dx
+		sub	dx, bx
+		cmp	ax, dx
+		jna	arctan_set_angle
+		inc	cx
+arctan_set_angle:
+		neg	cx
+		add	cx, 90
+		jmps	arctan_set_quadrant
+
+; The denominator was zero or the result was too large:  90 degrees.
+arctan_overflow:
+		mov	cx, 90
+		test	si, 8000h		; is it really 270?
+		jz	arctan_10x
+		add	cx, 180
+		jmps	arctan_10x
+
+; Establish the appropriate quadrant.
+arctan_set_quadrant:
+		test	si, 8000h
+		jnz	arctan_negative_numerator
+		test	di, 8000h
+		jz	arctan_10x
+		neg	cx
+		add	cx, 180
+		jmps	arctan_10x
+arctan_negative_numerator:
+		test	di, 8000h
+		jz	arctan_fourth_quadrant
+		add	cx, 180
+		jmps	arctan_10x
+arctan_fourth_quadrant:
+		neg	cx
+		add	cx, 360
+
+; Return the angle multiplied by 10.
+arctan_10x:
+		mov	ax, 10
+		mul	cx
+
+end_arctan:
+		pop	bp
+		ret
+
+;************************************************************************
+;*	WORD = vec_len(delta_x, delta_y);				*
+;*	note:	delta_x and delta_y must both be >= 0.			*
+;************************************************************************
+vec_len:
+		push	bp
+		mov	bp, sp
+
+; Check for zeroes.
+		cmp	word ptr 4[bp], 0
+		jne	x_squared
+		cmp	word ptr 6[bp], 0
+		jne	x_squared
+		xor	bx, bx				; return value
+		jmp	search_loop_end
+
+; Calculate delta_x squared.
+x_squared:
+		mov	dx, 4[bp]		; delta_x parameter
+		mov	ax, dx
+		imul	dx
+		mov	vec_len_high, dx		; save high word of square
+		mov	vec_len_low, ax			; save low word of square
+
+; Calculate delta_y squared and add to delta_x squared.
+		mov	dx, 6[bp]		; delta_y parameter
+		mov	ax, dx
+		imul	dx
+
+		add	vec_len_low, ax
+		adc	vec_len_high, dx		; high/low = sum of squares
+
+; Get the initial binary search boundaries.  This is done by taking an
+;   approximate square root based on the highest order set bit in the
+;   high/low bit string.
+		cmp	vec_len_high, 0
+		je	no_high_byte
+
+		mov	ax, vec_len_high		; check on high order byte
+		mov	cl, 16
+		jmp	bounds_loop
+
+no_high_byte:
+		mov	ax, vec_len_low			; check on low order byte
+		sub	cl, cl
+
+bounds_loop:
+		cmp	ax, 1			; done yet?
+		je	bounds_loop_end
+		inc	cl
+		shr	ax, 1
+		jmp	bounds_loop
+
+bounds_loop_end:
+		shr	cl, 1
+		mov	bx, 1
+		shl	bx, cl			; bx = initial low bound
+		mov	cx, bx
+		shl	cx, 1			; cx = initial high bound
+
+; Perform a binary search for a square root (somewhat brutishly).
+search_loop:
+		mov	ax, cx
+		sub	ax, bx
+		cmp	ax, 1			; done with the search?
+		jle	search_loop_end
+
+		shr	ax, 1
+		add	ax, bx			; candidate = (high+low)/2
+		mov	si, ax			; save a copy for next pass
+		mul	ax			; dx/ax = candidate square
+
+		cmp	dx, vec_len_high		; check against high word
+		ja	high_adjust
+		jb	low_adjust
+
+		cmp	ax, vec_len_low			; check against low word
+		ja	high_adjust
+		jb	low_adjust
+
+		mov	bx, si			; exact root found!
+		jmp	search_loop_end
+
+high_adjust:
+		mov	cx, si			; adjust high value down
+		jmp	search_loop
+
+low_adjust:
+		mov	bx, si			; adjust low value up
+		jmp	search_loop
+
+search_loop_end:
+		mov	ax, bx			; ax = solution
+
+		pop	bp
+		ret
+
+
+;***************************************************************************
+;
+; SMUL_DIV (m1,m2,d1)
+;
+;	 ( ( ( m1 * m2 ) / d1 ) + 1 / 2	
+;	m1 = signed 16 bit integer
+;	m2 = snsigned 15 bit integer
+;	d1 = signed 16 bit integer
+;
+;***************************************************************************
+SMUL_DIV:
+	push	bp		;save the callers bp
+	mov	bp,sp
+	mov	ax,06[bp]
+	mov	bx,04[bp]
+	imul	bx		; m2 * m1
+	mov	si, 1
+	and	dx, dx
+	jns	smul_div_1
+	neg	si
+smul_div_1:
+	mov	bx,08[bp]
+	idiv	bx		; m2 * m1 / d1
+	pop	bp
+	and	bx, bx		; test if divisor is negative
+	jns	smul_div_2
+	neg	si
+	neg	bx		; make it positive
+smul_div_2:
+	and	dx, dx		; test if remainder is negative
+	jns	smul_div_3
+	neg	dx		; make remainder positive
+smul_div_3:
+	shl	dx, 1		; see if 2 * remainder is > divisor
+	cmp	dx, bx
+	jl	smul_div_4
+	add	ax, si
+smul_div_4:
+	ret
+
+
+;***************************************************************************
+;
+; MUL_DIV (m1,m2,d1)
+;
+;	 ( ( ( m1 * 2 * m2 ) / d1 ) + 1 ) / 2	
+;	m1 = signed 16 bit integer
+;	m2 = unsigned 15 bit integer
+;	d1 = signed 16 bit integer
+;
+;***************************************************************************
+MUL_DIV:
+	push	bp		;save the callers bp
+	mov	bp,sp
+	mov	ax,06[bp]
+	shl	ax,1		; m2 * 2
+	mov	bx,04[bp]
+	imul	bx		; m2 * 2 * m1
+	mov	bx,08[bp]
+	idiv	bx		; m2 * 2 * m1 / d1
+	and	ax,ax		; set flags
+	js	mul_div_neg
+	inc	ax
+	shr	ax,1		; m2 * 2 * m1 / d1 +1 / 2
+	pop	bp
+	ret
+mul_div_neg:
+	add	ax,-1
+	neg	ax
+	shr	ax,1
+	neg	ax		; m2 * 2 * m1 / d1 -1 / 2
+	pop	bp
+	ret
+
+
+;**********************************************************************
+;* Clip_Horizontal						      *
+;*                                                                    *
+;*    This section of code is responsible for clipping a horizontal   *
+;*    line.							      *
+;**********************************************************************
+
+Clip_Horizontal:
+	Cmp	Cx, Ys_Max		;Try to trivially reject the line.
+	Jg	Horiz_Clipped		;If Y1 > Ys_Max, smallest above top.
+	Cmp	Cx, Ys_Min		;If Y1 < Ys_Min, largest below bottom.
+	Jl	Horiz_Clipped
+
+	Push	Si			;Put x2 and x1 on the stack where xline
+	Push	Bx			;wants them
+
+	Mov	Cx, Bp			;Post rotate the line mask
+	And	Cl, 0Fh
+	Mov	Ax, Ln_Mask
+	Mov	Dx, Ax
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax
+
+	Mov	Ax, Di			;Get phys. address of initial (X1,Y1)		
+	Call	Concat
+
+	Mov	Si, Offset Ortbl	;Or mask table address
+	Add	Si, Bx			;   index into table
+	Mov	Bh, Bl
+	Mov	Bl,[ Si ]		;Get initial OR table mask.
+
+	Mov	Cx, Bp			;Delta x to Cx register
+
+	And	Di, 0FFFEh
+
+	mov	ax, graph_plane		; Get the graphics plane segment.
+	mov	es, ax
+
+	Jmp	Xline0
+
+
+Horiz_Clipped:
+	Mov	Cx, Bp		;Move delta x to Cl
+	Mov	Ax, Ln_Mask	;Get the mask
+	And	Cl, 0Fh		;Spin at most 15 times
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax	;Put the line mask back
+	Ret
+
+;****************************************************************
+;*  Abline                                                      *
+;*     This routine will draw a clipped line from (x1,y1) to	*
+;*     (x2,y2) using Bresenham's algorithm.			*
+;*								*
+;*   Entry:	X1-coordinate					* 
+;*		Y1-coordinate					*
+;*		X2-coordinate					*
+;*		Y2-coordinate					*
+;****************************************************************
+
+Abline:
+	Push	Bp			;This little convention is forced on
+	Call	Do_Abline		;us because we change Bp and must
+	Pop	Bp			;it before returning.  Since the screen
+	Ret				;driver algorithims do not restore it,
+					;we must call abline so we can restore
+					;it.
+
+Do_Abline:
+	Mov	Bx, X1			;Get a copy of the coordinates.  The
+	Mov	Cx, Y1			;C portion of Pline relys on the
+	Mov	Si, X2			;integrety of the variables
+	Mov	Di, Y2
+
+	Mov	Bp, Si			;Compute delta x
+	Sub	Bp, Bx
+	Jns	Skip_Point_Swap		;Jump if positive dx
+
+	Xchg	Si, Bx			;Swap points, we only draw in positive
+	Xchg	Di, Cx			;dx
+	Neg	Bp			;Change the sign of Dx
+
+Skip_Point_Swap:
+	Mov	Ax, Di			;Compute delta y
+	Sub	Ax, Cx
+	Jz	Clip_Horizontal		;Trivial clip if horizontal
+	Jns	Pos_Dy
+
+	Jmp	Neg_Dy			;The clip is backwards if negative
+
+;**********************************************************************
+;* Pos_Clipped             					      *
+;*                                                                    *
+;*    Handle a line that is totally clipped by rotateing the line mask*
+;*    to where it would be if the line were drawn.		      *
+;**********************************************************************
+
+Pos_Clipped:
+	Cmp	Bp, Ax		;Determine which delta spins the mask
+	Jge	Clip_Dx_Ge_Dy
+
+	Mov	Cl, Al		;Low 8 bits of delta y to Cl
+	Mov	Ax, Ln_Mask	;Get the mask
+	And	Cl, 0Fh		;Spin at most 15 times
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax	;Put the line mask back
+	Ret
+
+Clip_Dx_Ge_Dy:
+	Mov	Cx, Bp		;Move delta x to Cl
+	Mov	Ax, Ln_Mask	;Get the mask
+	And	Cl, 0Fh		;Spin at most 15 times
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax	;Put the line mask back
+	Ret
+
+;**********************************************************************
+;*  Clip_Pos_Vertical                                                 *
+;*       This routine clips vertical lines with a positive delta y.   *
+;*                                                                    *
+;**********************************************************************
+
+Clip_Pos_Vertical:
+	Mov	Dx, Ax		;Put delta y into Dx.
+	Mov	Si, Cx		;Put Y1 into Si, we no longer need X2
+
+	Mov	Bp, Ln_Mask	;Get the line mask, determine if we are
+	Mov	Ax, Wrt_Mode	;using it or clearing to zeroes.
+	Or	Ax, Fg_Bp_1
+	Jnz	PV_Rotate_Mask	;We are using the line mask.
+
+	Xor	Bp, Bp		;We are clearing
+
+PV_Rotate_Mask:
+	Mov	Ax, Bp		;Get the line mask and rotate it to where
+	Mov	Cx, Dx		;it would be if we drew the whole line.
+	And	Cl, 0Fh		;We only bother with 15 shifts
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax	;Save this for the next line segment
+
+	Mov	Ax, Ys_Max	;Clip Y2 to Ys_Max.  Not clipped if
+	Cmp	Di, Ax		;Y2 .LE. Ys_Max
+	Jle	@50
+
+	Mov	Di, Ax		;Clip Y2
+
+@50:	Mov	Ax, Ys_Min	;Clip Y1 to Ys_Min.  Not clipped if
+	Cmp	Si, Ax		;Y1 .GE. Ys_Min
+	Jge	@60
+
+	Sub	Si, Ax		;It's clipped.  We neet to prerotate the
+	Mov	Cx, Si		;line mask so slices abut properly
+	Neg	Cx		;Do backwards to preserve Ys_Min
+	And	Cl, 0Fh
+	Ror	Bp, Cl
+
+	Mov	Si, Ax		;Clip Y1 to Ys_Min
+
+@60:	Mov	Ax, Si		;Move Y1 for concat call
+
+	Mov	Cx, Di		;Compute loop count for draw algorithim
+	Sub	Cx, Si		;Count = Yend - Ystart + 1
+	Inc	Cx
+
+	Neg	Dx		;Dy is negative for common code
+
+	Jmp	Common_Vert
+
+;**********************************************************************
+;*  Positive Dy cases                                                 *
+;**********************************************************************
+
+Pos_Dy:
+	Cmp	Cx, Ys_Max		;Try to trivially reject the line.
+	Jg	Pos_Clipped		;If Y1 > Ys_Max, smallest above top.
+	Cmp	Di, Ys_Min		;If Y2 < Ys_Min, largest below bottom.
+	Jl	Pos_Clipped
+
+;Something is visible.  Set up the Bitplane segment address and the offset to
+;the next line once here and save having to do it in every routine later
+
+	mov	dx, ln_next
+	Mov	Yinc, dx		;Offset to next line is positive
+
+	Mov	Dx, Graph_Plane		;Es contains the bitmap segment address
+	Mov	Es, Dx
+
+	And	Bp, Bp			;Another trivial clip if vertical
+	Jz	Clip_Pos_Vertical
+
+	Cmp	Bp, Ax		;Case on relationship of dy and dx
+	Jl	Pos_Dy_Gt_Dx
+	Je	Pos_45
+	Jmp	Pos_Dx_Gt_Dy
+
+;**********************************************************************
+;*  Pos_45                                                            *
+;*       This routine clips lines with a positive delta y where delta *
+;*       x and delta y are the same.                                  *
+;*                                                                    *
+;**********************************************************************
+
+Pos_45:
+	Mov	Dx, Ax		;Put delta y into Dx.
+	Mov	Si, Cx		;Put Y1 into Si, we no longer need X2
+
+	Mov	Bp, Ln_Mask	;Get the line mask, determine if we are
+	Mov	Ax, Wrt_Mode	;using it or clearing to zeroes.
+	Or	Ax, Fg_Bp_1
+	Jnz	P45_Rotate_Mask	;We are using the line mask.
+
+	Xor	Bp, Bp		;We are clearing
+
+P45_Rotate_Mask:
+	Mov	Ax, Bp		;Get the line mask and rotate it to where
+	Mov	Cx, Dx		;it would be if we drew the whole line.
+	And	Cl, 0Fh		;We only bother with 15 shifts
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax	;Save this for the next line segment
+
+	Mov	Ax, Ys_Min	;Clip Y1 to Ys_Min.  Not clipped if
+	Cmp	Si, Ax		;Y1 .GE. Ys_Min
+	Jge	@500
+
+	Sub	Si, Ax		;It's clipped.  We neet to prerotate the
+	Neg	Si		;line mask so slices abut properly
+	Mov	Cx, Si
+	And	Cl, 0Fh
+	Ror	Bp, Cl
+
+	Add	Bx, Si		;Move X1 point to correspond with new Y1
+
+	Mov	Si, Ax		;Clip Y1 to Ys_Min
+
+@500:	Mov	Ax, Ys_Max	;Clip Y2 to Ys_Max.  Not clipped if
+	Cmp	Di, Ax		;Y2 .LE. Ys_Max
+	Jle	@510
+
+	Mov	Di, Ax		;Clip Y2
+
+@510:	Mov	Ax, Si		;Move Y1 for concat call
+
+	Mov	Cx, Di		;Compute loop count for draw algorithim
+	Sub	Cx, Si		;Count = Yend - Ystart + 1
+	Inc	Cx
+
+	Jmp	Common_45
+
+;**********************************************************************
+;*  Pos_Dy_Gt_Dx                                                      *
+;*       This routine clips arbitrary lines with a positive delta y   *
+;*       where delta y is greater than delta x.                       *
+;**********************************************************************
+
+Pos_Dy_Gt_Dx:
+
+;First rotate the line mask properly for the end of this line.
+
+	Mov	Si, Cx		;Move Y1 value to Si register
+
+	Mov	Dx, Ln_Mask	;Get line mask
+	Mov	Cx, Wrt_Mode	;Do we use it or zeroes
+	Or	Cx, Fg_Bp_1
+	Jnz	@100		;We use the line mask
+
+	Xor	Dx, Dx		;We use zeroes
+
+@100:	Push	Dx		;Save the mask, we will use it for drawing
+
+	Mov	Cl, Al		;Low 8 bits of dy to Cl
+	And	Cl, 0Fh		;Rotate at most 15 times
+	Ror	Dx, Cl
+	Mov	Ln_Mask, Dx	;Save line mask for next segment
+
+	Mov	Cx, Ys_Min	;Clip Y1 to Ys_Min
+	Sub	Cx, Si
+	Jle	Pos_No_Clip_Y1	;Not clipped if Y1 .GE. Ys_Min
+
+;This endpoint is clipped, Cx contains the length of the clipped segment
+
+	Add	Si, Cx		;Y1 is now Ys_Min
+
+;Now prerotate the line mask so that slices abut with the right pattern
+
+	Pop	Dx		;Get back line mask
+	Push	Cx		;Save cdy
+	And	Cl, 0Fh		;Rotate the mask at most 15 times
+	Ror	Dx, Cl
+	Pop	Cx		;Restore cdy
+	Push	Dx		;Save line mask for draw
+
+	Push	Di		;Put Y2 on stack so we have a free register
+
+;Now compute the new X1 point.  The delta x of the clipped segment is
+;
+;     cdx = dx*cdy/dy
+;
+;rounded up
+
+	Mov	Di, Bp		;Save delta x
+	Xchg	Ax, Bp		;dx is now in Ax, dy is now in Bp
+	Mul	Cx		;Ax/Dx now contain dx*cdy
+	Div	Bp		;divide by dy
+
+	Shl	Dx, 1		;Does it need rounding
+	Cmp	Dx, Bp
+	Jle	Pos_No_Round	;Jump if not
+
+	Inc	Ax
+
+Pos_No_Round:
+	Add	Bx, Ax		;Compute new X1 point
+
+	Push	Si		;Save clipped X1, Y1
+	Push	Bx
+
+;We now compute the parameters for the original breshenham algorithim.
+;Once computed, we will adjust the epsilon term for where we are in
+;the line now
+
+	Shl	Di, 1		;Di = E1 term = 2*dx
+
+	Mov	Bx, Di		;Bx = epsilon = 2*dx - dy
+	Sub	Bx, Bp
+
+	Shl	Bp, 1		;Bp = E2 term = 2*dx - 2*dy
+	Sub	Bp, Di		;do it backward to preserve E1
+	Neg	Bp
+
+;Now compute the value of epsilon for this point on the segment.  The
+;equation is:
+;
+;     epsilon = epsilon + (cdy-cdx)*E1 + cdx*E2
+
+	Xchg	Cx, Ax		;cdy to Ax, cdx to Cx
+	Sub	Ax, Cx		;Si = (cdy-cdx)*E1
+	Mul	Di
+	Mov	Si, Ax
+
+	Mov	Ax, Cx		;Ax = cdx*E2
+	Mul	Bp
+
+	Add	Si, Ax		;Add terms 2 and 3.  The 16 bit result will
+				;always be correct even if the intermediate
+				;numbers were greater than 16 bit values
+
+	Add	Bx, Si		;Compute epsilon and put in Dx
+	Mov	Dx, Bx
+
+	Pop	Bx		;Restore X1, Y1, and Y2
+	Pop	Ax
+	Pop	Cx
+
+;Clip Y2 to Ys_Max
+
+	Mov	Si, Ys_Max	;Clip Y2 to Ys_Max
+	Cmp	Cx, Ys_Max	;Not clipped if Y2 .LE. Ys_Max
+	Jle	@110
+
+	Mov	Cx, Si		;Clip Y2
+
+@110:	Sub	Cx, Ax		;Compute loop count for draw algorithim
+	Inc	Cx		;Count = Yend - Ystart + 1
+
+	Push	Di		;Save E1 on stack since concat changes Di
+	Jmp	Common_Dy_Gt_Dx
+
+Pos_No_Clip_Y1:			;No clip is necessary on Y1.  Clip Y2.
+
+	Mov	Cx, Di		;Y2 to Cx
+	Mov	Di, Ys_Max	;Clip Y2 to Ys_Max
+	Cmp	Cx, Di		;Not clipped if Y2 .LE. Ys_Max
+	Jle	@150
+
+	Mov	Cx, Di		;Clip Y2
+
+;We now compute the parameters for the breshenham algorithim.
+
+@150:	Shl	Bp, 1		;Bp = E1 term = 2*dx
+
+	Mov	Dx, Bp		;Dx = epsilon = 2*dx - dy
+	Sub	Dx, Ax
+
+	Shl	Ax, 1		;Ax = E2 term = 2*dx - 2*dy
+	Sub	Ax, Bp		;do it backward to preserve E1
+	Neg	Ax
+
+	Xchg	Ax, Bp		;Position E1 and E2 properly for joining main
+				;code
+
+	Push	Ax		;Save on the stack for after concat call
+
+	Mov	Ax, Si		;Move Y1 for concat call
+
+	Sub	Cx, Ax		;Compute loop count for draw algorithim
+	Inc	Cx		;Count = Yend - Ystart + 1
+
+	Jmp	Common_Dy_Gt_Dx
+
+;**********************************************************************
+;*  Pos_Dx_Gt_Dy                                                      *
+;**********************************************************************
+
+Pos_Dx_Gt_Dy:
+
+;First rotate the line mask properly for the end of this line.
+
+	Push	Si		;We need a scratch register
+
+	Mov	Si, Cx		;Move Y1 value to Si register
+
+	Mov	Dx, Ln_Mask	;Get line mask
+	Mov	Cx, Wrt_Mode	;Do we use it or zeroes
+	Or	Cx, Fg_Bp_1
+	Jnz	@200		;We use the line mask
+
+	Xor	Dx, Dx		;We use zeroes
+
+@200:	Mov	Saved_Mask, Dx	;Save the mask we will need it later
+
+	Mov	Cx, Bp		;Move dx to Cx register
+	And	Cl, 0Fh		;Rotate at most 15 times
+	Ror	Dx, Cl
+	Mov	Ln_Mask, Dx	;Save line mask for next segment
+
+	Mov	Cx, Ys_Min	;Clip Y1 to Ys_Min
+	Sub	Cx, Si
+	Jle	Dx_P_No_Clip_Y1	;Not clipped if Y1 .GE. Ys_Min
+
+;This endpoint is clipped, Cx contains the length of the clipped segment
+
+	Add	Si, Cx		;Y1 is now Ys_Min
+
+;Now we must compute the delta x associated with this delta y.  To do this
+;we need the parameters for the breshenham algorithim.  But first save some
+;registers
+
+	Push	Si		;Save Y1
+	Push	Di		;Save Y2
+	Push	Bx		;Save X1
+
+;Compute the breshenham paramaters
+
+	Shl	Ax, 1		;Si = E1 = 2*dy
+	Mov	Si, Ax
+
+	Xor	Di, Di		;Bx:Di = epsilon sign extended to 32 bits
+	Mov	Bx, Ax		;epsilon = 2*dy - dx
+	Sub	Bx, Bp
+	Jns	@210
+
+	Dec	Di		;Sign extension is negative
+
+@210:	Shl	Bp, 1		;Bp = E2 = 2*dy - 2*dx
+	Sub	Bp, Ax		;Do it backward to preserve E1
+	Neg	Bp
+
+;Now calculate cdx.  We know the following things about the breshenham
+;paramaters:
+;     1)  We are just about to increment y since a slice must start with a
+;         y increment.  This implies that epsilon is non-negative.
+;     2)  E2 is negative.  Epsilon has been made negative by cdy - 1 additions
+;         E2
+;     3)  E1 always has the opposite sign of E1
+;
+;If we assume that cdy is much greater than cdx, we can write that:
+;
+;     cdx = -(epsilon + (cdy - 1)*E2)/E1
+;
+;     where cdx is the number of times x has incremented that y has not
+;
+;This equation is mostly right.  It must be corrected as follows:
+;
+;     1)  As dx approaches dy, for small slices, the sign of epsilon will
+;         never change.  In this case, Epsilon always starts positive and
+;         remains positive.  This means we are in a portion of the
+;         breshenham x and y are stepping so cdx must be forced to zero.
+;         (Another way of thinking of this is that cdx can never be negative
+;         and must be clamped to zero.)
+;
+;     2)  If there is a remainder in this calculation it must be rounded
+;         if either epsilon started out not positive, or (cdy - 1) is greater
+;         than zero.
+
+	Mov	Ax, Bp		;Ax = E2
+	Dec	Cx		;Cx = cdy-1
+	Imul	Cx		;Ax = (cdy - 1)*E2
+
+	Add	Ax, Bx		;Plus epsilon
+	Adc	Dx, Di
+
+	Js	@220		;Normal case
+
+	Xor	Ax, Ax		;Clamp cdx to zero
+	Jmps	No_Round_cdx
+
+@220:	Idiv	Si		;Complete calculaton
+	Neg	Ax
+
+	Or	Dx, Dx		;Only round if remainder
+	Jz	No_Round_cdx
+
+	Or	Di, Di		;Round if epsilon is not positive
+	Jle	Round_cdx
+
+	Or	Cx, Cx		;or if cdx-1 not zero
+	Jz	No_Round_cdx
+
+Round_cdx:
+	Inc	Ax
+
+No_Round_cdx:
+	Mov	Di, Ax		;Save cdx
+	Inc	Cx		;Restore cdy
+
+;Compute the value for epsilon for this point.
+;
+;     epsilon = epsilon + cdx*E1 + cdy*E2
+
+	Mov	Ax, Si		;Compute cdx * E1
+	Mul	Di
+	Push	Ax
+
+	Mov	Ax, Bp		;Compute cdy * E2
+	Mul	Cx
+
+	Pop	Dx		;Sum the three terms
+	Add	Ax, Dx
+	Add	Bx, Ax		;Bx = correct value for epsilon
+
+;Compute the new X1 point
+
+	Add	Cx, Di
+	Pop	Di
+	Add	Di, Cx
+
+;Now rotate the line mask so that patterns across slices abut
+
+	Mov	Ax, Saved_Mask
+	And	Cl, 0Fh		;Rotate at most 15 times
+	Ror	Ax, Cl
+	Mov	Saved_Mask, Ax	;Save for drawing
+
+;Clip Y2 to Ys_Max
+
+Dx_P_Clip_Y2:
+	Mov	Ax, Ys_Max
+	Pop	Cx		;Get back Y2
+	Cmp	Cx, Ax		;Not clipped if Y2 .LE. Ys_Max
+	Jle	Dx_P_No_Clip_Y2
+
+;We must clip.  This means we have to compute delta x as before.  Compute cdy-1
+;and branch to common code.
+
+	Pop	Cx		;Get back Y1
+	Sub	Ax, Cx		;Compute cdy for the visible segment
+
+	Jmp	Common_Dx_Gt_Dy
+
+Dx_P_No_Clip_Y1:
+	Push	Si		;Setup Stack and registers to jump into
+	Push	Di		;Above code
+	Mov	Di, Bx
+
+;Compute the breshenham paramaters
+
+	Shl	Ax, 1		;Si = E1 = 2*dy
+	Mov	Si, Ax
+
+	Mov	Bx, Ax		;Bx = epsilon = 2*dy - dx
+	Sub	Bx, Bp
+
+	Shl	Bp, 1		;Bp = E2 = 2*dy - 2*dx
+	Sub	Bp, Ax		;Do it backward to preserve E1
+	Neg	Bp
+
+	Jmps	Dx_P_Clip_Y2	;See if we must clip the other endpoint
+
+Dx_P_No_Clip_Y2:
+	Jmp	Dx_N_No_Clip_Y2	;Identical to negative case but we cant
+				;get there on a short jump
+
+;**********************************************************************
+;* Neg_Clipped             					      *
+;*                                                                    *
+;*    Handle a line that is totally clipped by rotateing the line mask*
+;*    to where it would be if the line were drawn.		      *
+;**********************************************************************
+
+Neg_Clipped:
+	Neg	Ax		;Make delta y positive
+	Jmp	Pos_Clipped
+
+;**********************************************************************
+;*  Clip_Neg_Vertical                                                 *
+;*       This routine clips vertical lines with a negative delta y.   *
+;*                                                                    *
+;**********************************************************************
+
+Clip_Neg_Vertical:
+	Mov	Dx, Ax		;Put delta y into Dx.
+	Mov	Si, Cx		;Put Y1 into Si, we no longer need X2
+
+	Mov	Bp, Ln_Mask	;Get the line mask, determine if we are
+	Mov	Ax, Wrt_Mode	;using it or clearing to zeroes.
+	Or	Ax, Fg_Bp_1
+	Jnz	NV_Rotate_Mask	;We are using the line mask.
+
+	Xor	Bp, Bp		;We are clearing
+
+NV_Rotate_Mask:
+	Mov	Ax, Bp		;Get the line mask and rotate it to where
+	Mov	Cx, Dx		;it would be if we drew the whole line.
+	Neg	Cx
+	And	Cl, 0Fh		;We only bother with 15 shifts
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax	;Save this for the next line segment
+
+	Mov	Ax, Ys_Min	;Clip Y2 to Ys_Min.  Not clipped if
+	Cmp	Di, Ax		;Y2 .GE. Ys_Min
+	Jge	@10
+
+	Mov	Di, Ax		;Clip Y2
+
+@10:	Mov	Ax, Ys_Max	;Clip Y1 to Ys_Max.  Not clipped if
+	Cmp	Si, Ax		;Y1 .LE. Ys_Max
+	Jle	@20
+
+	Sub	Si, Ax		;It's clipped.  We neet to prerotate the
+	Mov	Cx, Si		;line mask so slices abut properly
+	And	Cl, 0Fh
+	Ror	Bp, Cl
+
+	Mov	Si, Ax		;Clip Y1 to Ys_Max
+
+@20:	Mov	Ax, Si		;Move Y1 for concat call
+
+	Mov	Cx, Si		;Compute loop count for draw algorithim
+	Sub	Cx, Di		;Count = Ystart - Yend + 1
+	Inc	Cx
+
+Common_Vert:
+	Call	Concat		;Compute physical address
+
+	Mov	Si, Offset Ortbl	;Get the initial mask to use for
+	Add	Si, Bx			;drawing this line segment
+	Mov	Bh, Bl
+	Mov	Bl, [Si]
+
+	Mov	Ax, Bp		;Put the line mask in Ax
+
+;This is a simplification of the math for breshenham's algorithim.  Normally
+;
+;   E1 = 2*dx     E2 = 2*(dx-dy)     EPSILON = 2*dx - dy
+;
+;but since dx = 0 these simplify to:
+;
+;   E1 = 0       E2 = 2*(-dy)        EPSILON = -dy
+;
+;Furthermore, this is the minus dy case so dy is already negated.
+
+	Xor	Si, Si		;For vertical, E1 is 0
+
+	Mov	Bp, Dx		;For vertical, E2 is 2 * dy
+	Shl	Bp, 1		;Epsilon is already set correctly
+
+	Jmp	Dy_Gt_Dx_Case
+
+;**********************************************************************
+;* Negative Dy cases                                                  *
+;**********************************************************************
+
+Neg_Dy:
+	Cmp	Di, Ys_Max		;Try to trivially reject the line.
+	Jg	Neg_Clipped		;If Y2 > Ys_Max, smallest above top.
+	Cmp	Cx, Ys_Min		;If Y1 < Ys_Min, largest below bottom.
+	Jl	Neg_Clipped
+
+;Something is visible.  Set up the Bitplane segment address and the offset to
+;the next line once here and save having to do it in every routine later
+
+	mov	dx, ln_bytes
+	neg	dx
+	mov	Yinc, dx		;Offset to next line is negative
+
+	mov	dx, Graph_Plane		;Es contains the bitmap segment address
+	mov	es, dx
+
+	and	bp, bp			;Another trivial clip if vertical
+	jz	Clip_Neg_Vertical
+
+	neg	ax			;Make delta y positive
+
+	Cmp	Bp, Ax		;Case on relationship of dy and dx
+	Jl	Neg_Dy_Gt_Dx
+	Je	Neg_45
+	Jmp	Neg_Dx_Gt_Dy
+
+;**********************************************************************
+;*  Neg_45                                                            *
+;*       This routine clips lines with a negative delta y where delta *
+;*       x and delta y are the same.                                  *
+;*                                                                    *
+;**********************************************************************
+
+Neg_45:
+	Mov	Dx, Ax		;Put delta y into Dx.
+	Mov	Si, Cx		;Put Y1 into Si, we no longer need X2
+
+	Mov	Bp, Ln_Mask	;Get the line mask, determine if we are
+	Mov	Ax, Wrt_Mode	;using it or clearing to zeroes.
+	Or	Ax, Fg_Bp_1
+	Jnz	N45_Rotate_Mask	;We are using the line mask.
+
+	Xor	Bp, Bp		;We are clearing
+
+N45_Rotate_Mask:
+	Mov	Ax, Bp		;Get the line mask and rotate it to where
+	Mov	Cx, Dx		;it would be if we drew the whole line.
+	And	Cl, 0Fh		;We only bother with 15 shifts
+	Ror	Ax, Cl
+	Mov	Ln_Mask, Ax	;Save this for the next line segment
+
+	Mov	Ax, Ys_Max	;Clip Y1 to Ys_Max.  Not clipped if
+	Cmp	Si, Ax		;Y1 .LE. Ys_Max
+	Jle	@550
+
+	Sub	Si, Ax		;It's clipped.  We neet to prerotate the
+	Mov	Cx, Si		;line mask so slices abut properly
+	And	Cl, 0Fh
+	Ror	Bp, Cl
+
+	Add	Bx, Si		;Move X1 point to correspond with new Y1
+
+	Mov	Si, Ax		;Clip Y1 to Ys_Max
+
+@550:	Mov	Ax, Ys_Min	;Clip Y2 to Ys_Min.  Not clipped if
+	Cmp	Di, Ax		;Y2 .GE. Ys_Max
+	Jge	@560
+
+	Mov	Di, Ax		;Clip Y2
+
+@560:	Mov	Ax, Si		;Move Y1 for concat call
+
+	Mov	Cx, Si		;Compute loop count for draw algorithim
+	Sub	Cx, Di		;Count = Ystart - Yend + 1
+	Inc	Cx
+
+Common_45:
+	Call	Concat		;Compute physical address
+
+	Mov	Si, Offset Ortbl	;Get the initial mask to use for
+	Add	Si, Bx			;drawing this line segment
+	Mov	Bh, Bl
+	Mov	Bl, [Si]
+
+	Mov	Ax, Bp			;Put the line mask in Ax
+
+;This is a simplification of the math for breshenham's algorithim.  Normally
+;
+;   E1 = 2*dy     E2 = 2*(dy-dx)     EPSILON = 2*dy - dx
+;
+;but since dx = dy these simplify to:
+;
+;   E1 = 2*dy     E2 = 0             EPSILON = dy
+
+	Mov	Si, Dx		;For 45 degree, E1 is 2*dy
+	Shl	Si, 1
+
+	Xor	Bp, Bp		;For 45 degree, E2 is 0
+
+	Jmp	Dx_Ge_Dy_Case
+
+;**********************************************************************
+;*  Neg_Dy_Gt_Dx                                                      *
+;*       This routine clips arbitrary lines with a negative delta y   *
+;*       where delta y is greater than delta x.                       *
+;**********************************************************************
+
+Neg_Dy_Gt_Dx:
+
+;First rotate the line mask properly for the end of this line.
+
+	Mov	Si, Cx		;Move Y1 value to Si register
+
+	Mov	Dx, Ln_Mask	;Get line mask
+	Mov	Cx, Wrt_Mode	;Do we use it or zeroes
+	Or	Cx, Fg_Bp_1
+	Jnz	@300		;We use the line mask
+
+	Xor	Dx, Dx		;We use zeroes
+
+@300:	Push	Dx		;Save the mask, we will use it for drawing
+
+	Mov	Cl, Al		;Low 8 bits of dy to Cl
+	And	Cl, 0Fh		;Rotate at most 15 times
+	Ror	Dx, Cl
+	Mov	Ln_Mask, Dx	;Save line mask for next segment
+
+	Mov	Cx, Ys_Max	;Clip Y1 to Ys_Max
+	Sub	Cx, Si		;Backwards to preserve Y1
+	Neg	Cx
+	Jle	Neg_No_Clip_Y1	;Not clipped if Y1 .LE. Ys_Max
+
+;This endpoint is clipped, Cx contains the length of the clipped segment
+
+	Sub	Si, Cx		;Y1 is now Ys_Max
+
+;Now prerotate the line mask so that slices abut with the right pattern
+
+	Pop	Dx		;Get back line mask
+	Push	Cx		;Save cdy
+	And	Cl, 0Fh		;Rotate the mask at most 15 times
+	Ror	Dx, Cl
+	Pop	Cx		;Restore cdy
+	Push	Dx		;Save line mask for draw
+
+	Push	Di		;Put Y2 on stack so we have a free register
+
+;Now compute the new X1 point.  The delta x of the clipped segment is
+;
+;     cdx = dx*cdy/dy
+;
+;rounded up
+
+	Mov	Di, Bp		;Save delta x
+	Xchg	Ax, Bp		;dx is now in Ax, dy is now in Bp
+	Mul	Cx		;Ax/Dx now contain dx*cdy
+	Div	Bp		;divide by dy
+
+	Shl	Dx, 1		;Does it need rounding
+	Cmp	Dx, Bp
+	Jle	Neg_No_Round	;Jump if not
+
+	Inc	Ax
+
+Neg_No_Round:
+	Add	Bx, Ax		;Compute new X1 point
+
+	Push	Si		;Save clipped X1, Y1
+	Push	Bx
+
+;We now compute the parameters for the original breshenham algorithim.
+;Once computed, we will adjust the epsilon term for where we are in
+;the line now
+
+	Shl	Di, 1		;Di = E1 term = 2*dx
+
+	Mov	Bx, Di		;Bx = epsilon = 2*dx - dy
+	Sub	Bx, Bp
+
+	Shl	Bp, 1		;Bp = E2 term = 2*dx - 2*dy
+	Sub	Bp, Di		;do it backward to preserve E1
+	Neg	Bp
+
+;Now compute the value of epsilon for this point on the segment.  The
+;equation is:
+;
+;     epsilon = epsilon + (cdy-cdx)*E1 + cdx*E2
+
+	Xchg	Cx, Ax		;cdy to Ax, cdx to Cx
+	Sub	Ax, Cx		;Si = (cdy-cdx)*E1
+	Mul	Di
+	Mov	Si, Ax
+
+	Mov	Ax, Cx		;Ax = cdx*E2
+	Mul	Bp
+
+	Add	Si, Ax		;Add terms 2 and 3.  The 16 bit result will
+				;always be correct even if the intermediate
+				;numbers were greater than 16 bit values
+
+	Add	Bx, Si		;Compute epsilon and put in Dx
+	Mov	Dx, Bx
+
+	Pop	Bx		;Restore X1, Y1, and Y2
+	Pop	Ax
+	Pop	Cx
+
+;Clip Y2 to Ys_Min
+
+	Mov	Si, Ys_Min	;Clip Y2 to Ys_Min
+	Cmp	Cx, Ys_Min	;Not clipped if Y2 .GE. Ys_Min
+	Jge	@310
+
+	Mov	Cx, Si		;Clip Y2
+
+@310:	Sub	Cx, Ax		;Compute loop count for draw algorithim
+	Neg	Cx		;Backwards preserves Y1
+	Inc	Cx		;Count = Ystart - Yend + 1
+
+	Push	Di		;Save E1 on stack since concat changes Di
+
+Common_Dy_Gt_Dx:
+	Call	Concat		;Compute physical address
+
+	Mov	Si, Offset Ortbl	;Get the initial mask to use for
+	Add	Si, Bx			;drawing this line segment
+	Mov	Bh, Bl
+	Mov	Bl, [Si]
+
+	Pop	Si		;S1 = E1
+
+	Pop	Ax		;Put the line mask in Ax
+
+	Jmp	Dy_Gt_Dx_Case
+
+Neg_No_Clip_Y1:			;No clip is necessary on Y1.  Clip Y2.
+
+	Mov	Cx, Di		;Y2 to Cx
+	Mov	Di, Ys_Min	;Clip Y2 to Ys_Min
+	Cmp	Cx, Di		;Not clipped if Y2 .GE. Ys_Min
+	Jge	@350
+
+	Mov	Cx, Di		;Clip Y2
+
+;We now compute the parameters for the breshenham algorithim.
+
+@350:	Shl	Bp, 1		;Bp = E1 term = 2*dx
+
+	Mov	Dx, Bp		;Dx = epsilon = 2*dx - dy
+	Sub	Dx, Ax
+
+	Shl	Ax, 1		;Ax = E2 term = 2*dx - 2*dy
+	Sub	Ax, Bp		;do it backward to preserve E1
+	Neg	Ax
+
+	Xchg	Ax, Bp		;Position E1 and E2 properly for joining main
+				;code
+
+	Push	Ax		;Save on the stack for after concat call
+
+	Mov	Ax, Si		;Move Y1 for concat call
+
+	Sub	Cx, Ax		;Compute loop count for draw algorithim
+	Neg	Cx		;Backward to preserve Y1
+	Inc	Cx		;Count = Yend - Ystart + 1
+
+	Jmp	Common_Dy_Gt_Dx
+
+;**********************************************************************
+;* Neg_Dx_Gt_Dy                                                       *
+;**********************************************************************
+
+Dx_N_No_Clip_Y1:
+	Push	Si		;Setup Stack and registers to jump into
+	Push	Di		;Above code
+	Mov	Di, Bx
+
+;Compute the breshenham paramaters
+
+	Shl	Ax, 1		;Si = E1 = 2*dy
+	Mov	Si, Ax
+
+	Mov	Bx, Ax		;Bx = epsilon = 2*dy - dx
+	Sub	Bx, Bp
+
+	Shl	Bp, 1		;Bp = E2 = 2*dy - 2*dx
+	Sub	Bp, Ax		;Do it backward to preserve E1
+	Neg	Bp
+
+	Jmp	Dx_N_Clip_Y2	;See if we must clip the other endpoint
+
+Neg_Dx_Gt_Dy:
+
+;First rotate the line mask properly for the end of this line.
+
+	Push	Si		;We need a scratch register
+
+	Mov	Si, Cx		;Move Y1 value to Si register
+
+	Mov	Dx, Ln_Mask	;Get line mask
+	Mov	Cx, Wrt_Mode	;Do we use it or zeroes
+	Or	Cx, Fg_Bp_1
+	Jnz	@400		;We use the line mask
+
+	Xor	Dx, Dx		;We use zeroes
+
+@400:	Mov	Saved_Mask, Dx	;Save the mask we will need it later
+
+	Mov	Cx, Bp		;Move dx to Cx register
+	And	Cl, 0Fh		;Rotate at most 15 times
+	Ror	Dx, Cl
+	Mov	Ln_Mask, Dx	;Save line mask for next segment
+
+	Mov	Cx, Ys_Max	;Clip Y1 to Ys_Max
+	Sub	Cx, Si		;Backward to preserve Y1
+	Neg	Cx
+	Jle	Dx_N_No_Clip_Y1	;Not clipped if Y1 .LE. Ys_Max
+
+;This endpoint is clipped, Cx contains the length of the clipped segment
+
+	Sub	Si, Cx		;Y1 is now Ys_Max
+
+;Now we must compute the delta x associated with this delta y.  To do this
+;we need the parameters for the breshenham algorithim.  But first save some
+;registers
+
+	Push	Si		;Save Y1
+	Push	Di		;Save Y2
+	Push	Bx		;Save X1
+
+;Compute the breshenham paramaters
+
+	Shl	Ax, 1		;Si = E1 = 2*dy
+	Mov	Si, Ax
+
+	Xor	Di, Di		;Bx:Di = epsilon sign extended to 32 bits
+	Mov	Bx, Ax		;epsilon = 2*dy - dx
+	Sub	Bx, Bp
+	Jns	@410
+
+	Dec	Di		;Sign extension is negative
+
+@410:	Shl	Bp, 1		;Bp = E2 = 2*dy - 2*dx
+	Sub	Bp, Ax		;Do it backward to preserve E1
+	Neg	Bp
+
+;Now calculate cdx.  We know the following things about the breshenham
+;paramaters:
+;     1)  We are just about to increment y since a slice must start with a
+;         y increment.  This implies that epsilon is non-negative.
+;     2)  E2 is negative.  Epsilon has been made negative by cdy - 1 additions
+;         E2
+;     3)  E1 always has the opposite sign of E1
+;
+;If we assume that cdy is much greater than cdx, we can write that:
+;
+;     cdx = -(epsilon + (cdy - 1)*E2)/E1
+;
+;     where cdx is the number of times x has incremented that y has not
+;
+;This equation is mostly right.  It must be corrected as follows:
+;
+;     1)  As dx approaches dy, for small slices, the sign of epsilon will
+;         never change.  In this case, Epsilon always starts positive and
+;         remains positive.  This means we are in a portion of the
+;         breshenham x and y are stepping so cdx must be forced to zero.
+;         (Another way of thinking of this is that cdx can never be negative
+;         and must be clamped to zero.)
+;
+;     2)  If there is a remainder in this calculation it must be rounded
+;         if either epsilon started out not positive, or (cdy - 1) is greater
+;         than zero.
+
+	Mov	Ax, Bp		;Ax = E2
+	Dec	Cx		;Cx = cdy-1
+	Imul	Cx		;Ax = (cdy - 1)*E2
+
+	Add	Ax, Bx		;Plus epsilon
+	Adc	Dx, Di
+
+	Js	@420		;Normal case
+
+	Xor	Ax, Ax		;Clamp cdx to zero
+	Jmps	Neg_No_Round_cdx
+
+@420:	Idiv	Si		;Complete calculaton
+	Neg	Ax
+
+	Or	Dx, Dx		;Only round if remainder
+	Jz	Neg_No_Round_cdx
+
+	Or	Di, Di		;Round if epsilon is not positive
+	Jle	Neg_Round_cdx
+
+	Or	Cx, Cx		;or if cdx-1 not zero
+	Jz	Neg_No_Round_cdx
+
+Neg_Round_cdx:
+	Inc	Ax
+
+Neg_No_Round_cdx:
+	Mov	Di, Ax		;Save cdx
+	Inc	Cx		;Restore cdy
+
+;Compute the value for epsilon for this point.
+;
+;     epsilon = epsilon + cdx*E1 + cdy*E2
+
+	Mov	Ax, Si		;Compute cdx * E1
+	Mul	Di
+	Push	Ax
+
+	Mov	Ax, Bp		;Compute cdy * E2
+	Mul	Cx
+
+	Pop	Dx		;Sum the three terms
+	Add	Ax, Dx
+	Add	Bx, Ax		;Bx = correct value for epsilon
+
+;Compute the new X1 point
+
+	Add	Cx, Di
+	Pop	Di
+	Add	Di, Cx
+
+;Now rotate the line mask so that patterns across slices abut
+
+	Mov	Ax, Saved_Mask
+	And	Cl, 0Fh		;Rotate at most 15 times
+	Ror	Ax, Cl
+	Mov	Saved_Mask, Ax	;Save for drawing
+
+;Clip Y2 to Ys_Min
+
+Dx_N_Clip_Y2:
+
+	Mov	Ax, Ys_Min
+	Pop	Cx		;Get back Y2
+	Cmp	Cx, Ax		;Not clipped if Y2 .GE. Ys_Min
+	Jge	Dx_N_No_Clip_Y2
+
+;We must clip.  This means we have to compute delta x as before.  The only
+;difference is that we know cdy - 1 is greater than zero so the round is
+;simpler.
+
+	Pop	Cx		;Get back Y1
+	Sub	Ax, Cx		;Compute cdy for the visible segment
+	Neg	Ax		;Backwards preserves Y1
+
+Common_Dx_Gt_Dy:
+	Push	Di		;Save X1 point
+	Push	Ax		;Save cdy
+
+	Xor	Di, Di		;Sign extend epsilon
+	Or	Bx, Bx
+	Jns	@430
+
+	Dec	Di		;Sign extend negative
+
+@430:	Imul	Bp		;Compute cdy*E2
+	Add	Ax, Bx		;Add in epsilon
+	Adc	Dx, Di
+	Js	@440		;Normal case
+
+	Xor	Ax, Ax		;Clamp cdx to zero
+	Jmps	Neg_No_Round_Cnt
+
+@440:	Idiv	Si
+	Neg	Ax
+
+	Or	Dx, Dx		;Since cdy-1 positive round if remainder
+	Jz	Neg_No_Round_Cnt	;is non zero only
+
+	Inc	Ax
+
+Neg_No_Round_Cnt:
+	Pop	Dx		;Get back cdy
+	Inc	Dx		;Plus one since above calculation used cdy-1
+	Add	Dx, Ax		;Compute delta x for the visible line segment
+
+	Mov	Ax, Cx		;Position Y1 for concat call
+	Mov	Cx, Dx		;Position loop count for drawing
+	Mov	Dx, Bx		;Position epsilon for drawing
+
+	Pop	Bx		;Get back X1 for concat call
+
+	Push	Si		;Save E1 term since concat uses Si
+
+	Call	Concat		;Compute physical address
+
+	Mov	Si, Offset Ortbl	;Get the initial mask to use for
+	Add	Si, Bx			;drawing this line segment
+	Mov	Bh, Bl
+	Mov	Bl, [Si]
+
+	Pop	Si		;S1 = E1
+
+	Pop	Ax		;Pull X2 off the stack
+
+	Mov	Ax, Saved_Mask	;Put the line mask in Ax
+
+	Jmp	Dx_Ge_Dy_Case
+
+Dx_N_No_Clip_Y2:
+	Mov	Dx, Bx		;Position epsilon for drawing
+	Mov	Bx, Di		;Position X1 for concat call
+	Pop	Ax		;Position Y1 for concat call
+
+	Pop	Cx		;Get back the X2 point
+	Sub	Cx, Di		;Loop count = X2 - X1 +1
+	Inc	Cx
+
+	Push	Si		;Save E1 term since concat uses Si
+
+	Call	Concat		;Compute physical address
+
+	Mov	Si, Offset Ortbl	;Get the initial mask to use for
+	Add	Si, Bx			;drawing this line segment
+	Mov	Bh, Bl
+	Mov	Bl, [Si]
+
+	Pop	Si		;S1 = E1
+
+	Mov	Ax, Saved_Mask	;Put the line mask in Ax
+
+	Jmp	Dx_Ge_Dy_Case
+
+;**********************************************************************
+;*  Case for Dx .GE. Dy                                               *
+;**********************************************************************
+
+Dx_Ge_Dy_Case:
+if (num_planes gt 1)
+	push	ax
+	mov	ax, fg_bp_1
+	mov	tmp_fg_bp, ax			; get the color
+	pop	ax
+	mov	plane_loop_count, num_planes	; number of color planes
+
+dx_ge_dy_color_loop:
+	push	ax
+	push	bx
+	push	cx
+	push	dx
+	push	di
+
+	call	sub_dx_ge_dy
+
+	pop	di
+	pop	dx
+	pop	cx
+	pop	bx
+	pop	ax
+
+	add	di, plane_sz		; bump to next plane
+	shr	tmp_fg_bp, 1
+	dec	plane_loop_count
+	jnz	dx_ge_dy_color_loop
+	ret
+endif
+
+sub_dx_ge_dy:
+	Cmp	Wrt_Mode, 1		;Case on writing mode
+	Jl	Replace_Dxge
+	Je	Its_Or_Dxge
+	Cmp	Wrt_Mode, 2
+	Je	Check_Xor_Dxge
+	Jmp	Not_Dxge
+
+Its_Or_Dxge:
+	Jmp	Or_Dxge		;The label is out of range for short jump
+
+
+; In order to guarantee that XOR does not XOR itself at the intersection
+; points of of a polyline, Cx is decremented by one if the segment line
+; about to be drawn is not the last segment of the polyline.
+
+Check_Xor_Dxge:
+	Cmp	Lstlin, 0FFh		;Check if XOR and last line of
+	Jz	Xor_Dxge		;Polyline
+
+	Cmp	Cx, 1			;Leave it alone if it is a point
+	Jz	Xor_Dxge
+
+	Dec	Cx			;Decrement loop count
+	Jmps	Xor_Dxge
+
+Replace_Dxge:
+	Rol	Ax, 1
+	Jnc	Rep_Dxge_Not_1
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+	jz	rep_dxge_not_1
+endif
+	Or	Es:[Di], Bl
+	Jmps	Rep_Dxge_Bp_Done
+
+Rep_Dxge_Not_1:
+	Not	Bl
+	And	Es:[Di], Bl
+	Not	Bl
+
+Rep_Dxge_Bp_Done:
+	Ror	Bl, 1
+	Jnc	Rep_Dxge_Incdi_Done
+	Inc	Di
+
+Rep_Dxge_Incdi_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	Rep_Dxge_Same1		;   then do not incr. x.
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Add	Di, Yinc		;    y := y+yinc
+
+Rep_Dxge_Yinc_Done:
+	Loop	Replace_Dxge
+	Ret
+
+Rep_Dxge_Same1: 
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	Replace_Dxge
+	Ret
+
+Xor_Dxge:
+	Rol	Ax, 1
+	Jnc	Xor_Dxge_Bp_Done
+	Xor	Es:[Di], Bl
+
+Xor_Dxge_Bp_Done:
+	Ror	Bl, 1
+	Jnc	Xor_Dxge_Incdi_Done
+	Inc	Di
+
+Xor_Dxge_Incdi_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	Xor_Dxge_Same1		;   then do not incr. x.
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Add	Di, Yinc		;    y := y+yinc
+
+Xor_Dxge_Yinc_Done:
+	Loop	Xor_Dxge
+	Ret
+
+Xor_Dxge_Same1:
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	Xor_Dxge
+	Ret
+
+not_Dxge:
+	Rol	Ax, 1
+	jc	not_Dxge_Bp_Done
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Cmp	Fg_Bp_1, 0
+endif
+	Je	not_Dxge_Not_Bp_1
+	Or	Es:[Di], Bl
+	Jmps	not_Dxge_Bp_Done
+
+not_Dxge_Not_Bp_1:
+	Not	Bl
+	And	Es:[Di], Bl
+	Not	Bl
+
+not_Dxge_Bp_Done:
+	Ror	Bl, 1
+	Jnc	not_Dxge_Incdi_Done
+	Inc	Di
+
+not_Dxge_Incdi_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	not_Dxge_Same1		;   then do not incr. x.
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Add	Di, Yinc		;    y := y+yinc
+
+not_Dxge_Yinc_Done:
+	Loop	not_Dxge
+	Ret
+
+not_Dxge_Same1: 
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	not_Dxge
+	Ret
+
+Or_Dxge:
+	Rol	Ax, 1
+	Jnc	Or_Dxge_Bp_Done
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Cmp	Fg_Bp_1, 0
+endif
+	Je	Or_Dxge_Not_Bp_1
+	Or	Es:[Di], Bl
+	Jmps	Or_Dxge_Bp_Done
+
+Or_Dxge_Not_Bp_1:
+	Not	Bl
+	And	Es:[Di], Bl
+	Not	Bl
+
+Or_Dxge_Bp_Done:
+	Ror	Bl, 1
+	Jnc	Or_Dxge_Incdi_Done
+	Inc	Di
+
+Or_Dxge_Incdi_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	Or_Dxge_Same1		;   then do not incr. x.
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Add	Di, Yinc		;    y := y+yinc
+
+Or_Dxge_Yinc_Done:
+	Loop	Or_Dxge
+	Ret
+
+Or_Dxge_Same1: 
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	Or_Dxge
+	Ret
+
+;**********************************************************************
+;*  Case for Dy .GT. Dx                                               *
+;**********************************************************************
+
+Dy_Gt_Dx_Case:
+if (num_planes gt 1)
+	push	ax
+	mov	ax, fg_bp_1
+	mov	tmp_fg_bp, ax			; get the color
+	pop	ax
+	mov	plane_loop_count, num_planes	; number of color planes
+
+dy_gt_dx_color_loop:
+	push	ax
+	push	bx
+	push	cx
+	push	dx
+	push	di
+
+	call	sub_dy_gt_dx
+
+	pop	di
+	pop	dx
+	pop	cx
+	pop	bx
+	pop	ax
+
+	add	di, plane_sz		; bump to next plane
+	shr	tmp_fg_bp, 1
+	dec	plane_loop_count
+	jnz	dy_gt_dx_color_loop
+	ret
+endif
+
+sub_dy_gt_dx:
+	Cmp	Wrt_Mode, 1		;Case on writing mode
+	Jl	Replace_Dygt
+	Je	Its_Or_Dygt
+	Cmp	Wrt_Mode, 2
+	Je	Check_Xor_Dygt
+	Jmp	Not_Dygt
+
+Its_Or_Dygt:
+	Jmp	Or_Dygt		;Its out of range for a short jump
+
+
+; In order to guarantee that XOR does not XOR itself at the intersection
+; points of of a polyline, Cx is decremented by one if the segment line
+; about to be drawn is not the last segment of the polyline.
+
+Check_Xor_Dygt:
+	Cmp	Lstlin, 0FFh		;Check if XOR and last line of
+	Jz	Xor_Dygt		;Polyline
+
+	Cmp	Cx, 1			;Leave it alone if it is a point
+	Jz	Xor_Dygt
+
+	Dec	Cx			;Decrement loop count
+	Jmps	Xor_Dygt
+
+Replace_Dygt:
+	Rol	Ax, 1
+	Jnc	Rep_Dygt_Not_1
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+	jz	rep_dygt_not_1
+endif
+	Or	Es:[Di], Bl
+	Jmps	Rep_Dygt_Bp_Done
+
+Rep_Dygt_Not_1:
+	Not	Bl
+	And	Es:[Di], Bl
+	Not	Bl
+
+Rep_Dygt_Bp_Done:
+	Add	Di, Yinc		;    Y := y+yinc
+
+Rep_Dygt_Yinc_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	Rep_Dygt_Same1		;   then do not incr. x.
+	Ror	Bl, 1
+	Jnc	Rep_Dygt_Incdi_Done
+	Inc	Di
+
+Rep_Dygt_Incdi_Done:
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Loop	Replace_Dygt
+	Ret
+
+Rep_Dygt_Same1: 
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	Replace_Dygt
+	Ret
+
+Xor_Dygt:
+	Rol	Ax, 1
+	Jnc	Xor_Dygt_Bp_Done
+	Xor	Es:[Di], Bl
+
+Xor_Dygt_Bp_Done:
+	Add	Di, Yinc		;    Y := y+yinc
+
+Xor_Dygt_Yinc_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	Xor_Dygt_Same1		;   then do not incr. x.
+	Ror	Bl, 1
+	Jnc	Xor_Dygt_Incdi_Done
+	Inc	Di
+
+Xor_Dygt_Incdi_Done:
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Loop	Xor_Dygt
+	Ret
+
+Xor_Dygt_Same1: 
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	Xor_Dygt
+	Ret
+
+not_Dygt:
+	Rol	Ax, 1
+	jc	not_Dygt_Bp_Done
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Cmp	Fg_Bp_1, 0
+endif
+	Je	not_Dygt_Not_Bp_1
+	Or	Es:[Di], Bl
+	Jmps	not_Dygt_Bp_Done
+
+not_Dygt_Not_Bp_1:
+	Not	Bl
+	And	Es:[Di], Bl
+	Not	Bl
+
+not_Dygt_Bp_Done:
+	Add	Di, Yinc		;    y := y+yinc
+
+not_Dygt_Yinc_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	not_Dygt_Same1		;   then do not incr. x.
+	Ror	Bl, 1
+	Jnc	not_Dygt_Incdi_Done
+	Inc	Di
+
+not_Dygt_Incdi_Done:
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Loop	not_Dygt
+	Ret
+
+not_Dygt_Same1: 
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	not_Dygt
+	Ret
+
+Or_Dygt:
+	Rol	Ax, 1
+	Jnc	Or_Dygt_Bp_Done
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Cmp	Fg_Bp_1, 0
+endif
+	Je	Or_Dygt_Not_Bp_1
+	Or	Es:[Di], Bl
+	Jmps	Or_Dygt_Bp_Done
+
+Or_Dygt_Not_Bp_1:
+	Not	Bl
+	And	Es:[Di], Bl
+	Not	Bl
+
+Or_Dygt_Bp_Done:
+	Add	Di, Yinc		;    y := y+yinc
+
+Or_Dygt_Yinc_Done:
+	And	Dx, Dx			;If epsilon < 0
+	Js	Or_Dygt_Same1		;   then do not incr. x.
+	Ror	Bl, 1
+	Jnc	Or_Dygt_Incdi_Done
+	Inc	Di
+
+Or_Dygt_Incdi_Done:
+	Add	Dx, Bp			;Epsilon = epsilon + e2
+	Loop	Or_Dygt
+	Ret
+
+Or_Dygt_Same1: 
+	Add	Dx, Si			;Epsilon := (epsilon + e1)
+	Loop	Or_Dygt
+	Ret
+
+
+;****************************************************************
+;Subroutine	HABLINE						*
+;	Entry:	X1-coordinate					*
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		patptr - pointer to fill pattern table		*
+;								*	
+;	Purpose:						*
+;		This routine will draw a line from (X1,Y1) to	*
+;		(X2,Y1) using a horizontal line algorithm.	*
+;****************************************************************
+HABLINE:
+	Push	Bp
+	Call	Xline
+	Pop	Bp
+	Ret
+
+
+;******************************************************************************
+; XLINE
+;	Draw a horizontal line with pattern
+;
+;	Entry	X1,Y1 = left edge  inclusive
+;		X2,Y1 = right edge inclusive
+;		WRT_MODE = writing mode ( 0 - 3 )
+;
+;******************************************************************************
+Xline:
+	Mov	Ax, Graph_Plane
+	Mov	Es, Ax		; Init the segment register
+	Mov	Bx, X1
+	And	Bx, 0FFF0h	; Make sure it lines up on a word boundary
+	Mov	Ax, Y1		; Find the physical address
+	Push	X2		; Save X2
+	Push	X1		; Save X1
+	Push	Ax		; Save Y1	
+	Call	Concat		; Di = display memory pointer
+	pop	ax		; get Y1
+	xor	dx, dx		; set up low order part of dividend
+	mov	bx, patmsk
+	inc	bx		; get the pattern mask
+	idiv	bx
+	mov	si, dx		; remainder is pattern index
+	Shl	Si, 1		; Index by words
+	Mov	Bx, Patptr	; Get the pattern pointer
+	Mov	Dx, [Si+Bx]	; Get the pattern
+
+Xline0:
+	Xchg	Dh, Dl
+	Pop	Ax		; Get X1
+	Mov	Bx, Ax		; Save X1 for later
+	Mov	Cx, 0Fh
+	And	Bx, Cx		; Get the left mask word
+	Shl	Bx, 1		; Index by words
+	Mov	Bx, Word_Mask_Table[Bx]
+	Not	Bx		; Make it the left one
+	Xchg	Bh, Bl		; Account for byte swap
+	Mov	Si, Bx		; Si = left fringe mask
+
+	Pop	Bx		; Get X2 back
+	Inc	Bx
+	Mov	Bp, Bx		; Save X2
+	And	Bx, Cx
+	Shl	Bx, 1		; Index by words
+	Mov	Bx, Word_Mask_Table[Bx]
+	Xchg	Bh, Bl		; Bx = right fringe mask
+	
+	Mov	Cl, 4		; Find the word count bp = x2 , dx = x1
+	Shr	Bp, Cl		; Divide by four
+	Shr	Ax, Cl
+	Mov	Cx, Bp
+	Sub	Cx, Ax		; Word count = x2/4 - x1/4 -1
+	Dec	Cx
+	Jge	Xline_Ok
+	Xor	Cx, Cx		; Make word count = 0
+	Cmp	Bx, 0FFFFh	; Is it left only?
+	Jz	Xline_Left_Mask_Only
+	Or	Si, Bx		; Left_word_mask or right word mask
+
+Xline_Left_Mask_Only:
+	Mov	Bx, 0FFFFh	; Don't let the right mask do anything
+
+Xline_Ok:
+	Mov	Bp, Bx		; Bp = right fringe mask
+	Mov	Ax, Wrt_Mode
+	Mov	Bx, Ax
+	Shl	Bx, 1
+if (num_planes gt 1)
+	mov	plane_loop_count, num_planes
+	mov	ax, fg_bp_1
+	mov	tmp_fg_bp, ax	; get the color (pixel value)
+
+xline_color_loop:
+	push	bx
+	push	cx
+	push	dx
+	push	di
+
+	Call	Xline_Tbl[Bx] 	; Branch to the correct routine 	
+
+	pop	di
+	pop	dx
+	pop	cx
+	pop	bx
+
+	add	di, plane_sz	; bump to next plane
+	shr	tmp_fg_bp, 1
+	dec	plane_loop_count
+	jnz	xline_color_loop
+else
+	Call	Xline_Tbl[Bx] 	; Branch to the correct routine 	
+endif
+	Mov	Ax, Ln_Mask	; Return the mask in ax for ABLINE
+	Ret
+
+;*******************************
+; XLINE_REP
+;	Entry	Es:Di = Memory Address
+;		Cx    = Word Count
+;		Dx    = Pattern
+;		Ax Used For Accumulator
+;		Si    = Left Word Mask
+;		Bp    = Right Word Mask
+;
+;*******************************	
+Xline_Rep:
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Cmp	Fg_Bp_1, 0
+endif
+	Jnz	Xline_Rep_Ok
+	Xor	Dx, Dx		; If replace mode and index = 0 fill with 0
+
+Xline_Rep_Ok:
+
+; Left Fringe 
+
+	Mov	Ax, Es:[Di]	; Apply the left fringe mask
+	Xor	Ax, Dx		; Xor in the pattern
+	And	Ax, Si		; Left_word_mask
+	Xor	Ax, Dx		; Xor out the pattern
+	Stosw			; Store the word to memory
+
+; Inner Word Loop
+
+	Mov	Ax, Dx
+	Jcxz	Xline_Rep_Right
+	Rep	Stosw		; Move out the words to memory in fastest way
+
+; Right Fringe
+
+Xline_Rep_Right:
+	Mov	Ax, Es:[Di]	; Apply the right fringe mask
+	Xor	Ax, Dx
+	And	Ax, Bp
+	Xor	Ax, Dx
+	Stosw			; Store the word to memory
+	Ret
+
+;*******************************
+; XLINE_OR
+;	Entry	Es:Di = Memory Address
+;		Cx    = Word Count
+;		Dx    = Pattern
+;		Ax Used For Accumulator
+;		Si    = Left Word Mask
+;		Bp    = Right Word Mask
+;
+;*******************************	
+Xline_Or:
+
+; Left Fringe 
+
+	Mov	Ax, Es:[Di]	; Apply the left fringe mask
+	Mov	Bx, Ax		; Save the source
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Test	Fg_Bp_1, 1	; Is it in background
+endif
+	Jnz	Xline_Or_Left_Fore
+	Not	Dx
+	And	Ax, Dx
+	Jmps	Xline_Or_Left
+
+Xline_Or_Left_Fore:
+	Or	Ax, Dx		; Apply the pattern
+
+Xline_Or_Left:	
+	Xor	Bx, Ax		; Xor in the pattern
+	And	Bx, Si		; Left_word_mask
+	Xor	Ax, Bx		; Xor out the pattern
+	Stosw			; Store the word to memory
+
+; Inner Word Loop
+
+	Jcxz	Xline_Or_Right
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Test	Fg_Bp_1, 1
+endif
+	Jnz	Xline_Or_Word_Fore
+
+Xline_Or_Word:
+	And	Es:[Di], Dx
+	Inc	Di
+	Inc	Di
+	Loop	Xline_Or_Word
+	Jmps	Xline_Or_Right
+
+Xline_Or_Word_Fore:
+	Or	Es:[Di], Dx
+	Inc	Di
+	Inc	Di
+	Loop	Xline_Or_Word_Fore
+
+; Right Fringe
+
+Xline_Or_Right:
+	Mov	Ax, Es:[Di]	; Apply the right fringe mask
+	Mov	Bx, Ax
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Test	Fg_Bp_1, 1
+endif
+	Jnz	Xline_Or_Right_Fore
+	And	Ax, Dx
+	Jmps	Xline_Or_Right_Next
+
+Xline_Or_Right_Fore:
+	Or	Ax, Dx
+
+Xline_Or_Right_Next:
+	Xor	Bx, Ax
+	And	Bx, Bp
+	Xor	Ax, Bx
+	Stosw			; Store the word to memory
+	Ret
+
+;*******************************
+; XLINE_XOR
+;	Entry	Es:Di = Memory Address
+;		Cx    = Word Count
+;		Dx    = Pattern
+;		Ax Used For Accumulator
+;		Si    = Left Word Mask
+;		Bp    = Right Word Mask
+;
+;*******************************	
+Xline_Xor:
+
+; Left Fringe 
+
+	Mov	Ax, Es:[Di]	; Apply the left fringe mask
+	Mov	Bx, Ax
+	Xor	Ax, Dx		; Xor in the pattern
+	Xor	Bx, Ax
+	And	Bx, Si		; Left_word_mask
+	Xor	Ax, Bx		; Xor out the pattern
+	Stosw			; Store the word to memory
+
+; Inner Word Loop
+
+	Jcxz	Xline_Xor_Right
+
+Xline_Xor_Word:
+	Xor	Es:[Di], Dx
+	Inc	Di
+	Inc	Di
+	Loop	Xline_Xor_Word	; Move out the words to memory in fastest way
+
+; Right Fringe
+
+Xline_Xor_Right:
+	Mov	Ax, Es:[Di]	; Apply the right fringe mask
+	Mov	Bx, Ax
+	Xor	Ax, Dx
+	Xor	Bx, Ax
+	And	Bx, Bp
+	Xor	Ax, Bx
+	Stosw			; Store the word to memory
+	Ret
+
+;*******************************
+; XLINE_NOT
+;	Entry	Es:Di = Memory Address
+;		Cx    = Word Count
+;		Dx    = Pattern
+;		Ax Used For Accumulator
+;		Si    = Left Word Mask
+;		Bp    = Right Word Mask
+;
+;*******************************	
+xline_not:
+
+; Left Fringe 
+
+	Mov	Ax, Es:[Di]	; Apply the left fringe mask
+	Mov	Bx, Ax		; Save the source
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Test	Fg_Bp_1, 1	; Is it in background
+endif
+	Jnz	xline_not_Left_Fore
+	And	Ax, Dx
+	Jmps	xline_not_Left
+
+xline_not_Left_Fore:
+	Not	Dx
+	Or	Ax, Dx		; Apply the pattern
+
+xline_not_Left:	
+	Xor	Bx, Ax		; Xor in the pattern
+	And	Bx, Si		; Left_word_mask
+	Xor	Ax, Bx		; Xor out the pattern
+	Stosw			; Store the word to memory
+
+; Inner Word Loop
+
+	Jcxz	xline_not_Right
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Test	Fg_Bp_1, 1
+endif
+	Jnz	xline_not_Word_Fore
+
+xline_not_Word:
+	And	Es:[Di], Dx
+	Inc	Di
+	Inc	Di
+	Loop	xline_not_Word
+	Jmps	xline_not_Right
+
+xline_not_Word_Fore:
+	Or	Es:[Di], Dx
+	Inc	Di
+	Inc	Di
+	Loop	xline_not_Word_Fore
+
+; Right Fringe
+
+xline_not_Right:
+	Mov	Ax, Es:[Di]	; Apply the right fringe mask
+	Mov	Bx, Ax
+if (num_planes gt 1)
+	test	tmp_fg_bp, 1
+else
+	Test	Fg_Bp_1, 1
+endif
+	Jnz	xline_not_Right_Fore
+	And	Ax, Dx
+	Jmps	xline_not_Right_Next
+
+xline_not_Right_Fore:
+	Or	Ax, Dx
+
+xline_not_Right_Next:
+	Xor	Bx, Ax
+	And	Bx, Bp
+	Xor	Ax, Bx
+	Stosw			; Store the word to memory
+	Ret
+
+
+
+DGROUP	GROUP	DATA
+		dseg
+;****************************************************************
+;*			DATA TO BE REASSEMBLED			*
+;*		contains device dependent information		*
+;****************************************************************
+	public	Y1, Y2, X1, X2
+	public	Ys_Min, Ys_Max
+	public	Lstlin
+	public	Ln_Mask
+	public	Fg_Bp_1
+	public	Wrt_Mode
+	public	plane_loop_count
+
+	extrn	graph_plane:word, plane_sz:word
+	extrn	slice_cnt:word, slice_sz:word
+	extrn	tmp_fg_bp:word
+
+	extrn	patptr:word		;pointer to pattern fill style
+	extrn	patmsk:word		;the mask for the pattern fills in y
+	extrn	fill_intersect:word
+	extrn	y:word
+
+Ortbl		db	128		; 'OR' mask table in stpixl
+		db	64
+		db	32
+		db	16
+		db	8
+		db	4
+		db	2
+		db	1
+
+;Tables used in horizontal line routine
+Xline_Tbl	dw	Offset	Xline_Rep
+		dw	Offset	Xline_Or
+		dw	Offset  Xline_Xor
+		dw	Offset  Xline_Not
+
+Word_Mask_Table	dw	0FFFFh
+		dw	07FFFh
+		dw	03FFFh
+		dw	01FFFh
+		dw	00FFFh
+		dw	007FFh
+		dw	003FFh
+		dw	001FFh
+		dw	000FFh
+		dw	0007Fh
+		dw	0003Fh
+		dw	0001Fh
+		dw	0000Fh
+		dw	00007h
+		dw	00003h
+		dw	00001h
+		dw	0
+
+;Variables used in Abline
+Wrt_Mode	dw	0
+Lstlin		dw	0		; flag for last line of polline
+Ln_Mask		dw	0FFFFh		; line style
+Fg_Bp_1		dw	0
+plane_loop_count	db	num_planes
+
+Yinc		rw	1
+
+X1		dw	0		; Vars used in line drawing routine
+Y1		dw	0
+X2		dw	0
+Y2		dw	0
+
+Ys_Min		rw	1		; Minimum Y value for this slice
+Ys_Max		rw	1		; Maximum Y value for this slice
+
+Saved_Mask	rw	1
+
+vec_len_high	dw	1
+vec_len_low	dw	1
+
+tan_table	dw	00000, 00017, 00035, 00052, 00070
+		dw	00087, 00105, 00123, 00141, 00158
+
+		dw	00176, 00194, 00213, 00231, 00249
+		dw	00268, 00287, 00306, 00325, 00344
+
+		dw	00364, 00384, 00404, 00424, 00445
+		dw	00466, 00488, 00510, 00532, 00554
+
+		dw	00577, 00601, 00625, 00649, 00675
+		dw	00700, 00727, 00754, 00781, 00810
+
+		dw	00839, 00869, 00900, 00933, 00966
+		dw	01000, 01036, 01072, 01111, 01150
+
+		dw	01192, 01235, 01278, 01327, 01376
+		dw	01428, 01483, 01540, 01600, 01664
+
+		dw	01732, 01804, 01881, 01927, 02050
+		dw	02145, 02247, 02358, 02475, 02615
+
+		dw	02747, 02904, 03078, 03271, 03487
+		dw	03732, 04011, 04331, 04705, 05145
+
+		dw	05671, 06314, 07115, 08144, 09514
+		dw	11430, 14301, 19081, 28636, 57290
+
+		end

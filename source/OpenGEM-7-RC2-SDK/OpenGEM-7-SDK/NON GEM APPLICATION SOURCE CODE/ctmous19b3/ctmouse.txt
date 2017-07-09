@@ -1,0 +1,266 @@
+CuteMouse driver v1.9. Copyright (c) 1997-2002 Nagy Daniel
+Release date: 2002-03-07
+
+
+License:
+--------
+
+CuteMouse is released under the GPL license. For further information
+please read the COPYING file.
+
+
+Description:
+------------
+
+CuteMouse is a mouse driver which supports many mouse protocols, serial
+and PS/2. It can search for serial mice at all COM ports or only at a
+specified port.
+
+An important CuteMouse feature is its small memory footprint: the TSR part
+occupies less than 3.5K. CuteMouse can also install itself in upper memory
+when available without requiring external utilities such as DOS 'lh'
+command.
+
+CuteMouse supports cursor drawing in all standard graphics and text modes
+with any screen size. These are automatically detected whenever reset
+functions are called or the video mode is changed.
+
+You can subscribe to the CuteMouse discussion group at the official
+homepage http://cutemouse.sourceforge.net or by sending an empty letter to
+<cutemouse-subscribe@yahoogroups.com>.
+
+CuteMouse is part of the FreeDOS project at http://www.freedos.org
+
+
+Details:
+--------
+
+CTMOUSE supports standard PS/2 and Mouse Systems, Microsoft (including
+Intellimouse/Wheel Mouse) and Logitech serial protocols. When searching
+for a connected mouse the PS/2 port is checked first then all COM ports
+are scanned. Option /S, whose syntax is described in the help screen,
+disables PS/2 support and can specify the COM port and the IRQ line to be
+checked for a mouse connection; option /P disables serial protocols. When
+a COM port must be forced but PS/2 support is also required, both options
+must be present in the command line.
+
+By default, a PS/2 mouse is searched for before a serial mouse, but option
+/V reverses this. Option /V can be useful, for example, on notebooks with
+a built-in PS/2 pointing device to enable use of a serial mouse, when
+attached, by causing CTMOUSE to look for a serial mouse before checking
+the PS/2 device. Using option /Y (see below) also may be required along
+with /V. Note: option /V enables both serial and PS/2 protocols, so using
+options /P and /S without arguments along with /V in the command line is
+meaningless.
+
+For serial mice, CTMOUSE searches all COM ports (or at the port specified
+by option /S) for an attached Microsoft or Logitech mouse. If no such
+mouse is found then CTMOUSE installs at the first existing (or specified)
+COM port for a Mouse Systems mouse, whether a mouse is there or not. (This
+is because Mouse Systems protocol defines no detection sequence). Option
+/Y in the command line disables Mouse Systems protocol support and
+prevents driver installation if no Microsoft or Logitech mouse is found.
+Note: option /Y forces serial mouse search but, unlike option /S, doesn't
+disable PS/2 support.
+
+Both PS/2 and plain Microsoft protocols assume two button mice but option
+/3 in the command line can be used to enable the middle button if one is
+present.
+
+WARNING: when the middle button of a plain Microsoft mouse is enabled,
+pressing left or right button along with the middle button can cause
+"middle button state triggering" - i.e. when the middle button is pressed
+the driver thinks it is released and vice-versa. This is a peculiarity of
+the Microsoft protocol and can't be changed. If button triggering occurs
+simply press the left or right button along with the middle button once
+again to clear the problem.
+
+CTMOUSE supports 9 fixed resolution levels plus auto resolution, which
+define the relationship between cursor and mouse movement - the higher the
+resolution level, the further the cursor moves for a given mouse movement.
+Resolution level 1 or small mouse movements at any resolution provides a
+direct relationship between cursor and mouse movement, which enables
+precise screen positioning even at the highest resolution levels. Larger
+mouse movements and higher resolution levels are multiplied together to
+determine the cursor movement, enabling rapid cursor movements across the
+screen for relatively small mouse movements.
+
+Auto resolution means dynamic resolution change, where the faster the
+mouse moves, the greater the resolution by which the mouse movements are
+multiplied, giving the cursor a nonlinear acceleration. Option /R, whose
+syntax is described in the help screen, allows the preferred resolution
+level to be specified for each direction.
+
+If installing from low memory, CTMOUSE attempts to move itself into upper
+memory (UMB) if there is a suitable free UMB block and option /W is not
+used. With option /W any external utility can be used to install CTMOUSE
+at a specific location. Subsequent CTMOUSE runs simply reset the resident
+part to the new command line options, unless the mouse is not found or
+option /B is used.
+
+When installing, CTMOUSE also ignores and hides any present mouse services
+unless option /B is used. Option /U in command line can be used to unload
+the resident part of CTMOUSE unless driver interrupts have been
+intercepted by another program. After successful unloading, CTMOUSE
+restores mouse services that were present at installation time.
+
+Option /B in the command line cancels CTMOUSE execution if any (including
+CTMOUSE itself) mouse services are already present. With option /B CTMOUSE
+will not install itself above loaded mouse drivers and will not reset the
+resident part to new command line options.
+
+For each event CTMOUSE returns an appropriate exit code which can be used
+in "if errorlevel" statements in batch files:
+
+    0 - PS/2, Microsoft or Logitech mouse found and CTMOUSE installed;
+	unload successful;
+	/? option used
+    1 - CTMOUSE installed for Mouse Systems protocol;
+	unload failed - CTMOUSE not installed
+    2 - resident part switched to PS/2, Microsoft or Logitech protocol;
+	unload failed - driver interrupts intercepted
+    3 - resident part switched to Mouse Systems protocol
+    4 - mouse services already present (returned for option /B only)
+    5 - mouse not found;
+	invalid option used
+
+Along with option /B, this enables creation of complex batch files. For
+example, the following batch can be used to run a program that requires
+mouse services to be present:
+
+	if "%1"=="@" goto skipmouse
+	ctmouse/b/y>nul
+	if errorlevel 5 echo Mouse not found!
+	if errorlevel 5 goto end
+	if errorlevel 2 goto run
+	call %0 @ %1 %2 %3 %4 %5 %6 %7 %8 %9
+	ctmouse/u>nul
+	goto end
+
+	:skipmouse
+	shift
+	:run
+	<program> %1 %2 %3 %4 %5 %6 %7 %8 %9
+	:end
+
+Option /B can also be used to manually specify a mouse search sequence. In
+the following example, CTMOUSE is installed by the first command that
+finds a mouse and the following commands will have no affect on the
+resident part:
+
+	ctmouse/b/s4/y>nul
+	ctmouse/b/p/y>nul
+	ctmouse/b/s2/y>nul
+
+A help screen with all option descriptions can be obtained with the /?
+command line option.
+
+The CuteMouse package also includes a protocol analyzer. This program
+shows how mice work and what they send to the computer for each action.
+PROTOCOL can even decipher information sent by PNP mice. All output goes
+through DOS functions and can be redirected to a file for subsequent
+analysis or sending to someone else.
+
+
+Compiling:
+----------
+
+To assemble the English version of the driver use TASM (or any compatible
+assembler) and any linker that can produce a COM file from OBJ files:
+
+	copy ctm-en.msg ctmouse.msg
+	tasm /m @asmlib.cfg ctmouse.asm
+	tlink /t /x ctmouse.obj,ctmouse.exe
+	com2exe -s512 ctmouse.exe ctmouse.exe
+
+To assemble the serial protocol analyzer:
+
+	tasm /m @..\asmlib.cfg protocol.asm
+	tlink /t /x protocol.obj
+
+To compile or delete temporary files, the MAKE utility also can be used
+(see makefile).
+
+
+Known problems:
+---------------
+
+Symptom: if mouse is moved when Works 2.0 for DOS or Word 5.5 for DOS
+redraws screen in graphics mode then some parts of screen are garbaged.
+Cause: these programs don't hide mouse cursor while drawing on screen
+and/or don't use EGA RIL API when changing video adapter registers.
+Solution: correct these program's code; don't move mouse while screen is
+being redrawn; future version of CuteMouse will probably read VGA adapter
+registers directly.
+
+Symptom: under Windows 3.1 after mouse reset (INT 33/0000) graphics mouse
+cursor shifted by one pixel right/down. Cause: Windows traps INT 33 call
+and for reset function additionally calls text and graphics cursor define
+functions with [-1,-1] hot spot. Solution: call INT 33 not through 'INT'
+instruction but through 'PUSHF/CALL FAR' sequence; probably there exists
+some API which CuteMouse can use in future to interact with Windows
+directly.
+
+Symptom: sometime under Windows 3.1 graphics cursor has black box shape.
+This also sometime happens after switching between tasks windows. Cause:
+probably caused by Windows bug when Windows incorrectly redefine cursors
+at the time of task switching. Solution: restart graphics application or
+try to switch back and forth between tasks again; probably there exists
+some API which CuteMouse can use in future to interact with Windows
+directly.
+
+Symptom: when CuteMouse is installed then, unlike Microsoft Mouse driver
+8.2, mouse doesn't work in windowed DOS box of Windows 3.1. Cause: most
+probably Microsoft Mouse driver uses unpublished API to interact with
+Windows. Solution: unknown at this moment.
+
+Symptom: CuteMouse will fail to detect PS/2 mice under Windows 9x/ME.
+Cause: it seems that Windows is unwilling to let a DOS application have
+access to the PS/2 device services. Solution: unknown at present.
+
+
+Plans:
+------
+
+- support Microsoft's Wheel mouse/Intellimouse and compatible mice wheel
+  rotation information;
+- support of all possible text modes, including non-standard VESA modes.
+  (Currently only standard modes 0-3 and 7 are supported, although with
+  any screen size);
+- auto detect IRQ assigned for COM port (currently this is determined by
+  COM port number);
+- option /Aa which specifies COM port IO address and /Ii which specifies
+  IRQ line for specified IO address;
+- [probably] direct video adapter register reading in EGA RIL API for VGA
+  and newer adapters;
+- [probably] mouse reset and/or switching between serial mouse modes on
+  the fly if received mouse data flow has errors (proposed by Alain
+  Mouette <alainm@pobox.com>);
+- [probably] support DPMS and HMA to further reduce conventional memory
+  footprint (proposed by Matthias Paul <Matthias.Paul@post.rwth-aachen.de>);
+- [probably] COUNTRY settings will determine displayed messages coding.
+
+
+Credits:
+--------
+
+- Arkady V.Belousov <ark@mos.ru>: many bugfixes, optimizations and features
+- Alain Mouette <alainm@pobox.com>: many ideas and message files
+- Frank Pruefer <fp666@t-online.de>: documentation proofreading
+- Jason Burgon <jason@jayman.demon.co.uk>: bugfixes, features, advices
+  about interrupts handling consistency
+- Joergen Ibsen / Jibz <jibz@hotmail.com>: author of aPACK (an excellent
+  executable packing program); some advices about managing executables
+- Mike Millen <mikemillen@ukgateway.net>: documentation proofreading
+- Robert Riebisch <riebisch@bercom-berlin.de>: mode 13h positioning bugfix
+- Fernando Papa Budzyn: self-loadhigh capability
+- Martin <nocash@work.de>: optimizations
+- Paul Schubert: much faster PS/2 codes
+- All who helped me with ideas and codes
+
+
+Contacts:
+---------
+
+mailto:nagyd@users.sourceforge.net
+http://cutemouse.sourceforge.net

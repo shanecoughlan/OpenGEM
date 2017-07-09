@@ -1,0 +1,7 @@
+;****************************************************************
+;*  For the bitmap printers, device text routines are no-ops.	*
+;****************************************************************
+
+CGROUP	GROUP	CODE
+		cseg
+		end

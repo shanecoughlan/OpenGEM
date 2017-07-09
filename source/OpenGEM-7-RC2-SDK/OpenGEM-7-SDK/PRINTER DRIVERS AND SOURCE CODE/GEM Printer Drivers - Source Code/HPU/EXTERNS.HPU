@@ -1,0 +1,28 @@
+;****************************************************************
+;*		HP LaserJet+ 300 x 300 dpi Printer		*
+;****************************************************************
+FALSE		equ	0
+TRUE		equ	not FALSE
+
+CONTRL_SIZE	equ	11
+INTIN_SIZE	equ	128
+PTSIN_SIZE	equ	256
+INTOUT_SIZE	equ	45
+PTSOUT_SIZE	equ	12
+
+RES_XMX		equ	2399			; maximum resolution in x
+RES_YMX		equ	3899			; maximum resolution in y
+XSIZE		equ	85			; x pixel size in microns
+YSIZE		equ	85			; y pixel size in microns
+XDPI		equ	300			; x dots per inch
+YDPI		equ	300			; y dots per inch
+DOTUNITS	equ	2			; extended dot size units
+XTDXSIZE	equ	8467			;  microns
+XTDYSIZE	equ	8467			;  microns
+BYTE_SWAP	equ	FALSE			; IBM PC format
+
+G_SL_HGT	equ	1			; graphics slice height
+A_SL_HGT	equ	50			; alpha text slice height
+NUM_PLANES	equ	1			; number of planes
+
+QUART_INCH	equ	75			; # dots in 1/4 inch

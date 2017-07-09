@@ -1,0 +1,395 @@
+;/*		COMMAND.A86	1/29/87 - 3/7/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	alt_app
+		public	info_switch
+		public	mouse_switch
+		public	parse_command_line
+		public	proc_switch
+		public	resident_switch
+		public	screen_switch
+		public	skip_to_token
+		public	skip_white
+
+; External entry points.
+		extrn	check_and_load:near
+		extrn	reset_and_exit:near
+		extrn	upper_case:near
+
+; External data.
+include externs.a86
+
+
+
+;************************************************************************
+;* parse_command_line							*
+;************************************************************************
+parse_command_line:
+		push	es
+		pop	ds			; ds = PSP segment address
+		mov	bx, 1			; ds:80h[bx] -> command tail
+
+; If a command line was not specified, bail out.
+		cmp	byte ptr .80h, 0
+		jz	end_parse_command_line
+
+; Initialize validity flags.
+		xor	al, al
+		mov	alt_app_flag, al
+		mov	mouse_valid, al
+		mov	resident_valid, al
+		mov	info_path, al
+
+; Loop over the command line string, extracting appropriate information.
+		mov	al, 80h[bx]
+pcl_loop:
+		cmp	al, AA			; alternate application?
+		jne	pcl_check_switch
+		call	alt_app
+		jmps	pcl_next
+pcl_check_switch:
+		cmp	al, SW			; switch?
+		jne	pcl_next
+		call	proc_switch
+pcl_next:
+		call	skip_to_token
+		jnc	pcl_loop
+
+; Parsing is done.  If an alternate application is not being EXECed, pass
+; the command tail on to the GEMAES.  Put the command tail address into
+; the exec parameter block.  Save the length of the command tail so that
+; it can be restored after being wiped out by an FCB.
+pcl_parse_done:
+		cmp	alt_app_flag, 0
+		jne	end_parse_command_line
+		mov	pblock + 2, 80h		; command tail offset
+		mov	pblock + 4, ds		; command tail segment (PSP)
+		mov	al, byte ptr .80h
+		mov	save_tail_len, al
+
+; That's all!
+end_parse_command_line:
+		ret
+
+
+;************************************************************************
+;* alt_app								*
+;*	ds:bx -> alternate application character (/).			*
+;*	Returns with bx and alt_app_flag updated.			*
+;************************************************************************
+alt_app:
+		mov	ax, cs
+		mov	es, ax
+		mov	di, offset app_name	; es:di = app file name
+app_loop:
+		inc	bx
+		mov	al, 80h[bx]
+		cmp	al, ' '
+		jna	aa_attach_extension
+		cmp	al, SW
+		je	aa_attach_extension
+		cmp	al, '.'			; extension?
+		je	aa_extension_given
+		stosb
+		jmps	app_loop
+
+; An extension occurs with the file name.  Store the '.' and get the remainder
+; of the file name.
+aa_extension_given:
+		stosb
+aa_extension_loop:
+		inc	bx
+		mov	al, 80h[bx]
+		cmp	al, SW
+		je	alt_app_done
+		cmp	al, ' '
+		jna	alt_app_done
+		stosb
+		jmps	aa_extension_loop
+
+; No extension was given.  Use a default of '.EXE'.
+aa_attach_extension:
+		mov	al, '.'
+		stosb
+		mov	al, 'e'
+		stosb
+		mov	al, 'x'
+		stosb
+		mov	al, 'e'
+		stosb
+
+; Tag on a null.
+alt_app_done:
+		xor	al, al
+		stosb
+		mov	alt_app_flag, 1
+		ret
+
+
+;************************************************************************
+;* proc_switch								*
+;*	ds:bx -> switch character (/).					*
+;*	Returns with bx updated.					*
+;************************************************************************
+proc_switch:
+		mov	ax, cs
+		mov	es, ax
+		mov	al, byte ptr 81h[bx]	; get character
+		mov	ah, byte ptr 82h[bx]	; get following character
+		cmp	ah, '='
+		je	ps_candidate
+		cmp	ah, ' '
+		je	ps_candidate
+		inc	bx
+		jmps	end_proc_switch
+
+; Find out which switch.
+ps_candidate:
+		push	bx			; save start for blanking
+		add	bx, 3			; ds:bx -> switch argument
+		call	upper_case
+		cmp	al, 'S'
+		jne	ps_check_mouse
+		call	screen_switch
+		jmps	ps_blank
+ps_check_mouse:
+		cmp	al, 'M'
+		jne	ps_check_resident
+		call	mouse_switch
+		jmps	ps_blank
+ps_check_resident:
+		cmp	al, 'R'
+		jne	ps_check_info
+		call	resident_switch
+		jmps	ps_blank
+ps_check_info:
+		cmp	al, 'I'
+		jne	ps_blank
+		call	info_switch
+ps_blank:
+		mov	cx, bx			; cx = end index
+		pop	bx			; bx= index to start of switch
+		sub	cx, bx			; cx = # used in switch
+		je	end_proc_switch		; done if none used
+		mov	al, ' '			; blank them out
+ps_bloop:	mov	byte ptr 80h[bx], al	; ds:[dx] = ' '
+		inc	bx			; bump index
+		loop	ps_bloop		; until all blanked
+
+end_proc_switch:
+		ret
+
+
+;************************************************************************
+;* screen_switch							*
+;*	ds:bx -> switch argument.					*
+;*	Updates bx.							*
+;************************************************************************
+screen_switch:
+		call	skip_white		; get to argument
+		jc	end_screen_switch
+
+; Gather the screen driver name.
+		mov	cx, 7			; file name limit (less one)
+		mov	di, offset sd_name	; es:di -> name string
+		call	upper_case
+		stosb				; save first character
+ss_loop:
+		inc	bx
+		mov	al, 80h[bx]		; get next character
+		cmp	al, ' '			; is it white?
+		jna	ss_loop_done
+		cmp	al, SW			; is it a new switch?
+		je	ss_loop_done
+		cmp	al, '.'			; is it extension start?
+		je	ss_loop_done
+ss_upper_it:
+		call	upper_case
+		stosb				; save the character
+		loop	ss_loop
+		inc	bx
+ss_loop_done:
+		mov	es:byte ptr [di], '.'
+		mov	es:byte ptr 1[di], '*'	; wildcard extension
+		mov	es:byte ptr 2[di], 0	; null terminate
+
+; That's all!
+end_screen_switch:
+		ret
+
+
+;************************************************************************
+;* mouse_switch								*
+;*	ds:bx -> switch argument.					*
+;*	Updates bx.							*
+;************************************************************************
+mouse_switch:
+		call	skip_white		; get to argument
+		jc	end_mouse_switch
+
+; Get two characters for the mouse patch.
+		sub	al, '0'
+		mov	mouse_1, al
+		mov	ah, 81h[bx]		; ah = second byte
+		sub	ah, '0'
+		mov	mouse_2, ah
+		mov	mouse_valid, 1		; indicate valid data
+		add	bx, 2
+
+; That's all!
+end_mouse_switch:
+		ret
+
+
+;************************************************************************
+;* resident_switch							*
+;*	ds:bx -> switch argument.					*
+;*	Updates bx.							*
+;************************************************************************
+resident_switch:
+		call	skip_white		; get to argument
+		jc	end_resident_switch
+
+; Gather the resident driver name.
+		mov	cx, 7			; file name limit (less one)
+		mov	di, offset rd_name	; es:di -> name string
+		xor	dx, dx			; string length counter
+		call	upper_case
+		stosb				; save first character
+rs_loop:
+		inc	bx
+		mov	al, 80h[bx]		; get next character
+		cmp	al, ' '			; is it white?
+		jna	rs_loop_done
+		cmp	al, SW			; is it a new switch?
+		je	ss_loop_done
+		cmp	al, '.'			; is it extension start?
+		je	rs_loop_done
+rs_upper_it:
+		call	upper_case
+		stosb				; save the character
+		inc	dx
+		loop	rs_loop
+		inc	bx
+rs_loop_done:
+		mov	es:byte ptr [di], 0	; null terminate
+		inc	dx
+		mov	resident_valid, dl	; indicate valid data
+
+; That's all!
+end_resident_switch:
+		ret
+
+
+;************************************************************************
+;* info_switch								*
+;*	ds:bx -> switch argument.					*
+;*	Updates bx.							*
+;************************************************************************
+info_switch:
+		call	skip_white		; get to argument
+		jc	end_info_switch
+
+; Gather the info path.
+		mov	di, offset info_path	; es:di -> info path string
+		call	upper_case
+		stosb				; save first character
+is_loop:
+		inc	bx
+		mov	al, 80h[bx]		; get next character
+		cmp	al, ' '			; is it white?
+		jna	is_loop_done
+		cmp	al, SW			; is it a new switch?
+		je	is_loop_done
+is_upper_it:
+		call	upper_case
+		stosb				; save the character
+		jmps	is_loop
+		inc	bx
+is_loop_done:
+		dec	di
+		cmp	es:byte ptr [di], '\'
+		je	is_terminate_with_null
+		inc	di
+is_terminate_with_null:
+		xor	al, al			; null terminate
+		stosb
+
+; That's all!
+end_info_switch:
+		ret
+
+
+;************************************************************************
+;* skip_white								*
+;*	ds:bx -> current character					*
+;*	Returns next non-white character in al and updates bx. If	*
+;*	done with the string, carry is returned.			*
+;************************************************************************
+skip_white:
+		cmp	bl, byte ptr .80h	; check character count
+		ja	sw_done
+		mov	al, 80h[bx]		; get next character
+		cmp	al, CR			; RETURN?
+		je	sw_done
+		cmp	al, ' '
+		ja	sw_found
+		inc	bx
+		jmps	skip_white
+sw_found:
+		clc
+		ret
+sw_done:
+		stc
+		ret
+
+
+;************************************************************************
+;* skip_to_token							*
+;*	ds:bx -> current character					*
+;*	Returns with bx pointing to next token.  The token is returned	*
+;*	in al.  If done with the string, carry is set.			*
+;************************************************************************
+skip_to_token:
+		cmp	bl, byte ptr .80h
+		ja	stt_done
+		mov	al, 80h[bx]		; get character
+		cmp	al, CR
+		je	stt_done
+		cmp	al, SW
+		je	stt_found
+		inc	bx			; bump to next character
+		cmp	al, ' '
+		ja	skip_to_token
+
+; Process white.
+stt_skip_white:
+		cmp	bl, byte ptr .80h
+		ja	stt_done
+		mov	al, 80h[bx]		; get character
+		cmp	al, CR
+		je	stt_done
+		cmp	al, ' '
+		ja	stt_found
+		inc	bx
+		jmps	stt_skip_white
+
+stt_found:
+		clc
+		ret
+stt_done:
+		stc
+		ret
+
+
+;************************************************************************
+;* Data area for information which can be discarded after loading.	*
+;************************************************************************
+
+alt_app_flag	db	0
+
+		end

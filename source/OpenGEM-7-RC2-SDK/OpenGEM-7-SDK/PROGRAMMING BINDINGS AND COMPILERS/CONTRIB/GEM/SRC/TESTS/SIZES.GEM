@@ -1,0 +1,10 @@
+sizeof(OBJECT) = 24
+sizeof(ORECT) = 10
+sizeof(GRECT) = 8
+sizeof(TEDINFO) = 28
+sizeof(ICONBLK) = 34
+sizeof(BITBLK) = 14
+sizeof(USERBLK) = 8
+sizeof(PARMBLK) = 30
+sizeof(MFDB) = 20
+sizeof(FILLPAT) = 32

@@ -1,0 +1,93 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+	include externs.a86
+	include w10regs.a86
+	
+	dseg
+	extrn	CONTRL:word
+	cseg
+
+	if	0
+;
+; Debugging code
+;
+OUTVDI:		mov	dl,' '
+		jmps	vflag
+
+INVDI:		mov	dl,'V'	
+vflag:		mov	ah,2
+		int	21h
+		mov	ax,CONTRL
+		call	ophex
+		mov	ah,2
+		mov	dl,0Dh
+		int	21h
+		ret
+;
+
+ophex:		push	ax
+		mov	al,ah
+		call	hex2
+		pop	ax	
+hex2:		push	ax
+		mov	cl,4
+		ror	al,cl
+		call	hexnib
+		pop	ax
+hexnib:		and	al,0Fh
+		cmp	al,10
+		jc	hexn1
+		add	al,7
+hexn1:		add	al,30h
+		mov	dl,al
+		mov	ah,2
+		int	21h
+		ret
+;
+
+;
+; If [0:501] = 1, then break. This allows calling programs to set a break
+; flag when they're about to do something they want monitored closely.
+;
+check_break:
+		push	ax
+		push	es
+		mov	ax,0
+		mov	es,ax
+		mov	al,es:.0501h
+		cmp	al,1
+		jnz	nobrk
+		mov	ah,1
+		int	21h
+		cmp	al,'b'
+		jnz	nobrk
+		int	3
+nobrk:		pop	es
+		pop	ax
+		ret
+
+
+;
+; Debugging code ends
+;
+	endif
+

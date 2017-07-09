@@ -1,0 +1,29 @@
+Contents of the "WinCE" subdirectory for UnZip 5.41 and later:
+
+   Contents     This file.
+   README       Information about the Windows CE port and its author.
+   punzip.h     Main header file for the entire Pocket UnZip project.
+   winmain.cpp  Contains the entire user interface and all Windows code.
+   winmain.h    Header for winmain.cpp.
+   intrface.cpp The interface between the Windows code and Info-ZIP code.
+   intrface.h   Header for intrface.cpp.
+   wince.cpp    All the Win32 APIs and C runtimes called by Info-ZIP.
+   wince.h      Header for wince.cpp.
+   punzip.rc    Resource file for all dialogs, bitmaps, menus, icons, etc.
+   resource.h   Resource header file for punzip.rc and other source modules.
+   punzip.rcv   Version resource and version defines.
+   punzip.ic2   Windows CE app icons (16x16 and 32x32, both 2 bits/pixel).
+   zipfile.ic2  Windows CE zip icons (16x16 and 32x32, both 2 bits/pixel).
+   imglist.2bp  Windows CE image list bitmap (2 bits/pixel).
+   ilmask.bmp   Windows CE image list mask bitmap (1 bit/pixel).
+   toolbar.2bp  Windows CE toolbar bitmap (2 bits/pixel).
+   punzip.ico   Windows NT application icons (16x16 and 32x32, 16 bits/pixel).
+   zipfile.ico  Windows NT zip file icons (16x16 and 32x32, 16 bits/pixel).
+   imglist.bmp  Windows NT image list bitmap (16 bits/pixel including mask).
+   toolbar.bmp  Windows NT toolbar bitmap (16 bits/pixel).
+   punzip.htp   Windows CE help file (rename to punzip.html for WinNT).
+   inc\         Contains dummy headers that are called by Info-ZIP code.
+   vc5\
+     punzip.dsp   Visual C++ 5.0 project for WinCE (SH3 and MIPS) and WinNT.
+   vc6\
+     punzip.dsp   Visual C++ 6.0 project for WinCE (SH3 and MIPS) and WinNT.

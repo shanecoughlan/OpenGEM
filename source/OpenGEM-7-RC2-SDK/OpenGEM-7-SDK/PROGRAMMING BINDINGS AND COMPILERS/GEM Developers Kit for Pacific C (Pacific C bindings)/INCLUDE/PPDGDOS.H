@@ -1,0 +1,28 @@
+VOID dos_func(UWORD ax, UWORD lodsdx, UWORD hidsdx);
+WORD dos_chdir(LPBYTE pdrvpath);
+WORD dos_gdir(WORD drive, LPBYTE pdrvpath);
+WORD dos_gdrv(VOID);
+WORD dos_sdrv(WORD newdrv);
+WORD dos_sdta(LPVOID ldta);
+WORD dos_sfirst(LPBYTE pspec, WORD attr);
+WORD dos_snext(VOID);
+WORD dos_open(LPBYTE pname, WORD access);
+WORD dos_close(WORD);
+UWORD read_piece(WORD handle, UWORD cnt, LPVOID pbuffer);
+ULONG dos_read(WORD handle, ULONG cnt, LPBYTE pbuffer);
+LONG dos_lseek(WORD handle, WORD smode, LONG sofst);
+WORD dos_wait(VOID);
+LPVOID dos_alloc(LONG nbytes);
+LONG dos_avail(VOID);
+WORD dos_free(LPVOID maddr);
+WORD dos_space(WORD drv, LONG *ptotal, LONG *pavail);
+WORD dos_rmdir(LPBYTE ppath);
+WORD dos_create(LPBYTE pname, WORD attr);
+WORD dos_mkdir(LPBYTE ppath);
+WORD dos_delete(LPBYTE pname);
+WORD dos_rename(LPBYTE poname, LPBYTE pnname);
+UWORD write_piece(WORD handle, UWORD cnt, LPVOID pbuffer);
+ULONG dos_write(WORD handle, ULONG cnt, LPBYTE pbuffer);
+WORD dos_chmod(LPBYTE pname, WORD func, WORD attr);
+WORD dos_setdt(WORD handle, WORD time, WORD date);
+

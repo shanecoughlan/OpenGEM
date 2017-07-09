@@ -1,0 +1,1691 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+
+		cseg
+
+		public	text_ink
+		public	text_blt
+		public	set_fnthdr
+		public	txt_blt_op_branch
+HORZ_OFF	equ	2
+; Special effects masks.
+THICKEN		equ	1h
+LIGHT		equ	2h
+SKEW    	equ	4h
+UNDER		equ	8h
+OUTLINE		equ	10h
+SHADOW		equ	20h
+ROTATE		equ	0c0h
+ROT90		equ	040h
+ROT180		equ	080h
+ROT270		equ	0c0h
+ROTODD		equ	040h
+ROTHIGH		equ	080h
+SCALE		equ	100h
+
+
+		dseg
+
+		public	def_buf, txbuf1, txbuf2, buff_seg
+		public	sav_buf1, sav_buf2
+		public	DELY		;font form height
+		public	FOFF		;pointer to font
+		public	FWIDTH		;form width of source form
+		public	FIR_CHR		;first ascii char in font
+		public	OFF_TBL		;pointer to font offset table
+		public	FONT_INF	;header for current font
+		public	fi_flags	;flags word for local font header
+
+                public  fi_point
+                public  f_i_last
+                public  FIR_CHR
+                public  fi_l_off
+                public  fi_r_off
+                public  f_i_top,fi_half,fi_ul_si,fi_botto
+                public  fi_desce
+                public  fi_thick
+                public  fi_mx_ch
+                public  fi_mx_ce
+                public  fi_ascen
+                public  FWIDTH
+                public  DELY
+                public  off_htbl
+                public  off_tbl
+                public  FOFF
+
+
+if mono_port or mono_mem
+		extrn	current_bank:byte
+endif
+		extrn	CONTRL:word
+		extrn	INTIN:word
+		extrn	PTSIN:word
+		extrn	FG_BP_1:word
+		extrn	NEXT_PAT:word
+		extrn	patmsk:word
+		extrn	patptr:word 
+		extrn	SOLID:word
+		extrn	DITHER:word
+		extrn	DITHRMSK:word
+		extrn	X1:word
+		extrn	X2:word
+		extrn	Y1:word
+		extrn	Y2:word
+		extrn	SPECIAL:word
+		extrn	T_SCLSTS:word
+		extrn	MONO_STA:word
+		extrn	XACC_DDA:word
+		extrn	DDA_INC:word
+		extrn	WRT_MODE:word
+		extrn	TEXT_BP:word
+		extrn	MAP_COL:word
+		extrn	LN_MASK:word
+		extrn	plane_loop_count:byte
+if ( num_planes gt 2 ) and ( not segment_access )
+		extrn	plane_port_tbl:byte
+		extrn	plane_read_tbl:byte
+endif
+		extrn	WEIGHT:word		;bolding ammount for char
+		extrn	L_OFF:word,R_OFF:word	;offsets for italic chars
+		extrn	CHAR_DEL:word		;additional width to add
+		extrn	DESTX:word,DESTY:word	;destination pixel address
+		extrn	ACTDELY:word		;form height after scale
+		extrn	CLIP:word		;clipping flag
+		extrn	XMN_CLIP:WORD,XMX_CLIP:WORD
+		extrn	YMN_CLIP:WORD,YMX_CLIP:WORD
+		extrn	FLIP_Y:word
+		extrn	width:word
+		extrn	rot_case:word
+		extrn	BOX_INK_VALUES:word
+
+font_inf	rw	1		;is the face number
+fi_point	rw	1
+fi_name		rb	32
+FIR_CHR		rw	1
+f_i_last	rw	1
+f_i_top		rw	1
+fi_ascen	rw	1
+fi_half		rw	1
+fi_desce	rw	1
+fi_botto	rw	1
+fi_mx_ch	rw	1
+fi_mx_ce	rw	1
+fi_l_off	rw	1
+fi_r_off	rw	1
+fi_thick	rw	1
+fi_ul_si	rw	1
+fi_light	rw	1
+fi_skew		rw	1
+fi_flags	rw	1
+off_htbl	dw	0
+seg_htbl	dw	0
+poff_tbl	rw	0
+OFF_TBL		rd	1
+FOFF		rw	1
+foff_seg	rw	1
+FWIDTH		rw	1
+DELY		rw	1
+fi_nxt_f	rd	1
+fi_fnt_s	rw	1
+		rw	0Ch
+
+def_buf		rb	8*cell_size		;spare buffer
+txbuf1		dw	offset def_buf
+txbuf2		dw	offset def_buf+4*cell_size
+sav_buf1	dw	offset def_buf
+sav_buf2	dw	offset def_buf+4*cell_size
+buff_ptr	dw	offset def_buf
+buff_seg	dw	seg def_buf
+source_seg	dw	seg def_buf
+;;; not in SDCGA9 top_overhang	dw	0		; jn 11-2-87
+tempdely	dw	0			;temporary char height storage
+foffindex	dw	0			;temporary char offset index
+isspace		db	0
+rt_hoff		db	0
+lt_hoff		db	0
+y_position	rw	1
+char_count	rw	1
+form_offset	rw	1
+form_width	rw	1
+JUST_DEL_WORD	dw	0
+JUST_DEL_WORD_REM	dw	0
+JUST_DEL_CHAR	dw	0
+JUST_DEL_CHAR_REM	dw	0
+JUST_DEL_SIGN	dw	1
+JUST_NEG	dw	0
+
+byte_mask_table		db	11111111b
+			db	01111111b
+			db	00111111b
+			db	00011111b
+			db	00001111b
+			db	00000111b
+			db	00000011b
+			db	00000001b
+			db	00000000b
+text_ix		db	0			;text color index
+text_mode	db	0			;text write mode
+font_off	dw	0			;temp storage for font offset
+port_sel	dw	0
+
+pre_blt		rw	1
+post_blt	rw	1
+pre_blt_table	dw	pre_blt_0
+		dw	pre_blt_90
+		dw	pre_blt_180
+		dw	pre_blt_270
+post_blt_table	dw	post_blt_0
+		dw	post_blt_90
+		dw	post_blt_180
+		dw	post_blt_270
+
+line_table	dw	clr_skew_next_line_0
+		dw	clr_skew_next_line_90
+		dw	clr_skew_next_line_180
+		dw	clr_skew_next_line_270
+
+pixel_table	dw	clr_skew_next_pixel_0
+		dw	clr_skew_next_pixel_90
+		dw	clr_skew_next_pixel_180
+		dw	clr_skew_next_pixel_270
+		public	lt_hoff
+		public	rt_hoff
+		public	off_htbl
+		public	seg_htbl
+		public	poff_tbl
+		public	text_ix
+		public	JUST_NEG
+		public	buff_ptr
+		public	JUST_DEL_CHAR_REM
+		public	JUST_DEL_CHAR
+		public	font_off
+		public	line_table
+		public	tempdely
+		public	JUST_DEL_WORD
+		public	JUST_DEL_WORD_REM
+		public	foffindex
+		public	port_sel
+		public	pixel_table
+		public	text_mode
+		public	source_seg
+		public	JUST_DEL_SIGN
+
+		public	byte_mask_table
+		cseg
+if wy700
+		extrn	current_port:byte	;wy700 control port (byte)
+		extrn	word_port:word		;wy700 control port (word)
+endif
+		extrn	check_ade:near
+		extrn	chk_fnt:near
+		extrn	text_move:near
+		extrn	text_scale:near
+		extrn	text_italic:near
+		extrn	text_bold:near
+		extrn	text_grey:near
+		extrn	text_rotate:near
+		extrn	text_blit:near
+		extrn	clr_skew_next_line_0:near
+		extrn	clr_skew_next_line_90:near
+		extrn	clr_skew_next_line_180:near
+		extrn	clr_skew_next_line_270:near
+		extrn	clr_skew_next_pixel_0:near
+		extrn	clr_skew_next_pixel_90:near
+		extrn	clr_skew_next_pixel_180:near
+		extrn	clr_skew_next_pixel_270:near
+
+		extrn	double_table:word
+		extrn	txtblt_rep_rr_s:near
+		extrn	txtblt_tran_rr_s:near
+		extrn	txtblt_xor_rr_s:near
+		extrn	txtblt_itran_rr_s:near
+		extrn	txtblt_rep_rl_s:near
+		extrn	txtblt_tran_rl_s:near
+		extrn	txtblt_xor_rl_s:near
+		extrn	txtblt_itran_rl_s:near
+		extrn	d_gtext:near
+		extrn	ACT_SIZ:near
+		extrn	RECTFILL:near
+		extrn	CONCAT:near
+;if (num_planes gt 2) and (not segment_access)
+;		extrn	EGA_KLUG:near
+;endif
+
+if mono_multisegs
+		extrn	graph_seg_high:word	;get the data from cs:	
+		extrn	graph_seg_low:word
+endif
+
+text_ink	rw	1	;Bit pattern for text drawing
+next_dest	rw	1
+next_source	rw	1
+rot_height	rw	1
+SPECIAL_CS	rw	1
+
+; Text blt branch table -- four bits wide, indexed into as follows:
+;	 (rot dir) (mode msb) (mode lsb) (0)
+txt_blt_branch_table	dw	offset	txtblt_rep_rr_s	;replace right source
+			dw	offset	txtblt_tran_rr_s ;trans right source
+			dw	offset	txtblt_xor_rr_s ;xor right source
+			dw	offset	txtblt_itran_rr_s ;invtrans right src
+			dw	offset	txtblt_rep_rl_s ;replace left source
+			dw	offset	txtblt_tran_rl_s ;trans left source
+			dw	offset	txtblt_xor_rl_s ;xor left source
+			dw	offset	txtblt_itran_rl_s ;invtrans left src
+
+			public	rot_height
+			public	next_dest
+			public	txt_blt_branch_table
+			public	next_source
+			public	SPECIAL_CS
+
+set_fnthdr:
+	cmp	ax,FIR_CHR
+	jc	set_fnthdr1
+	cmp	ax,f_i_last
+	ja	set_fnthdr1
+	ret
+;
+set_fnthdr1:
+	push	bx
+	push	cx
+	push	dx
+	push	si
+	push	di
+	push	es
+	push	ax
+	call	check_ade
+	and	ax,ax
+	pop	ax
+	jnz	set_fnthdr2
+	mov	ax,' '
+set_fnthdr2:
+	push	ax
+	mov	ax,foffindex
+	and	ax,ax
+	jz	set_fnthdr3
+	mov	dx,FWIDTH
+	mul	dx
+set_fnthdr3:
+	add	ax,FOFF
+	mov	font_off,ax
+	pop	ax
+	pop	es
+	pop	di
+	pop	si
+	pop	dx
+	pop	cx
+	pop	bx
+	ret
+
+
+
+;****************************************************************
+; TEXT_BLT							*
+;****************************************************************
+
+TEXT_BLT:	
+		mov	foffindex, 0
+
+; If skewing and the writing mode is replace or reverse transparent, force the
+; mode to transparent.  In the latter case, substitute background color for
+; the foreground.
+		mov	ax, WRT_MODE
+		test	SPECIAL, SKEW		; skewed?
+		jz	text_blt_modeok
+		cmp	al, 0			; replace mode?
+		je	text_blt_fudge_mode
+		cmp	al, 3			; reverse transparent?
+		jne	text_blt_modeok
+		mov	dx, MAP_COL		; dx = background color
+		mov	TEXT_BP, dx
+text_blt_fudge_mode:
+		mov	al, 1			; force to transparent mode
+text_blt_modeok:
+		shl	al, 1
+		mov	text_mode, al		; local writing mode
+		mov	ax, TEXT_BP
+		mov	text_ix, al		; local text foreground color
+
+; Handle special effects, rotation, and scaling separately.
+		cmp	SPECIAL, 0
+		je	text_blt_normal
+		jmp	text_blt_special
+
+; Trivial rejection exit point:  abandon the text string.
+text_blt_notin:
+		pop	bp
+		ret
+
+; Clip in the y direction.  First, compare the cell against the clipping
+; window bottom.
+text_blt_normal:
+		push	bp
+;;; Not in SDCGA9		mov top_overhang, 0	; jn 11-2-87
+		xor	ax, ax			; ax = offset to top in font
+		mov	dx, ACTDELY		; dx = character cell height
+		mov	bp, DESTY		; bp = character cell top
+		mov	cx, YMX_CLIP
+		mov	bx, bp
+		add	bx, dx
+		dec	bx			; bx = character cell bottom
+		cmp	bx, cx			; is the cell bottom above 
+		jle	text_blt_botlt		;   the clip bottom?
+		cmp	bp, cx			; no:  is the cell top above
+		jg	text_blt_notin		;   the clip bottom?
+		mov	dx, bp
+		mov	bx, cx			; bx = new cell bottom
+		sub	cx, dx
+		mov	dx, cx
+		inc	dx			; dx = new cell height
+
+; At least part of the cell is above the bottom of the clipping rectangle.
+; Check against the top of the clipping rectangle.
+text_blt_botlt:
+		mov	cx, YMN_CLIP
+		cmp	bp, cx			; is the cell top below the
+		jge	text_blt_clpdn		;   clip top?
+		mov	bp, cx			; no:  bp = new cell top
+		sub	bx, cx			; is the cell totally above
+		jl	text_blt_notin		;   the clip top?
+		inc	bx			; no:  bx = new cell height
+
+; Calculate the new offset into the font.
+		mov	ax, dx
+		sub	ax, bx			; ax = font scan lines to skip
+		mov	foffindex, ax	
+		and	ax,ax
+		jz	txt_blt_01	
+		mov	dx, FWIDTH
+		mul	dx			; ax = offset into font form
+txt_blt_01:
+		mov	dx, bx			; dx = cell height
+text_blt_clpdn:
+		call	chk_fnt			;is this font loaded?
+						;if not cause it to be loaded
+		add	ax, FOFF		; ax = font start address
+		mov	font_off, ax
+		mov	tempdely, dx
+		mov	DESTY, bp
+		mov	cx, CONTRL + 6		; cx = number of characters
+		mov	si, offset INTIN	; ds:si -> string
+		cmp	CONTRL, 11		; if "justified text" was
+		jnz	text_blt_normal_nojust	;   requested, bump pointer
+		add	si, 4			;   by two words
+
+; Prepare for left clipping.
+text_blt_normal_nojust:
+		mov	bx, DESTX		; bx = starting x
+		mov	di, XMN_CLIP
+
+; Clip the string on the left side.
+text_clip_leftx:
+		lodsw				; al = character
+		call	set_fnthdr
+
+;;; [JCE] Not in SDCGA9
+;;;		push dx
+;;;		call set_fnthdr		; jn 11-21-87, let char change
+;;;		push ax			; jn 11-21-87
+;;;		mov ax, ss:top_overhang
+;;;		mov dx, ss:fwidth
+;;;		mul dx
+;;;		add ax, ss:foff
+;;;		mov font_off, ax
+;;;		pop ax
+;;;		pop dx
+
+		mov	isspace, al		; save the character
+		push	si
+		push	ds
+		sub	ax, FIR_CHR		; offset by lowest ADE
+		shl	ax, 1
+		lds	si, OFF_TBL		; ds:si -> font offset table
+		add	si, ax			; ds:si -> character offset
+;11/6/86 DH
+;added horizontal offset code here
+		test	ss:fi_flags, HORZ_OFF	;do we need to move to the left
+		jz	text_clip_leftx_nohorzoff
+		push	si			;save the char offset table ix
+		mov	si, ss:off_htbl
+		add	si, ax
+		mov	ax, [si]		;get the left offset
+		mov	ss:rt_hoff, ah		;save the offset on right 
+		xor	ah, ah
+		sub	bx, ax			;mov the x left by offset ammount
+		pop	si
+text_clip_leftx_nohorzoff:
+;
+		lodsw
+		mov	dx, ax			; dx = offset into font
+		lodsw
+		sub	ax, dx			; ax = character width
+		pop	ds
+		pop	si
+		cmp	bx, di			; clipped on the left?
+		jge	text_no_lxclip
+		mov	bp, bx
+		add	bp, ax
+		dec	bp			; bp = character ending x
+		sub	bp, di			; is the right edge in?
+		jge	text_clip_leftx_found
+		cmp	CONTRL, 11		; is this justified text?
+		jnz	text_clip_leftx_notjust
+		cmp	isspace, 020h		; is the character a space?
+		jne	text_clip_just_nospace
+		add	ax, JUST_DEL_WORD	; yes:  add in the word offset
+		cmp	JUST_DEL_WORD_REM, 0	; need to add remainder?
+		je	text_clip_just_nospace
+		add	ax, JUST_DEL_SIGN	; add in remainder
+		dec	JUST_DEL_WORD_REM	; account for remainder
+		jmps	text_clip_just_done
+
+text_clip_just_nospace:
+		add	ax, JUST_DEL_CHAR	; add in character offset
+		cmp	JUST_DEL_CHAR_REM, 0	; need to add remainder?
+		je	text_clip_just_done
+		add	ax, JUST_DEL_SIGN	; add in remainder
+		dec	JUST_DEL_CHAR_REM	; account for remainder
+text_clip_just_done:
+text_clip_leftx_notjust:
+		add	bx, ax			; no:  point to next character
+		test	fi_flags, HORZ_OFF	; must we move left by right ammount
+		jz	text_clip_leftx_notjust_nohorz
+		mov	al, rt_hoff
+		xor	ah, ah
+		sub	bx, ax
+text_clip_leftx_notjust_nohorz:
+		dec	cx
+		jz	rtext_blt_notin
+		jmp	text_clip_leftx
+rtext_blt_notin:
+		jmp	text_blt_notin
+
+; Subroutine to add in justification deltas for justified text.
+
+; A character has been found which will appear (at least in part) on the
+; screen.
+text_clip_leftx_found:
+		inc	bp			; bp = width to draw (temp)
+		sub	ax, bp
+		add	dx, ax			; dx = offset into font
+		mov	bx, di			; bx = dest x (left clip edge)
+		mov	ax, bp			; ax = width to draw
+;;;; still in SDCGA9 if 0			; jn 11-10-87
+		dec	ax			; width is off by 1
+;;;endif
+
+; Ready to draw the first character.  The status of the registers is as
+; follows:
+;	ax = width of the visible part of the first character
+;	bx = starting position (destination) of the first character
+;	cx = number of characters left in the string
+;	dx = first character's font address (clip adjusted)
+;	si = character string pointer
+text_no_lxclip:
+		push	si
+		push	cx
+		mov	si, ax			; si = character width
+		mov	bp, bx 			; bp = dest start x
+		push	dx			
+
+; Calculate the destination memory address.
+		mov	ax, DESTY
+		call	concat			; returns es:di = address
+;;;		and	di, 0FFFEh		; Force start on a word boundary
+		shr	di, 1			; Also forces start on word 
+						; boundary
+if not ( mono_multisegs or mono_xrxfp )
+		mov	ax, graph_plane
+		mov	es, ax			; init the segment register
+endif
+		pop	ax			; ax = character font address
+
+; Top of the character output loop.  The registers are set up as follows:
+;	ax = character font address (clip adjusted)
+;	si = character width
+;	bp = destination start x
+;	es:di = destination byte adddress
+text_blit_char_loop:
+		mov	cx, 7
+		mov	bx, bp			; BX = X-coord
+		add	bx, si			; BX = next char first column
+		dec	bx			; BX = character last column
+		mov	dx, XMX_CLIP
+		cmp	bx, dx			; right edge beyond clip?
+		jle	right_clip_ok
+		cmp	bp, dx			; left edge beyond clip?
+		jle	right_clip_last
+		pop	si
+		pop	si
+		jmp	text_blt_done		; all done
+
+; Last character -- others are beyond the right clipping edge.
+right_clip_last:
+		pop	si
+		mov	si, 1			; si = one character left
+		push 	si
+		mov	bx, dx			; bx = new right edge (clip)
+		sub	dx, bp
+		inc	dx
+		mov	si, dx			; si = new character width
+
+; Build the left and right masks (dl and dh).
+right_clip_ok:
+		inc	bx			; BX = first column not to draw
+		and	bx, cx			; bx = index into mask table
+		mov	dh, byte_mask_table[bx]	; dh = right mask
+		mov	bx, bp
+		and	bx, cx			; bx = index into mask table
+		mov	dl, byte_mask_table[bx]
+		not	dl			; dl = left mask
+;
+; BX = (destX & 7)
+; CX = (sourceX & 7)
+;
+; Build the rotation flag:  ah = 0000drrr, where d = 0 if right rotate,
+; d = 1 if left rotate, and rrr = rotation count (0 - 7).
+		push	ax			; save font address
+		mov	ch, al
+		and	ch, cl			; cl = 3 bits of font address
+		mov	ah, bl			; AH = (destX & 7)-(sourceX & 7)
+		sub	ah, ch
+		jns	txt_blt_clc_height	; left or right rotate?
+		add	ah, 16			; ah = rotate flag
+
+; Restore the vertical loop count into cl and calculate the middle byte
+; count (ch).  The offset to the starting byte for the next character will
+; be stored in bx.
+txt_blt_clc_height:
+		mov	cx, tempdely		; cl = vertical loop count
+		sub	bl, 8
+		neg	bl
+		xor	bh, bh			; bx = bits in left fringe
+		push	si			; save character width
+		sub	si, bx			; is it just left fringe?
+		jnc	txt_blt_clc_middle	; no:  calculate middle
+		or	dl, dh			; yes:  patch "left" mask
+		mov	dh, 0ffh		; dh = new "right" mask (none)
+		xor	bx, bx			; bx = next starting byte
+		mov	ch, bl			; ch = middle count (none)
+		jmps	txt_blt_op_branch
+txt_blt_clc_middle:
+		mov	bx, si			; bx = non-left fringe bits
+		shr	bx, 1
+		shr	bx, 1
+		shr	bx, 1
+		mov	ch, bl			; ch = middle count (bytes)
+		inc	bl			; bx = left + middle (bytes)
+txt_blt_op_branch:
+		pop	si			; restore character width
+		add	bp, si			; bp = next dest start x
+		pop	si			; restore the font bit offset
+		shr	si, 1
+		shr	si, 1
+		shr	si, 1 
+		add	si, font_off		; si = font address (byte)
+
+; Take care of fudging for justified text.
+		cmp	CONTRL, 11		; is this justified text?
+		jnz	txt_blt_op_branch_notjust
+		push	di			; save bit map byte address
+		add	di, bx			; di = next dest byte address
+		mov	bx, bp			; bx = next dest start x
+		shr	bx, 1
+		shr	bx, 1
+		shr	bx, 1
+		sub	di, bx			; di = start of scan line
+		cmp	isspace, 020h		;is this a space
+		jnz	txt_blt_op_branch_just_nospace
+		add	bp, JUST_DEL_WORD	;add in the word offset
+		cmp	JUST_DEL_WORD_REM, 0	;done with extra space
+		jz	txt_blt_op_branch_just_nospace
+		add	bp, JUST_DEL_SIGN
+		dec	JUST_DEL_WORD_REM
+		jmps	txt_blt_op_branch_just_done
+txt_blt_op_branch_just_nospace:
+		add	bp, JUST_DEL_CHAR
+		cmp	JUST_DEL_CHAR_REM, 0
+		jz	txt_blt_op_branch_just_done
+		add	bp, JUST_DEL_SIGN	
+		dec	JUST_DEL_CHAR_REM
+txt_blt_op_branch_just_done:
+		mov	bx, di			; bx = start of scan line
+		pop	di			; restore bit map byte address
+		push	bp			; save the next dest start x
+		shr	bp, 1
+		shr	bp, 1
+		shr	bp, 1
+		add	bx, bp			; bx = next dest byte address
+		jmps	txt_blt_op_branch_just
+
+txt_blt_op_branch_notjust:
+		push	bp			; save the next dest start x
+		add	bx, di			; bx = next dest byte address
+txt_blt_op_branch_just:
+		push	bx			; save next dest byte address
+		mov	al, text_mode		; al = writing mode
+
+		mov	bl, text_ix		; bl = text color index
+;
+; XXX Doesn't handle the 16-colour case
+;
+;;; 		call	tock			; XXX Debugging
+
+		mov	bh, 0
+		push	bx
+		and	bl, 3
+		shl	bx, 1			; Convert to word
+		mov	bx, box_ink_values[bx]
+		mov	cs:text_ink, bx
+		pop	bx
+
+; Build the index into the text blt branch table. The index is four bits
+; wide -- bl = 0000rmm0, where r is the rotation direction and mm is the mode.
+		mov	bl, al			; bl = 00000mm0
+		mov	al, ah			; al = 0000rnnn
+		and	al, 8
+		or	bl, al			; bl = 0000rmm0 
+		and	ah, 11110111b		; ah = rotation count
+if num_planes gt 2
+		mov	plane_loop_count, num_planes/2	; load plane count
+if segment_access
+		push	es
+else
+		mov	port_sel, 1		; mask bit for port planes
+endif
+
+; Top of the planes loop for color text blt.
+text_blt_planes_loop:
+
+if not segment_access
+		push	ax
+		push	bx
+		push	dx
+		mov	bx, port_sel		; bx = port table index
+		mov	al, plane_port_tbl[bx]
+		mov	dx, plane_sel_port
+		out	dx, al			; select plane to write to
+		mov	al, plane_read_tbl[bx]
+		mov	dx, plane_read_port
+		out	dx, al			; select plane to read from
+		shl	port_sel, 1		; prepare for next plane
+		pop	dx
+		pop	bx
+		pop	ax
+endif	 
+
+		push	bx			; save for next plane
+		push	ax			; save for next plane
+		push	cx			; save counts
+		push	dx			; save masks
+		push	si			; save source address
+		push	di			; save destination address
+endif
+if mono_port or mono_mem
+		mov	bp, ax
+		mov	al, current_bank
+		push	ax
+		mov	ax, bp
+endif	
+if mono_multisegs or mono_xrxfp
+		push	es
+endif
+
+; Perform the appropriate blt operation to the screen.
+if wy700
+		push	cs:word_port		;save wy700 port value
+endif
+		mov	bp, FWIDTH		; set the form width
+		push	ds
+		mov	ds, FOFF + 2		; ds:si -> source form (font)
+		shl	di, 1
+		call	txt_blt_branch_table[bx]
+		pop	ds
+if wy700
+		pop	cs:word_port		;restore wy700 port value
+		push	ax
+		push	dx
+		mov	dx,3dfh
+		mov	al,cs:current_port
+		out	dx,al
+		pop	dx
+		pop	ax
+endif
+if mono_mem
+		pop	ax
+		mov	es:.mono_mem_off, al
+		mov	current_bank, al
+endif
+if mono_port 
+		pop	ax
+		mov	dx, plane_sel_port
+		out	dx, al
+		mov	current_bank, al
+endif
+if mono_multisegs or mono_xrxfp
+		pop	es
+endif
+
+if num_planes gt 2
+; Restore and prepare for the next plane.
+		pop	di			; restore destination address
+		pop	si			; restore source address
+		pop	dx			; restore masks
+		pop	cx			; restore counts
+if segment_access
+		mov	ax, es
+		add	ax, next_plane
+		mov	es, ax			; es -> next plane segment
+endif
+		pop	ax			; restore rotate flag
+		pop	bx			; restore color
+		shr	bl, 1			; prepare color for next plane
+
+
+		dec	plane_loop_count
+		jnz	text_blt_planes_loop
+
+if segment_access
+		pop	es
+endif
+
+endif
+
+; Done with the character.  Prepare for the next one.
+		pop	di			; get the new dest start byte
+		pop	bp			; get the new dest start x
+		pop	cx			; get the character count
+		pop	si			; get the character pointer
+		dec	cx
+		jcxz	text_blt_done  
+		lodsw				; get the next char
+		call	set_fnthdr
+
+;;;		push dx			; jn 11-2-87
+;;;		call set_fnthdr		; jn 11-21-87, let ax change
+;;;		push ax			; jn 11-21-87
+;;;		mov ax, ss:top_overhang
+;;;		mov dx, ss:fwidth
+;;;		mul dx
+;;;		add ax, ss:foff
+;;;		mov ss:font_off, ax
+;;;		pop ax
+;;;		pop dx
+
+		push	si			; save the character pointer
+		push	cx			; save the character count
+		push	ds
+;;DH 11/6/86
+;horizontal offset table code
+		push	ax			; save the character code
+		mov	dx, FIR_CHR
+		sub	al, dl
+		shl	ax, 1
+		lds	si, OFF_TBL		; ds:si -> font offset table
+		add	si, ax
+		test	ss:fi_flags, HORZ_OFF
+		jz	text_blit_char_loop_nohorzoff
+opttest:
+		mov	dl, ss:rt_hoff		; get the right shift value
+		mov	bx, ss:off_htbl
+		add	bx, ax
+		mov	ax, [bx]		; get next char left shift
+		mov	ss:rt_hoff, ah		; save the right offset for char
+		xor	ah, ah
+		mov	dh, ah
+		add	ax, dx			; have total shift value 
+		mov	dx, ax			; save delta ammount
+		shr	al, 1
+		shr	al, 1
+		shr	al, 1			; get num of bytes to move back by
+		mov	bx, bp
+		and	bl, 7			; if x & 7 + 1 < deltax & 7
+		mov	bh, dl
+		and	bh, 7
+		cmp	bh, bl
+		jbe	text_blit_char_loop_horzoff_ok
+		inc	al			; move back one more byte
+text_blit_char_loop_horzoff_ok:
+		xor	ah, ah
+		sub	di, ax
+		sub	bp, dx
+;cliping should be retested here for left clip case
+text_blit_char_loop_nohorzoff:
+;end of horizontal offset code
+;
+		pop	ax
+		mov	ss:isspace, al		; save the character
+		lodsw				; ax = offset to character
+		mov	si, [si]
+		sub	si, ax			; si = width of character
+		pop	ds
+		jmp	text_blit_char_loop
+
+; All of the characters which can be output have been written.  All that is
+; left is to underline them, if requested.
+text_blt_done:
+		test	SPECIAL, UNDER
+		jz	text_exit		; done if no underline
+text_blt_do_under:
+		push	patptr
+		push	patmsk
+		push	NEXT_PAT
+		push	FG_BP_1
+		xor	ax, ax
+		mov	NEXT_PAT, ax
+		mov	patmsk, ax
+		mov	patptr, offset SOLID
+		test	SPECIAL, LIGHT
+		jz	text_ul
+		mov	ax, DITHRMSK		; dither if lightened
+		mov	patmsk, ax
+		mov	ax, 24
+		add	ax, offset DITHER
+		mov	patptr, ax
+text_ul:
+		mov	ax, TEXT_BP
+		mov	FG_BP_1, ax
+		call	RECTFILL
+		pop	FG_BP_1
+		pop	NEXT_PAT
+		pop	patmsk
+		pop	patptr 
+text_exit:
+		pop	bp
+		ret
+
+;****************************************************************
+; TEXT_BLT_SPECIAL						*
+;****************************************************************
+
+text_blt_special:
+		call	chk_fnt			;make sure font is loaded
+; Save the address of the appropriate pre- and post-blt routines (a function
+; of rotation).
+		mov	bx, SPECIAL
+		and	bx, ROTATE
+		mov	cl, 5
+		shr	bx, cl
+		mov	ax, pre_blt_table[bx]
+		mov	pre_blt, ax
+		mov	ax, post_blt_table[bx]
+		mov	post_blt, ax
+
+; Perform preliminary clipping against the non-baseline axis of the text.
+		push	bp			; save for 'C'
+		test	SPECIAL, ROTODD
+		jnz	spec_odd_pre_clip
+
+; Clip in the y direction.  First, compare the cell against the clipping
+; window bottom.
+		xor	ax, ax			; ax = offset to top in font
+		mov	dx, ACTDELY		; dx = character form height
+		mov	bp, DESTY		; bp = character cell top
+		mov	cx, YMX_CLIP
+		mov	bx, bp
+		add	bx, dx
+		dec	bx			; bx = character cell bottom
+		cmp	bx, cx			; is the cell bottom above 
+		jle	spec_above_bottom	;   the clip bottom?
+		cmp	bp, cx			; no:  is the cell top above
+		jg	spec_reject		;   the clip bottom?
+		mov	bx, cx			; bx = new cell bottom
+		sub	cx, bp
+		mov	dx, cx
+		inc	dx			; dx = new cell height
+
+; At least part of the cell is above the bottom of the clipping rectangle.
+; Check against the top of the clipping rectangle.
+spec_above_bottom:
+		mov	cx, YMN_CLIP
+		cmp	bp, cx			; is the cell top below the
+		jge	spec_clip_even_done	;   clip top?
+		mov	bp, cx			; no:  bp = new cell top
+		sub	bx, cx			; is the cell totally above
+		jl	spec_reject		;   the clip top?
+		inc	bx			; no:  bx = new cell height
+
+; Calculate the new offset into the font.
+		mov	ax, dx
+		sub	ax, bx			; ax = font scan lines to skip
+		mov	dx, bx			; dx = cell height
+
+; Save the clipping results.
+spec_clip_even_done:
+		mov	foffindex, ax		; save source lines to skip
+		mov	tempdely, dx 		; save cell height
+		mov	y_position, bp		; save y position
+		mov	bp, DESTX		; bp = cell left x
+		jmps	spec_clip_done
+
+; Trivial rejection exit point:  abandon the text string.
+spec_reject:
+		pop	bp
+		ret
+
+; Clip in the x direction.  First, compare the cell against the clipping
+; window right edge.
+spec_odd_pre_clip:
+		xor	ax, ax			; ax = offset to top in font
+		mov	dx, ACTDELY		; dx = character form height
+		mov	bp, DESTX		; bp = character cell left
+		mov	cx, XMX_CLIP
+		mov	bx, bp
+		add	bx, dx
+		dec	bx			; bx = character cell right
+		cmp	bx, cx			; is the cell right left of
+		jle	spec_left_of_right	;   the clip right?
+		cmp	bp, cx			; no:  is the cell left left
+		jg	spec_reject		;   of the clip right?
+		mov	bx, cx			; bx = new cell right
+		sub	cx, bp
+		mov	dx, cx
+		inc	dx			; dx = new cell "width"
+
+; At least part of the cell is left of the right edge  of the clipping
+; rectangle.  Check against the left edge of the clipping rectangle.
+spec_left_of_right:
+		mov	cx, XMN_CLIP
+		cmp	bp, cx			; is the cell left right of
+		jge	spec_clip_odd_done	;   the clip left?
+		mov	bp, cx			; no:  bp = new cell left
+		sub	bx, cx			; is the cell totally left of
+		jl	spec_reject		;   the clip left?
+		inc	bx			; no:  bx = new cell "width"
+
+; Calculate the new offset into the font.
+		mov	ax, dx
+		sub	ax, bx			; ax = offset from form left
+		mov	dx, bx			; dx = cell "width"
+
+; Save the clipping results.
+spec_clip_odd_done:
+		mov	form_offset, ax		; save offset from form left
+		mov	form_width, dx		; save visible width
+		mov	ax, DESTY
+		mov	y_position, ax		; save y position
+
+; Prepare for the character output loop.
+spec_clip_done:
+
+if not ( mono_multisegs or mono_xrxfp )
+		mov	ax, graph_plane
+		mov	es, ax			; init the segment register
+endif
+
+		mov	cx, CONTRL + 6		; cx = number of characters
+		mov	char_count, cx		; save the character count
+		mov	si, offset INTIN	; ds:si -> string
+		cmp	CONTRL, 11		; if "justified text" was
+		jnz	spec_char_loop		;   requested, bump pointer
+		add	si, 4			;   by two words
+
+; Top of the character output loop.  Get the character, the offset
+; into the font form, and the width of the character in the font.
+spec_char_loop:
+;11/6/86 horizontal offset enhancement
+		xor	al, al
+		mov	lt_hoff, al
+		mov	rt_hoff, al
+;
+		lodsw				; get a character
+
+		call set_fnthdr		; jn 11-21-87, let ax change
+
+		mov	isspace, al		; save the character
+		push	si			; save the character pointer
+		push	ds
+		sub	ax, FIR_CHR
+		shl	ax, 1			; ax = index into offset table
+		lds	si, OFF_TBL
+		add	si, ax			; ds:si -> character offset
+;11/6/86 horizontal offset enhancement
+		test	ss:fi_flags, HORZ_OFF
+		jz	spec_char_loop_nohorzoff
+		mov	bx, ss:off_htbl
+		add	bx, ax
+		mov	ax, [bx]		; get the horizontal offset data
+		mov	ss:lt_hoff, al
+		mov	ss:rt_hoff, ah
+spec_char_loop_nohorzoff:
+;
+		lodsw
+		mov	dx, ax			; dx = character offset
+		lodsw				; ax = next character offset
+		pop	ds
+		sub	ax, dx
+		jnz	spec_char_isthere
+		jmp	spec_draw_done		; if char has width then draw it
+
+spec_char_isthere:
+		mov	si, ax			; si = character width
+		mov	ax, dx			; ax = offset into font form
+
+; Point the destination to the temporary buffer.
+		push	bp			; save the cell left x
+		push	es
+		mov	es, buff_seg
+		mov	source_seg, es		; save for screen blt
+		mov	di, txbuf1		; es:di -> temporary buffer
+		mov	buff_ptr, di
+
+; If doubling, adjust the character buffer form width (bx).
+		mov	bx, si			; bx = character width
+		test	SPECIAL, SCALE
+		jnz	spec_calc_form_width
+		add	bx, CHAR_DEL		; add special extra width
+spec_calc_form_width:
+		add	bx, 7
+		shr	bx, 1
+		shr	bx, 1
+		shr	bx, 1			; bx = destination form width
+
+; Move the character from the font form to the temporary buffer.
+		call	text_move
+
+; Apply scaling, if necessary.
+		test	SPECIAL, SCALE
+		jz	spec_skew
+		call	text_scale
+
+; The status of the registers when calling the special effects routines
+; is as follows:
+;	bl = character buffer width, in bytes
+;	cx = height of the character cell
+;	dx = character width, in pixels
+;	es:di -> temporary character buffer
+
+; Apply  skewing, if necessary.
+spec_skew:
+		mov	cx, ACTDELY		; cx = total character height
+		mov	dx, si			; dx = offset to next char
+		test	SPECIAL, SKEW
+		jz	spec_bold
+		call	text_italic
+		add	si, L_OFF		; add left offset
+		add	si, R_OFF		; add right offset
+
+; Apply bolding, if necessary.  Bump the character width only if the font is
+; not monospaced.
+spec_bold:
+		test	SPECIAL, THICKEN
+		jz	spec_grey
+		call	text_bold
+		add	si, WEIGHT		; bump width. 
+
+; [JCE] SDCGA9 fix. Moving the line above to before the monospace check fixes 
+; a bug whereby upside-down bold monospaced text doesn't print; though even
+; after the fix has been applied, upside-down bold monospaced text comes 
+; out wider than right-way-up bold monospaced text.
+;
+; Test BASIC2 program:
+;
+;	CLS
+;	FOR e = 0 TO 7
+;	PRINT
+;	PRINT EFFECTS(e);e;".    ";ANGLE(180);"abcd"
+;	PRINT
+;	PRINT
+;	NEXT
+;
+		test	MONO_STA, 0ffffh	; is this a monospaced font?
+		jnz	spec_grey
+		add	dx, WEIGHT		; bump offset to next char
+
+; Apply lightening, if necessary.
+spec_grey:
+		test	SPECIAL, LIGHT
+		jz	spec_rotate
+		call	text_grey
+
+; Rotate, if necessary.
+spec_rotate:
+		test	SPECIAL, ROTATE
+		jz	spec_done
+		call	text_rotate
+
+; Special effects and attributes have been bound.
+spec_done:
+		pop	es
+		pop	bp			; get the screen dest x back
+
+; Perform the necessary pre-blt operations, based on the rotation angle.
+; Output the character and perform the necessary post-blt operations.
+		call	pre_blt
+		jc	spec_draw_done
+		push	bp
+		push	dx
+		call	text_blit
+		pop	dx
+		pop	bp
+		call	text_attr_just
+		call	post_blt
+
+; Done with the character.  Prepare for the next one.
+spec_draw_done:
+		pop	si
+		dec	char_count
+		jz	text_special_blit_done
+		jmp 	spec_char_loop
+
+; Subroutine to adjust for justified text.
+text_attr_just:
+	cmp	CONTRL, 11		;is this justified text?
+	jnz	text_attr_just_done
+	cmp	isspace, 020h		;is this a space
+	jnz	text_attr_just_nospace
+	add	dx, JUST_DEL_WORD	;add in the word offset
+	cmp	JUST_DEL_WORD_REM, 0	;done with extra space
+	jz	text_attr_just_nospace
+	add	dx, JUST_DEL_SIGN
+	dec	JUST_DEL_WORD_REM
+	jmps	text_attr_just_done
+text_attr_just_nospace:
+	add	dx, JUST_DEL_CHAR
+	cmp	JUST_DEL_CHAR_REM, 0
+	jz	text_attr_just_done
+	add	dx, JUST_DEL_SIGN	
+	dec	JUST_DEL_CHAR_REM
+text_attr_just_done:
+	ret
+text_special_blit_done:
+	test	SPECIAL, SKEW
+	jz	text_special_blit_done_noskew
+	add	bp, R_OFF
+text_special_blit_done_noskew:	
+	jmp	text_blt_done
+
+;****************************************************************
+; PRE_BLT_0							*
+; Input:	none						*
+; Input/Output:							*
+;	dx = offset to the next character			*
+; 	bp = destination x position				*
+; 	si = character width					*
+; Output:							*
+;	carry flag:  set if character is clipped out		*
+;	char_count:  number of characters to process		*
+;	ax = source offset from left edge of form		*
+;	di = bitmap address					*
+; Preserved:	bx						*
+; Trashed:	cx						*
+;****************************************************************
+
+pre_blt_0:
+
+; Find out if clipping is necessary on the left side.
+		mov	al, lt_hoff
+		xor	ah, ah
+		sub	bp, ax
+		xor	ax, ax			; ax = source offset from left
+		mov	di, bp
+		add	di, si
+		dec	di			; di = right edge of cell
+		mov	cx, XMN_CLIP
+		cmp	bp, cx			; out on the left?
+		jge	pre_0_right_clip
+		mov	ax, di
+		sub	ax, cx
+		jl	pre_0_no_draw
+
+; Clipping is necessary on the left side.  Do it.
+		inc	ax
+		mov	si, ax			; si = visible width
+		mov	ax, cx			; ax = left clip edge
+		sub	ax, bp
+		sub	dx, ax			; dx = distance to next char
+		mov	bp, cx			; bp = new left x (clip edge)
+
+; Find out if clipping is necessary on the right side.
+pre_0_right_clip:
+		mov	cx, XMX_CLIP
+		cmp	di, cx			; clipped on the right side?
+		jle	pre_0_clip_done
+		cmp	bp, cx
+		jg	pre_0_all_clipped
+
+; Clipping is necessary on the right side.  Do it.
+		sub	cx, bp
+		inc	cx
+		mov	si, cx			; si = visible width
+
+; Get the new bitmap address and return a status indicating that a character
+; should be drawn.
+pre_0_clip_done:
+		push	ax
+		push	bx
+		push	dx
+		mov	bx, bp			; bx = new destination x
+		mov	ax, y_position
+		call	concat			; get new di
+		pop	dx
+		pop	bx
+		pop	ax
+		clc
+		ret
+
+; No character will be drawn (clipped).  Bump to the next position and return
+; a status indicating clipped.
+pre_0_no_draw:
+		call	text_attr_just
+		add	bp, dx			; bp = next destination x
+		stc
+		ret
+
+; No more characters can be drawn.  Indicate that the last character has been
+; processed.
+pre_0_all_clipped:
+		mov	char_count, 1
+		stc
+		ret
+
+
+;****************************************************************
+; PRE_BLT_90							*
+; Input:							*
+;	tempdely:  form height					*
+; Input/Output:							*
+;	y_position:  screen y coordinate			*
+;	dx = offset to the next character			*
+; Output:							*
+;	carry flag:  set if character is clipped out		*
+;	char_count:  number of characters to process		*
+;	ax = source offset from left edge of form		*
+; 	si = character form "width"				*
+;	di = bitmap address					*
+; Preserved:	bx, bp						*
+; Trashed:	cx						*
+;****************************************************************
+
+pre_blt_90:
+
+; Subtract the form height from the y position to obtain the screen y of the
+; character's upper left corner.  The offset to the next character must be
+; similarly patched to return the y position for the next pass through.
+		push	bp
+		mov	al, lt_hoff
+		xor	ah, ah
+		add	y_position, ax
+		mov	bp, y_position
+		mov	si, tempdely		; si = character form "height"
+		sub	bp, si			; bp = upper left corner y
+		mov	y_position, bp
+		sub	dx, si
+
+; Find out if clipping is necessary on the top.
+		xor	ax, ax			; ax = source offset from top
+		mov	di, bp
+		add	di, si
+		dec	di			; di = bottom edge of cell
+		mov	cx, YMN_CLIP
+		cmp	bp, cx			; out on top?
+		jge	pre_90_bottom_clip
+		mov	ax, di
+		sub	ax, cx
+		jl	pre_90_all_clipped	; if clipped, all are clipped
+
+; Clipping is necessary on the top.  Do it.
+		inc	ax
+		mov	si, ax			; si = visible "height"
+		mov	ax, cx
+		sub	ax, bp			; ax = source offset from top
+		add	dx, ax			; dx = distance to next char
+		mov	bp, cx			; bp = new top y (clip edge)
+		mov	y_position, bp		; save y position
+
+; Find out if clipping is necessary on the bottom.
+pre_90_bottom_clip:
+		mov	cx, YMX_CLIP
+		cmp	di, cx			; clipped on the bottom?
+		jle	pre_90_clip_done
+		cmp	bp, cx
+		jg	pre_90_no_draw
+
+; Clipping is necessary on the bottom.  Do it.
+		sub	cx, bp
+		inc	cx
+		mov	si, cx			; si = visible "height"
+
+; Get the new bitmap address and return a status indicating that a character
+; should be drawn.
+pre_90_clip_done:
+		mov	foffindex, ax		; save source lines to skip
+		mov	tempdely, si		; save visible "height"
+		mov	ax, form_offset		; ax = source offset from left
+		mov	si, form_width		; si = visible width
+		pop	bp			; bp = destination x
+		push	ax
+		push	bx
+		push	dx
+		mov	bx, bp			; bx = new destination x
+		mov	ax, y_position
+		call	concat			; get new di
+		pop	dx
+		pop	bx
+		pop	ax
+		clc
+		ret
+
+; No character will be drawn (clipped).  Bump to the next position and return
+; a status indicating clipped.
+pre_90_no_draw:
+		pop	bp
+		call	text_attr_just
+		sub	y_position, dx
+		stc
+		ret
+
+; No more characters can be drawn.  Indicate that the last character has been
+; processed.
+pre_90_all_clipped:
+		pop	bp
+		mov	char_count, 1
+		stc
+		ret
+
+
+;****************************************************************
+; PRE_BLT_180							*
+; Input:	none						*
+; Input/Output:							*
+; 	bp = destination x position				*
+; 	si = character form width				*
+; Output:							*
+;	carry flag:  set if character is clipped out		*
+;	char_count:  number of characters to process		*
+;	ax = source offset from left edge of form		*
+;	dx = offset to the next character			*
+;	di = bitmap address					*
+; Preserved:	bx						*
+; Trashed:	cx						*
+;****************************************************************
+
+pre_blt_180:
+
+; Subtract the form width from the destination x position so that the
+; character will be placed correctly.  The distance to the next character
+; must also be updated.
+		sub	bp, si
+		mov	al, lt_hoff
+		xor	ah, ah
+		add	bp, ax
+
+		mov	dx, R_OFF
+		add	dx, L_OFF
+		neg	dx			; dx = offset to next
+
+; Find out if clipping is necessary on the left side.
+		xor	ax, ax			; ax = source offset from left
+		mov	di, bp
+		add	di, si
+		dec	di			; di = right edge of cell
+		mov	cx, XMN_CLIP
+		cmp	bp, cx			; out on the left?
+		jge	pre_180_right_clip
+		mov	ax, di
+		sub	ax, cx
+		jl	pre_180_all_clipped
+
+; Clipping is necessary on the left side.  Do it.
+		inc	ax
+		mov	si, ax			; si = visible width
+		mov	ax, cx
+		sub	ax, bp			; ax = source offset from left
+		add	dx, ax			; dx = distance to next char
+		mov	bp, cx			; bp = new left x (clip edge)
+
+; Find out if clipping is necessary on the right side.
+pre_180_right_clip:
+		mov	cx, XMX_CLIP
+		cmp	di, cx			; clipped on the right side?
+		jle	pre_180_clip_done
+		cmp	bp, cx
+		jg	pre_180_no_draw
+
+; Clipping is necessary on the right side.  Do it.
+		sub	cx, bp
+		inc	cx
+		mov	si, cx			; si = visible width
+
+; Get the new bitmap address and return a status indicating that a character
+; should be drawn.
+pre_180_clip_done:
+		push	ax
+		push	bx
+		push	dx
+		mov	bx, bp			; bx = new destination x
+		mov	ax, y_position
+		call	concat			; get new di
+		pop	dx
+		pop	bx
+		pop	ax
+		clc
+		ret
+
+; No character will be drawn (clipped).  Bump to the next position and return
+; a status indicating clipped.
+pre_180_no_draw:
+		call	text_attr_just
+		sub	bp, dx			; bp = next destination x
+		stc
+		ret
+
+; No more characters can be drawn.  Indicate that the last character has been
+; processed.
+pre_180_all_clipped:
+		mov	char_count, 1
+		stc
+		ret
+
+
+;****************************************************************
+; PRE_BLT_270							*
+;****************************************************************
+
+pre_blt_270:
+
+; Get the character y position and the "height" (screen sense) of the
+; character.
+		push	bp
+		mov	al, lt_hoff
+		xor	ah, ah
+		sub	y_position, ax
+		mov	bp, y_position
+		mov	si, tempdely		; si = character form "height"
+
+; Find out if clipping is necessary on the top.
+		xor	ax, ax			; ax = source offset from top
+		mov	di, bp
+		add	di, si
+		dec	di			; di = bottom edge of cell
+		mov	cx, YMN_CLIP
+		cmp	bp, cx			; out on top?
+		jge	pre_270_bottom_clip
+		mov	ax, di
+		sub	ax, cx
+		jl	pre_270_no_draw		; don't draw if all clipped
+
+; Clipping is necessary on the top.  Do it.
+		inc	ax
+		mov	si, ax			; si = visible "height"
+		mov	ax, cx
+		sub	ax, bp			; ax = source offset from top
+		sub	dx, ax			; dx = distance to next char
+		mov	bp, cx			; bp = new top y (clip edge)
+		mov	y_position, bp		; save y position
+
+; Find out if clipping is necessary on the bottom.
+pre_270_bottom_clip:
+		mov	cx, YMX_CLIP
+		cmp	di, cx			; clipped on the bottom?
+		jle	pre_270_clip_done
+		cmp	bp, cx
+		jg	pre_270_all_clipped	; if clipped, all are clipped
+
+; Clipping is necessary on the bottom.  Do it.
+		sub	cx, bp
+		inc	cx
+		mov	si, cx			; si = visible "height"
+
+; Get the new bitmap address and return a status indicating that a character
+; should be drawn.
+pre_270_clip_done:
+		mov	foffindex, ax		; save source lines to skip
+		mov	tempdely, si		; save visible "height"
+		mov	ax, form_offset		; ax = source offset from left
+		mov	si, form_width		; si = visible width
+		pop	bp			; bp = destination x
+		push	ax
+		push	bx
+		push	dx
+		mov	bx, bp			; bx = new destination x
+		mov	ax, y_position
+		call	concat			; get new di
+		pop	dx
+		pop	bx
+		pop	ax
+		clc
+		ret
+
+; No character will be drawn (clipped).  Bump to the next position and return
+; a status indicating clipped.
+pre_270_no_draw:
+		pop	bp
+		call	text_attr_just
+		add	y_position, dx
+		stc
+		ret
+
+; No more characters can be drawn.  Indicate that the last character has been
+; processed.
+pre_270_all_clipped:
+		pop	bp
+		mov	char_count, 1
+		stc
+		ret
+
+
+;****************************************************************
+; POST_BLT_0							*
+; Input:							*
+;	dx = offset to the next character			*
+; Input/Output:							*
+; 	bp = destination x position				*
+; Output:	none						*
+; Preserved:	ax, bx, cx, dx, si, di				*
+; Trashed:	none						*
+;****************************************************************
+
+post_blt_0:
+
+; For no rotation, move to the right.
+		mov	al, rt_hoff
+		xor	ah, ah
+		sub	bp, ax
+		add	bp, dx			; bump to next character
+		ret
+
+
+;****************************************************************
+; POST_BLT_90							*
+; Input:							*
+;	dx = offset to the next character			*
+; Input/Output:							*
+;	y_position:  screen y position				*
+; Output:	none						*
+; Preserved:	ax, bx, cx, dx, si, di, bp			*
+; Trashed:	none						*
+;****************************************************************
+
+post_blt_90:
+
+; For 90 degree rotation, move up.
+		mov	al, rt_hoff
+		xor	ah, ah
+		add	y_position, ax
+
+		sub	y_position, dx		; bump to next character
+		ret
+
+
+;****************************************************************
+; POST_BLT_180							*
+; Input:							*
+;	dx = offset to the next character			*
+; Input/Output:							*
+; 	bp = destination x position				*
+; Output:	none						*
+; Preserved:	ax, bx, cx, dx, si, di				*
+; Trashed:	none						*
+;****************************************************************
+
+post_blt_180:
+
+; For 180 degree rotation, move to the left.
+		mov	al, rt_hoff
+		xor	ah, ah
+		add	bp, ax
+		sub	bp, dx			; bump to next character
+		ret
+
+
+;****************************************************************
+; POST_BLT_270							*
+; Input:							*
+;	dx = offset to the next character			*
+; Input/Output:							*
+;	y_position:  screen y position				*
+; Output:	none						*
+; Preserved:	ax, bx, cx, dx, si, di, bp			*
+; Trashed:	none						*
+;****************************************************************
+
+post_blt_270:
+
+; For 270 degree rotation, move down.
+		mov	al, rt_hoff
+		xor	ah, ah
+		sub	y_position, ax
+		add	y_position, dx		; bump to next character
+		ret
+
+;
+; Small but significant delay
+;
+;;;tock:		push	ax
+;;;		push	bx
+;;;		push	cx
+;;;		push	dx
+;;;		xor	ax, ax
+;;;		int	1Ah
+;;;		mov	bx, dx
+;;;tick:		xor	ax, ax
+;;;		int	1Ah
+;;;		cmp	bx, dx
+;;;		jz	tick
+;;;		pop	dx
+;;;		pop	cx
+;;;		pop	bx
+;;;		pop	ax
+;;;		ret
+;

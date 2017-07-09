@@ -1,0 +1,19 @@
+To install:
+
+  If you have GNU Make on your system, edit MAKEDEFS.I to set the location
+of your Pacific C directory; then type:
+	
+	make install
+
+  If not, copy the contents of the BIN, LIB and INCLUDE directories to your
+Pacific BIN, LIB and INCLUDE directories.
+
+To rebuild:
+
+  You need GNU Make and the Pacific C command-line compiler, PACC.EXE. It
+should be sufficient to type 
+
+	make clean
+	make
+
+  Full documentation is in DOCS\PPD.DOC.

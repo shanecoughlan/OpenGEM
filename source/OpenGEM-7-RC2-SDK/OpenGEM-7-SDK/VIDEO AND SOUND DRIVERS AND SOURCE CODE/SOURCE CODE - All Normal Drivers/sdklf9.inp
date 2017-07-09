@@ -1,0 +1,18 @@
+sdklf9.vga= entry, klf_zyxg,
+jmptbl,
+monobjx,
+monout,
+copttext,
+isin,
+dummy,
+klf_drv,
+klpttxt1,
+klpttxt2,
+klptdraw,
+klfmblit,
+klfblit,
+klfpat,
+enddseg,
+5x14font[nop]
+
+                                                                                                                                                                                                                

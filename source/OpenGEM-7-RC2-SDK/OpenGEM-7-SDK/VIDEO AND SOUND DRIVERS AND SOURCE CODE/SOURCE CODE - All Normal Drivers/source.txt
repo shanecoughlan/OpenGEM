@@ -1,0 +1,447 @@
+GEM driver sources
+==================
+
+  This file contains source code for 29 FreeGEM video drivers - part 
+original, part disassembled. See the various readme{0-4}.txt files for the 
+lists of drivers and which ones I've been able to test.
+
+  To build these drivers from source, you will need GNU Make, RASM-86 version 
+1.4a and LINK-86 version 2.02. If you want to build VIDPATCH.EXE, you'll
+also need Pacific C.
+
+  The build system is rather simpler than the original. Rather than build
+each driver in its own subdirectory, it just builds the whole lot in one
+place, and no files get copied around. The original was also partly written
+in C, but all the C bits have been replaced with disassembled 8086 assembly
+because the compiler doesn't seem to work on my machine.
+
+  The way files are included has also been turned inside-out. In the 
+original common files such as eopttxt1.a86 would include files containing
+driver data. This doesn't work if you're building more than one driver 
+in the same directory, so instead there are minimal driver-specific files
+that do all the including. Taking eopttxt1.a86 as an example again, the
+EGA version reads:
+
+        include externs.a86	;Driver-independent
+        include egaregs.a86	;Driver-specific
+        include copttxt1.a86	;Driver-independent
+
+and the VGA version reads:
+
+        include externs.a86	;Driver-independent
+        include vgaregs.a86	;Driver-specific
+        include copttxt1.a86	;Driver-independent
+
+Technical Information For 256-colour VESA drivers (SDW*.VGA)
+============================================================
+
+  In previous versions, the VESA driver required the framebuffer window to
+align with the start of a screen line. Consequently, it only supported two
+video modes: 1024x768, and 640x480 *if* the hardware used a 4k memory window
+granularity.
+
+  This requirement has now been lifted, and the previous 256-colour driver 
+(SD2569) has now become a set of four drivers, supporting all modes from 
+640x480 to 1280x1024.
+
+  The choice of colours is arbitrary and if anyone wants to persuade me that
+I've made a terrible mistake, they're free to do so. Remember, though, that 
+colours have to be replaced in pairs; each colour must have an inverse. 
+The MAP_COL array is set up such that at a VESA palette level, colour <n> 
+is the inverse of colour 255-<n>.
+
+  Although the screen memory model is packed-pixel, it has to be represented
+to GEM as eight planes (a lot of GEM code makes the assumption that a screen
+with n colours is arranged as log2(n) planes). My original attempt at a 
+256-colour driver represented the screen as eight mono planes (so two 
+successive bytes in video RAM, eg:
+
+A000:0003 abcdefgh ijklmnop
+
+  become two columns of bits in eight planes:
+
+	---ai---  plane 0
+	---bj---  plane 1
+	---ck---  plane 2
+	---dl---  plane 3
+	---em---  plane 4
+	---fn---  plane 5
+	---go---  plane 6
+	---hp---  plane 7
+)
+
+  This makes screen<-->memory blits take about eight times as long as they
+should, so this version uses an alternative translation, where the low 3 bits 
+of the screen address give the plane number.
+
+A000:0003 abcdefgh ijklmnop  then maps to:
+
+	--------  plane 0
+	--------  plane 1
+	--------  plane 2
+	abcdefgh  plane 3
+	ijklmnop  plane 4
+	--------  plane 5
+	--------  plane 6
+	--------  plane 7
+
+
+How to add a new video driver
+=============================
+
+  These instructions, believe it or not, are for the 'easy' case when your
+driver uses a memory model that the GEM source tree can already cope with
+(monochrome, or colour done using multiple planes). If it can't (for example,
+it uses packed pixels like the CGA 320x200 mode, or adjacent bytes aren't 
+adjacent in memory like in some Apricot systems, or the screen isn't memory-
+mapped at all like the 8514/a) that's a much harder proposition that I'll
+come back to later.
+
+1. Choose a three-letter name for the driver (the EGA Low-res 8-colour driver,
+for example, uses EH8).
+
+2. Choose a driver to base yours on. For a monochrome device, the HRC 
+(Hercules) driver is a good starting point. For an EGA- or VGA- compatible 
+colour device, try one of the full-colour EGA or VGA drivers such as ELF
+or VGA. For a colour device that isn't EGA compatible, you don't have a 
+lot of options - AMS (Amstrad PC1512) is probably the closest you'll get.
+  In the example below, I'm using XYZ as the name of the template driver, 
+and ABC as the name of your driver. 
+
+3. Make copies of the following files, changing the first few letters:
+
+XYZBLIT .A86 -> ABCBLIT .A86
+XYZDEV  .A86 -> ABCDEV  .A86
+XYZ_DRV .A86 -> ABC_DRV .A86
+XYZMBLIT.A86 -> ABCMBLIT.A86
+XYZPAT  .A86 -> ABCPAT  .A86
+XYZREGS .A86 -> ABCREGS .A86
+XYPTTXT1.A86 -> ABPTTXT1.A86
+XYPTTXT2.A86 -> ABPTTXT2.A86
+XYPTDRAW.A86 -> ABPTDRAW.A86
+SDXYZ9  .INP -> SDABC9  .INP
+
+(note that for back compatibility with GEM/3.1, some of the INP files have
+names that differ from the rest of the driver. The VGA driver, for example,
+uses VGA*.A86 for its source files but the INP file is called SDPSC9.INP. In
+case of doubt, consult the Makefile).
+
+4. Decide which system font you're going to use (5x7, 8x8, 8x14 or 8x16) and 
+  which set of patterns (high-res or low-res).
+
+5. Edit the Makefile:
+   - Add your driver name (SDabc9.dGA) to one of the CLASSn_DRIVERS lines.
+   - Add a stanza to build your driver, in the same form as for all the 
+     others. Depending on the font you're using, refer to vgacp and vgafont,
+     egacp and egafont, cgacp and cgafont or just 5x7font:
+
+sdabc9.dga:	entry.obj jmptbl.obj monobj.obj \
+		abc_zyxg.obj vgacp.obj monout.obj vgafont.obj \
+		copttext.obj isin.obj dummy.obj abc_drv.obj \
+		abcmblit.obj abcblit.obj abpttxt1.obj abpttxt2.obj \
+		abptdraw.obj abcpat.obj enddseg.obj
+	link86 sdabc9[i
+
+   - Add dependencies for the other object files, based on what's there. 
+    These examples are for an EGA-compatible colour driver; for other
+    drivers some of the filenames are different. See the Makefile entries
+    for the Hercules driver, for example.
+
+abc_drv.obj:	abc_drv.a86 abcregs.a86 externs.a86 ibmmdvsp.a86 imouse.a86 \
+		egammre1.a86 egammre2.a86 abcdev.a86 date.a86 copyrt.a86
+abcmblit.obj:	abcmblit.a86 mblit.a86
+abcblit.obj:	abcmblit.a86 cblit.a86
+abpttxt1.obj:	abpttxt1.a86 copttxt1.a86
+abpttxt2.obj:	abpttxt2.a86 copttxt2.a86
+abptdraw.obj:	abptdraw.a86 coptdraw.a86
+abcpat.obj:	abcpat.a86 hirespat.a86
+
+6. Edit your source files as follows:
+
+SDABC9.INP:
+  The first line contains the output filename (eg: SDabc9.dGA).
+  On the other lines, replace the XYZ entries with ABC as you did for the 
+  filenames in step 3. If you're basing your driver on the CGA, EGA or VGA
+  driver remember not to change the last two (?gacp and ?gafont) since these
+  are shared between multiple drivers.
+
+ABPTTXT1.A86, ABPTTXT2.A86, ABPTDRAW.A86, ABCBLIT.A86, ABCMBLIT.A86:
+  Change the "include xyzregs.a86" directive to "include abcregs.a86"
+
+ABCPAT.A86:
+  Change the "include" directive as above; also change the last directive
+  to include hirespat.a86 or lorespat.a86 as appropriate.
+
+ABC_ZYXG.A86:
+  Change the two driver names "sht_nm" and "lng_nm". Ensure that they 
+  still occupy the same number of bytes afterwards; these are fixed-size
+  buffers.
+
+ABCREGS.A86:
+  This file is used to specify most of the essential information about the
+driver. In particular, you'll need to set:
+
+> xresmx and yresmx, the screen resolution. For a 640x480 screen these are
+ 639 and 479 respectively.
+
+> xsize and ysize, the size of a pixel.
+
+> graph_plane, the segment holding the first plane of video RAM. If you want
+ to support a colour display that isn't arranged in planes, then you'll have
+ to engage in much more serious rewriting instead of just including common
+ files.
+
+> plane_size gives the number of bytes in a plane. Usually this is 
+ (xresmx+1) * (yresmx+1) / 8, or something close to it.
+
+> num_planes and num_colors give the display depth and the number of visible
+ colours respectively. If there are more than 16 you'll need to change the
+ MAX_COL equate in externs.inc, and increase the size of the MAP_COL array
+ in *_drv.a86 to match.
+
+> The next section of the file defines the memory model used for video. 
+ Again, if yours isn't one of the ones supported, you've got a lot of 
+ rewriting to do. One setting to note is 'multiseg'; if this is set, then
+ the card behaves like the CGA or Hercules and puts successive rows in 
+ different blocks of memory.
+
+ABCDEV.A86:
+  This contains device information that is returned when the driver is 
+started. You may need to adjust the number of colours and/or the palette 
+size, for example. Other bits are automatically updated from ABCREGS.A86.
+
+ABC_DRV.A86:
+  The function INIT_G is called to select the mode you want (a few lines
+after the escfn2_ok: label). It also loads the initial palette, assuming
+you support it. Similarly DINIT_G switches back into text mode. I_COLMAP
+is used to get a palette entry, and S_COLMAP to set it. TRAN_FM transforms
+a passed bitmap to native format (usually just by swapping the high
+and low bytes of each word; sometimes also inverting it) and CONCAT looks
+up a byte on the screen given X and Y coordinates.
+
+How to add a video driver (the hard way)
+========================================
+
+  If you're going to support a video memory model other than the 'stack of 
+monochrome planes' (as I did for the 256-colour and CGA low-res drivers) 
+you'll need to engage in a good deal of rewriting. Instead of just including 
+large chunks of common source, you'll need to redesign them based on the 
+operations you want to perform.
+
+  The routines to look at (and this is probably the best order to do them in)
+are as follows:
+  * BOX_FILL (in ???MMRE1.A86): Used for drawing filled boxes and horizontal
+   lines.
+  * ABLINE (in ???MMRE2.A86): Used for drawing vertical and diagonal lines.
+  * mdraw (in ???MMRE2.A86): Used to draw the mouse pointer.
+  * Mono 8-pixel text drawing (monspblt.a86)
+  * All other text drawing (all of opttxt1.a86 and opttdraw.a86, plus parts of 
+   opttxt2.a86).
+  * Bit-blitting (all of rastop.a86)
+
+  The first thing to consider is that GEM is very firmly wedded to the idea
+of planes. All these routines work by selecting each plane in turn and writing
+either zeroes or ones into it. They quite often have separate functions, one
+to write zero values and one to write ones (txtblt_rep_rr_0 and txtblt_rep_rr_s
+are one pair, for example). 
+  The simplest (and least efficient) way to support other memory models is 
+to pretend they're arranged in planes right up to the moment that the bytes
+get read/written. Then you translate into the real format being used. The 
+more complicated method is to work out what algorithm GEM is using and rewrite
+it so that it applies to your memory layout.
+  When doing the bit blits, any bitmap in memory will be laid out as a stack
+of planes, so you either have to write four sets of code (for memory->memory,
+screen->memory, memory->screen and screen->screen copies) or translate 
+stores and retrieves at the time they are done. The 256-colour drivers use four
+sets of code, while the low-res CGA drivers use translation.
+
+  Some gotchas:
+- Italic text uses txtblt_xor_rr_i and txtblt_xor_rl_i to draw to an internal
+ buffer. In the normal driver source, these are aliases for txtblt_xor_rr_s 
+ and txtblt_xor_rl_s. If the screen memory model isn't a straightforward 
+ sequence of bytes, you will need to separate them (as is done, for example,
+ when byte_swap is set to true). Rewrite the _s versions for the video RAM
+ you're dealing with, and leave the _i versions as they are.
+- If you aren't writing a monochrome driver, you'll need to set the number 
+ of planes to log2(number of colours). Then unless you're actually using 
+ planes, you'll need to find all the loops over num_planes and remove them
+ or otherwise render them ineffective.
+- A lot of the functions work with words rather than bytes (take a look at
+ box_replace:, for example). Because of the Intel little-endian byte order, 
+ they then exchange the low and high byte of each word when transferring to
+ or from video memory.
+
+Change History
+==============
+
+2013-03-13  John Elliott
+
+	* All 256-colour drivers updated to use the VX8 blitting engine.
+
+	* VESA drivers are no longer restricted to a window size that's a 
+	 multiple of the row size. This allows the creation of three new 
+	 VESA drivers: SDW649.VGA, SDW869.VGA, SDW129.VGA.
+
+	* SDVX89.VGA renamed to SDW109.VGA, to match other 256-colour VESA 
+         drivers.
+
+	* SDV649.VGA renamed to SDW6X9.VGA, to match other 256-colour VESA
+	 drivers.
+
+	* SD2569.VGA dropped (SDW109.VGA supersedes it).
+
+2013-03-12  John Elliott
+
+	* FreeGEM 3.14.10 driver release.
+
+	* New driver: SDVX89.VGA is intended as the successor to SD2569, with
+	 faster blits.
+
+	* Crash fixed in the 256-colour drivers when drawing text that (in a
+	 16-colour driver) would have required a leftward rotation.
+
+2013-03-02  John Elliott
+
+	* FreeGEM 3.14.9 driver release.
+
+	* Bug fix in SDUNI9 when doing a screen-to-screen aligned blit.
+
+2012-01-28  John Elliott
+
+	* Merged in source changes from building a driver for the Wang
+	 Professional Computer, which has byte_swap set to true.
+
+2011-09-10  John Elliott
+
+	* FreeGEM 3.14.8 driver release.
+
+	* New driver for Hercules InColor card.
+
+	* Fix to EGA line drawing: when drawing in REPLACE mode, the two
+	 sets of dashes (foreground and background) could overlap.
+
+
+2008-01-20  John Elliott
+
+	* FreeGEM 3.14.7 driver release.
+
+	* Fixed a long-standing bug in SDUNI9 that prevented bit blits 
+	 working properly in monochrome modes.
+
+	* Backported the Genoa SVGA driver (SDGSV9) from GEM/4.
+
+2008-01-07  John Elliott
+
+	* FreeGEM 3.14.6 driver release.
+
+	* Created a 1024x768x16 VESA driver. The difficulty with this driver 
+	 is finding a VESA card which properly supports this video mode; the 
+	 support in most cards appears to be buggy or nonexistent. I have 
+	 verified correct operation on a Cirrus Logic CL-GD5436 card.
+
+	* Renamed the 800x600x16 VESA driver from SDVES9 to SDV869.
+
+2008-01-05  John Elliott
+
+	* FreeGEM 3.14.5 driver release.
+
+	* Fixed (hopefully) support for colour user-defined patterns in the
+	 256-colour drivers.
+	* Altered the 256-colour driver so that it correctly deals with 
+	 VESA systems where the window granularity is less than 64k.
+
+2007-07-28  John Elliott
+
+	* Added a DOS version check to the CPI loader. Calling CPI functions
+	 in MS-DOS 2 has unpredictable consequences.
+
+2007-03-14  John Elliott
+
+	* FreeGEM 3.14.4 driver release.
+
+	* Improved the 800x600 mode autoprobe. It can now support the 
+	 Amstrad PC5086 without use of VIDPATCH.
+
+	* Created a 720x540 driver (SDU759.VGA) for the Amstrad PC5086.
+
+	* Merged changes to support GSX (listed below).
+	* Conditional directives to omit GEM-only code and to swap black
+         and white.
+	* Fixed a bug in the calculation of Y-coordinate ranges for a 
+	 polygon, which could cause a noticeable delay on a slow machine
+	 under rare circumstances.
+	* Reintroduced conditional code for what happens when pixels are
+	 wider than they are high (used by the 3270PC low-res driver, and
+	 no other). This fixed a divide error when SDKLF9 tried to draw
+	 wide lines.
+
+2007-02-02  John Elliott
+
+	* FreeGEM 3.14.3 driver release.
+
+2007-01-31  John Elliott
+
+	* Merged the 256-colour drivers (SD2569 and SDVLF9) into the 
+	 FreeGEM driver source tree with everything else.
+
+	* Added code to support 2bpp packed-pixel modes (such as CGA modes 4
+	 and 5). This code is used in three new drivers - CGA 320x200, 
+	 CGA reverse-video 320x200, and 3270PC 360x350. Since the new drivers
+	 don't use the standard font size, they don't support loadable 
+         codepages.
+
+	* Added a 640x200x4 Plantronics driver.
+
+2007-01-12  John Elliott
+
+	* Added an 800x600 VESA driver, based on Heinz Rath's documentation
+	 of his.
+
+2006-12-31  John Elliott
+
+	* Added forward-ported drivers from earlier versions: Amstrad PC1512, 
+	IBM 3270PC, AT&T DEB, EGA 8-colour, EGA low-resolution.
+	* Added a reverse-video CGA driver, inspired by Jaroslaw Binczaowski's
+	similar driver for GEM/3.0.
+	* Binaries split into four separate zipfiles.
+	* FreeGEM 3.14.2 driver release.
+
+2006-12-20  John Elliott
+
+	* Split the FreeGEM and GEM/3.1 driver source trees.
+	* Moved copyright message and build date to separate include files
+	 (copyrt.a86 and date.a86)
+	* FreeGEM 3.14.1 driver release.
+
+2006-12-19  John Elliott
+
+	* The combined build tree now compiles all ten GEM/3.1 drivers.
+
+2006-12-17  John Elliott
+
+	* Combined the GEM/3.0 source tree with the disassembled driver 
+	 source to produce an ASM-only build system targeting GEM/3.1 and
+	 FreeGEM drivers. 
+
+2006-06-22  John Elliott
+
+	* (Still based on disassembly) backported the ViewMAX/2 codepage
+	 loader to the VGA driver.
+
+2005-08-27  John Elliott
+
+	* (Based on a disassembled version of the VGA driver rather than the 
+	 GEM/3.0 source tree) Added support for the BIOS high-res timer.
+
+1999-01-31  Chris Barnes
+
+	* Reconstructed the driver build system sufficiently to build the VGA
+	 driver.
+
+1998-06-23  Digital Research
+
+	* Last known GEM/3 driver build.
+
+1998-02-03  Digital Research
+
+	* GEM/3.0 drivers released. Last known GEM driver source tree.

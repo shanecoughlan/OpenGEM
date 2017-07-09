@@ -1,0 +1,28 @@
+;****************************************************************
+;*		Epson High Resolution Printer			*
+;****************************************************************
+FALSE		equ	0
+TRUE		equ	not FALSE
+
+CONTRL_SIZE	equ	11
+INTIN_SIZE	equ	128
+PTSIN_SIZE	equ	256
+INTOUT_SIZE	equ	45
+PTSOUT_SIZE	equ	12
+
+HIRES		equ	TRUE			; (120 x 144) dpi version
+RES_XMX		equ	1615 			; max resolution in x (-1)
+RES_YMX		equ	32751			; max resolution in y (-1)
+XSIZE		equ	212			; x pixel size in microns
+YSIZE		equ	176			; y pixel size in microns
+XDPI		equ	120			;** x dots per inch
+YDPI		equ	144			;** y dots per inch
+DOTUNITS	equ	2			;** extended dot size units
+XTDXSIZE	equ	21167			;** 211.67 microns
+XTDYSIZE	equ	17639			;** 176.39 microns
+BYTE_SWAP	equ	FALSE			; IBM PC format
+
+; The graphics slice height is based on 2 interlaced sets of 8 lines (wires)
+G_SL_HGT	equ	16			; graphics slice height
+A_SL_HGT	equ	24			; alpha text slice height
+NUM_PLANES	equ	1			; number of planes

@@ -1,0 +1,302 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Import: MOVREG_ (macro.mac), MOVOFF_ (macro.mac), MOVSEG_ (macro.mac),
+;	  MOVREG2 (macro.mac), MOVRR_ (macro.mac), MOVRO_ (macro.mac),
+;	  MOVRRR_ (macro.mac), MOVRRO_ (macro.mac), MOVOFFax_ (macro.mac)
+;
+; Export: HANDLE_*, FA_*, _A_*, O_*, SH_*, SEEK_*, DOSFILEDATE, DOSFILETIME
+;
+; Export: DOSCreateFile, DOSOpenFile, DOSCloseFile,
+;	  DOSReadFile, DOSWriteFile,
+;	  DOSDeleteFile, DOSLSeekFile,
+;	  DOSGetFileStamp, DOSSetFileStamp
+
+;------------------------------------------------------------------------
+
+HANDLE_STDIN	equ 0
+HANDLE_STDOUT	equ 1
+HANDLE_STDERR	equ 2
+
+;------------------------------------------------------------------------
+
+FA_NORMAL	equ 00000000b	; normal file, no attributes
+FA_RDONLY	equ 00000001b	; read only
+FA_HIDDEN	equ 00000010b	; hidden file
+FA_SYSTEM	equ 00000100b	; system file
+FA_LABEL	equ 00001000b	; volume label
+FA_DIREC	equ 00010000b	; directory
+FA_ARCH		equ 00100000b	; archive
+
+_A_NORMAL	equ 00000000b	; MSC names for file attributes
+_A_RDONLY	equ 00000001b
+_A_HIDDEN	equ 00000010b
+_A_SYSTEM	equ 00000100b
+_A_VOLID	equ 00001000b
+_A_SUBDIR	equ 00010000b
+_A_ARCH		equ 00100000b
+
+;------------------------------------------------------------------------
+
+O_mask		equ 00000111b	; access mode: use only one mode
+O_RDONLY	equ 00000000b	; TC/BC names for access modes
+O_WRONLY	equ 00000001b
+O_RDWR		equ 00000010b
+
+O_DENY_mask	equ 01110000b	; share mode: use only one mode
+O_COMPAT	equ 00000000b
+O_DENYALL	equ 00010000b
+O_DENYWRITE	equ 00100000b
+O_DENYREAD	equ 00110000b
+O_DENYNONE	equ 01000000b
+
+SH_DENY_mask	equ 01110000b
+SH_COMPAT	equ 00000000b	; MSC names for share modes
+SH_DENYRW	equ 00010000b
+SH_DENYWR	equ 00100000b
+SH_DENYRD	equ 00110000b
+SH_DENYNONE	equ 01000000b
+
+O_NOINHERIT	equ 10000000b
+
+;------------------------------------------------------------------------
+
+SEEK_SET	equ 0
+SEEK_CUR	equ 1
+SEEK_END	equ 2
+
+;------------------------------------------------------------------------
+
+DOSFILEDATE	record	DOSFDATE_year80:7,DOSFDATE_month:4,DOSFDATE_day:5
+DOSFILETIME	record	DOSFTIME_hour:5,DOSFTIME_min:6,DOSFTIME_sec2:5
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;				Create file
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<nameseg>:<nameoff>	(ASCIIZ string with file name; default DS:DX)
+;	<namesegname>		(segment name for ASSUME DS:)
+;	<attrib>		(file attributes - combination of FA_*;
+;				 default FA_NORMAL)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(handle; errcode {3-5} if Carry set)
+; Use:	MOVRO_, MOVSEG_, MOVOFF_
+; Modf:	CX
+; Call:	INT 21/3C
+;
+DOSCreateFile	macro	nameseg,namesegname,nameoff,attrib:=<FA_NORMAL>,message,errlabel:vararg
+		MOVRO_	cx,<attrib>,dx,<nameoff>
+		MOVSEG_	ds,<nameseg>,,<namesegname>
+		mov	ah,3Ch
+		int	21h		; create or truncate file
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;				Open file
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<nameseg>:<nameoff>	(ASCIIZ string with file name; default DS:DX)
+;	<namesegname>		(segment name for ASSUME DS:)
+;	<access>		(access and share modes - combination of O_*;
+;				 default O_RDONLY+O_DENYNONE)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(handle; errcode {1-5, 12, 86} if Carry set)
+; Use:	MOVOFFax_, MOVOFF_, MOVSEG_
+; Modf:	none
+; Call:	INT 21/3D
+;
+DOSOpenFile	macro	nameseg,namesegname,nameoff,access:=<O_RDONLY+O_DENYNONE>,message,errlabel:vararg
+		MOVOFFax_ dx,dh,dl,<nameoff>,3Dh,<access>
+		MOVSEG_	ds,<nameseg>,,<namesegname>
+		int	21h		; open existing file
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;				Close file
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<handle>		(handle; default BX)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {6} if Carry set)
+; Use:	MOVREG_
+; Modf:	none
+; Call:	INT 21/3E
+;
+DOSCloseFile	macro	handle:vararg
+		MOVREG_	bx,<handle>
+		mov	ah,3Eh
+		int	21h		; close file
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;				Read from file
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<handle>		(handle; default BX)
+;	<bufseg>:<bufoff>	(pointer to buffer; default DS:DX)
+;	<bufsegname>		(segment name for ASSUME DS:)
+;	<buffersz>		(buffer size; default CX)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(# of bytes read; errcode {5,6} if Carry set)
+; Use:	MOVRRO_, MOVSEG_, MOVOFF_
+; Modf:	none
+; Call:	INT 21/3F
+;
+DOSReadFile	macro	handle,bufseg,bufsegname,bufoff,buffersz,message,errlabel:vararg
+		MOVRRO_	cx,<buffersz>,bx,<handle>,dx,<bufoff>
+		MOVSEG_	ds,<bufseg>,,<bufsegname>
+		mov	ah,3Fh
+		int	21h		; read from file or device
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;				Write to file
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<handle>		(handle; default BX)
+;	<bufseg>:<bufoff>	(pointer to buffer; default DS:DX)
+;	<bufsegname>		(segment name for ASSUME DS:)
+;	<buffersz>		(buffer size; default CX)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(# of bytes written; errcode {5,6} if Carry set)
+; Use:	MOVRRO_, MOVSEG_, MOVOFF_
+; Modf:	none
+; Call:	INT 21/40
+;
+DOSWriteFile	macro	handle,bufseg,bufsegname,bufoff,buffersz,message,errlabel:vararg
+		MOVRRO_	cx,<buffersz>,bx,<handle>,dx,<bufoff>
+		MOVSEG_	ds,<bufseg>,,<bufsegname>
+		mov	ah,40h
+		int	21h		; write to file or device
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;				Delete file
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<nameseg>:<nameoff>	(ASCIIZ string with file name; default DS:DX)
+;	<namesegname>		(segment name for ASSUME DS:)
+;	<message>		(error string to load into DX)
+;	<errlabel>		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {2,3,5} if Carry set)
+; Use:	MOVOFF_, MOVSEG_
+; Modf:	none
+; Call:	INT 21/41
+;
+DOSDeleteFile	macro	nameseg,namesegname,nameoff,message,errlabel:vararg
+		MOVOFF_	dx,<nameoff>
+		MOVSEG_	ds,<nameseg>,,<namesegname>
+		mov	ah,41h
+		int	21h		; delete file
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Set current file position
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<handle>		(handle; default BX)
+;	<where>			(one of SEEK_*, default is SEEK_SET)
+;	<hi>:<lo>		(unsigned position for SEEK_SET, signed
+;				 offset for other; default CX:DX)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {1,6} if Carry set)
+;	DX:AX			(new file position if no error)
+; Use:	MOVRRR_, MOVREG2
+; Modf:	none
+; Call:	INT 21/42
+;
+DOSLSeekFile	macro	handle,where:=<SEEK_SET>,high,low:vararg
+		MOVRRR_	cx,<high>,dx,<low>,bx,<handle>
+		MOVREG2	ax,ah,al,42h,<where>
+		int	21h		; set current file position
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Get file date/time stamp
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<handle>		(handle; default BX)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {1,6} if Carry set)
+;	DX			(file's date in DOSFILEDATE format if no error)
+;	CX			(file's time in DOSFILETIME format if no error)
+; Use:	MOVRR_
+; Modf:	none
+; Call:	INT 21/5700
+;
+DOSGetFileStamp	macro	handle:vararg
+		MOVRR_	bx,<handle>,ax,5700h
+		int	21h		; get file date/time stamp
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Set file date/time stamp
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	<handle>		(handle; default BX)
+;	<date>			(file's date in DOSFILEDATE format; default DX)
+;	<time>			(file's time in DOSFILETIME format; default CX)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {1,6} if Carry set)
+; Use:	MOVRRR_
+; Modf:	none
+; Call:	INT 21/5701
+;
+DOSSetFileStamp	macro	handle,date,time:vararg
+		MOVRRR_	cx,<time>,dx,<date>,bx,<handle>
+		mov	ax,5701h
+		int	21h		; set file date/time stamp
+endm

@@ -1,0 +1,21 @@
+sdpar9.vga = entry,
+par_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+par_drv,
+papttxt1,
+papttxt2,
+paptdraw,
+parmblit,
+parblit,
+parpat,
+enddseg, 
+vgacp, 
+vgafont[nop]
+                                                                    
+                                                                    

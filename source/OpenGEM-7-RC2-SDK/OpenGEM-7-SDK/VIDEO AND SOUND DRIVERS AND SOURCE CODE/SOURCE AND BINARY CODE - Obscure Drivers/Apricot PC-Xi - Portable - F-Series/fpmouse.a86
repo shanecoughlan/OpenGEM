@@ -1,0 +1,561 @@
+
+eject
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+
+;History
+;Change #	Person	Date	Description
+;1		DH	2/24/85	added summa tablet support
+;2		DH	3/13/85	cleared control status on mouse motion
+;3		DH	3/13/85 toggled kbd mouse status on mouse first motion
+;---------------------------------------------------------------------------
+; 	PLEASE UPDATE THE REVISION HISTORY AND VERSION NUMBER
+; 	IF YOU CHANGE THE MOUSE DRIVER
+;---------------------------------------------------------------------------
+
+;
+; Apricot PCs have a cut-down mouse driver that only supports the Microsoft 
+; mouse.
+;
+
+;--------------
+; Mouse version
+;--------------
+VERSION		EQU	3
+
+;-------------------
+; Mouse/Tablet modes
+;-------------------
+SERIALCOM1	EQU	0
+SERIALCOM2	EQU	1
+MM961TABLET	EQU	1
+MM1201TABLET	EQU	2
+MM1812TABLET	EQU	3
+MM1201STYLUS	EQU	4
+MM1201CURSOR	EQU	5
+MM961STYLUS	EQU	6
+MM961CURSOR	EQU	7
+MM1812STYLUS	EQU	8
+MM1812CURSOR	EQU	9
+
+MM961MAXLPI	EQU	508
+MM1201MAXLPI	EQU	508
+MM1812MAXLPI	EQU	1016
+
+;-------------------
+; PS/2 Mouse Equates
+;-------------------
+PSM_ENABLE	EQU	0C200H
+PSM_RESET	EQU	0C201H
+PSM_SAMPLE	EQU	0C202H
+PSM_RESOL	EQU	0C203H
+PSM_PACKET	EQU	0C205H
+PSM_EXT		EQU	0C206H
+PSM_ASR		EQU	0C207H
+
+;----------------------
+; CDOS XM (5.0) Equates
+;----------------------
+
+; BDOS
+;-----
+A_GET		EQU	169	
+A_SET		EQU	168
+A_CATTACH	EQU	167
+BDOS		EQU	224
+P_DELAY		EQU	141
+
+; XIOS 
+;-----
+IO_POINTER	EQU	14
+AUX_PROT	EQU	3
+XIOS		EQU	DWORD PTR .28H
+
+; PCMODE 
+;-------
+XMVER		EQU	4451h
+
+	cseg
+
+extrn	mouse_port:byte
+extrn	mouse_type:byte
+
+eject
+
+
+
+;******************************************************************************
+;mouse_function 							      *
+;	Entry point for all mouse code					      *
+;									      *
+;		Entry	bl = function number				      *
+;									      *
+;			bl = 0 Reserved 				      *
+;									      *
+;			bl = 1 Initialize mouse 			      *
+;				Set's baud rate, parity, stop bits	      *
+;				Initializes the interrupt vector location     *
+;									      *
+;			       Exit none				      *
+;									      *
+;			bl = 2 Deinitialize the mouse			      *
+;				Puts interrupt vector location back	      *
+;				Turns off receive interrupt		      *
+;									      *
+;			       Exit none				      *
+;									      *
+;			bl =  3 Return mouse status/coordinates		      *
+;									      *
+;			       Exit					      *
+;									      *
+;					al = 0 nothing happened 	      *
+;									      *
+;					al = 1 button press		      *
+;						ah = character information    *
+;									      *
+;					al = 2 coordinate information	      *
+;						x1 = current x		      *
+;						y1 = current y		      *
+;									      *
+;									      *
+;******************************************************************************
+public  mouse_function
+
+mouse_function:
+	cmp	bl, 4
+	jb	mouse_fn0
+	xor	al, al
+	ret
+
+mouse_fn0:
+	dec	bl			; convert [bl] to index
+	xor	bh, bh
+	shl	bl, 1
+	call	mouse_funcs[bx]
+	ret
+
+; dummy button/motion routines
+;------------------------------
+public  umotvec
+public  ubutvec
+umotvec:	retf			;call to user defined motion vector
+ubutvec:	retf
+
+eject
+dseg
+
+	public	MOUSE_BT
+
+;the following bytes are global variables which are initialized by mouse init
+;
+;;;mouse_recieve_port	dw	03f8h		;default comm port address
+mouse_mask_byte		db	11101111b	;default mouse mask byte
+mouse_int_vector_offset	dw	4*(0ch)
+mouse_int_vec_save	dw	0,0
+;
+;the following are variables for the microsoft mouse
+;
+ms_mouse_avail		db	0	;default is no
+ms_mouse_int_status	db	0
+;
+;the following are variables for the pc/summa mice
+;
+;;;xmax_tablet	equ	117		; max size x for 1201
+;;;summa_init_table db	52h		; set report rate to max/8
+;;;		 db	72h		; set x,y scale command
+;;;xscale_mm1201	 dw	0		;equate above determines this value
+					;from resolution of screen	
+;;;yscale_mm1201	 dw	0		;equate above determines this value
+					;from resolution of screen	
+;;;tablet_org	 db	62h		; set origin to upper left 1201
+;;;		 db	40h		;continuous output from tablet is requested
+					; send @ for stream mode 
+;;;		 db	49h, 21h	
+; init entries 
+;-------------
+mouse_funcs	equ	offset $
+	
+	dw	offset ms_mouse_init	;microsoft driver mouse initialization
+	dw	offset ms_mouse_deinit	;microsoft driver mouse deinit
+	dw	offset ms_mouse_status	;ms mouse driver status
+
+; serial mouse common data
+;-------------------------
+mouse_count		db	5	;byte count for mouse
+mouse_status_byte	db	0	;status byte for mouse
+mouse_switch_byte	db	0	;switch byte for mouse
+mouse_x			dw	xresmx/2
+mouse_y			dw	yresmx/2
+mouse_deltax		dw	0	;mouse delta x value
+mouse_deltay		dw	0	;mouse delta y value
+mouse_int_status	db	0	;interrupt routine status byte
+MOUSE_BT		dw	0	;data variable for button status
+old_mouse_but		dw	0ffh
+;button_mask		db	0f8h	;the button mask byte for the mouse
+
+; tablet/mouse button->key map table
+;-----------------------------------
+pc_keymap		db	00000000b	; mouse systems 
+			db	00000100b
+			db	00000010b
+			db	00000110b
+			db	00000001b
+			db	00000101b
+			db	00000011b
+			db	00000111b
+
+;;mm_tablet_keymap	db	00000000b	; suma tablet
+;;			db	00000001b	;
+;;			db	00000011b	; 
+;;			db	00000011b	;
+;;			db	00000111b	; 
+;;			db	00000111b	; 
+;;			db	00000111b	; 
+
+; public/global mouse vectors
+;----------------------------
+public usermot
+usermot	dw	offset umotvec
+	dw	seg    umotvec       
+public  userbut
+userbut	dw	offset ubutvec
+	dw	seg    ubutvec
+public  usercur
+usercur	dw	offset mov_cur
+	dw	seg    mov_cur		
+;
+;this equate does not require change
+;
+pc_mouse_byte_count	equ	5	;pc mouse bytes / string
+
+cseg
+			public	mouse_lock
+;;;			public  mouse_x
+;;;			public  mouse_y
+mouse_lock		db	0	;set the semaphore to off
+mvec_2e			dw	0
+
+		if 	0
+;	previous interrupt vector (now in code seg for far jump)
+;
+mouse_int_vec_save	dw	0	;storage for old interrupt vec offset
+			dw	0	;storage for old interrupt vec segment
+
+ss_save			dw	0	;old stack segment
+sp_save			dw	0	;old stack offset
+tick_flag		db	0	;tick in progress
+		endif
+
+eject
+;------------------------------------------------------------------
+;xx_mouse_init:		
+;--------------		
+;
+;	initializes the mouse 
+;
+;	entry	none
+;	exit
+;		mouse_status_byte cleared
+;		mouse_switch_byte cleared
+;		deltax,deltay = 0
+;		mouse port baud rate, stop bits,parity set
+;		mouse port interrupt vector set-up 
+;		mouse port recieve interrupt turned on
+;
+;-------------------------------------------------------------------
+public ms_mouse_init
+
+ms_mouse_init:		; initializes a microsoft (int 33) compatible mouse
+;-------------
+	xor	ax,ax
+	mov	ms_mouse_int_status,al
+	mov	ms_mouse_avail,al
+
+if f1_colour
+	mov	cx, 1
+else
+if num_planes gt 2
+	mov	cx, 3	;Is this a 'video mode' parameter to the mouse
+else
+if num_planes gt 1
+	mov	cx, 5	;driver? Because the Interrupt List doesn't 
+else
+	mov	cx, 0	;document passing anything in CX.
+endif
+endif
+endif
+	int     33h
+	and	ax,ax
+	jz	ms_mouse_init_done
+	mov	ms_mouse_avail,0ffh
+	mov     ax,12   ; set up the cll to the interrupt subroutine
+	mov     cx,000ffh
+	push    es
+	push    cs
+	pop     es
+	mov     dx,offset ms_mouse_int_vector
+	int     33h
+
+	mov	ax, 7
+	xor	cx, cx
+	mov	dx, xresmx
+	int	33h		;Set horizontal range
+	mov	ax, 8
+	xor	cx, cx
+	mov	dx, true_yresmx
+	int	33h		;Set vertical range
+
+	mov	ax, 4
+	mov	cx, xresmx / 2
+	mov	dx, true_yresmx
+	shr	dx, 1
+	int	33h		;Position pointer	
+
+	pop     es
+ms_mouse_init_done:
+; 
+; FALL THROUGH to clear_mouse_status_bytes
+;
+
+;----------------------------------	
+;  Generic Mouse/Tablet Subroutines
+;----------------------------------
+clear_mouse_status_bytes:
+;------------------------
+	mov	ax, true_yresmx
+	shr	ax, 1
+	mov	gcurx, xresmx/2
+	mov	gcury, ax
+	mov	mouse_x, xresmx/2
+	mov	mouse_y, ax
+	xor	ax,ax
+	mov	mouse_status_byte, al		;clear mouse status byte.
+	mov	mouse_switch_byte, al		;clear switch status byte.
+	mov	mouse_deltax,ax 		;init delta x
+	mov	mouse_deltay,ax 		;init delta y
+	ret
+
+eject
+;-----------------------------------------------
+; xx_mouse_deinit (xx_tablet_deinit)
+; ----------------------------------
+;
+;	turn off the receive interrupts
+;	put back interrupt mask
+;
+;-----------------------------------------------
+public ms_mouse_deinit
+
+no_mouse_deinit:
+	ret
+
+ms_mouse_deinit:	; Microsoft (int 33) deinit
+;---------------
+	xor	ax, ax
+	xor	cx, cx
+	int	33h			;init the mouse. this resets all interrupt condition flags
+	ret
+
+
+	xor	ax, ax
+	ret				;Dead code?
+
+EJECT
+;--------------------------------------------------------------  
+;xx_mouse_status
+;----------------
+;
+;	routine returns the current state of the mouse
+;
+;	al = 0 nothing happened 	    
+;  
+;       al = 1 button press		      
+;		ah = character information    
+;
+;	al = 2 coordinate information
+;		x1 = current x		      
+;		y1 = current y		      
+;
+;--------------------------------------------------------------
+
+no_mouse_status:	; no mouse
+pc_mouse_status:	; mouse systems compatible mouse
+ms_mouse_status:	; microsoft (int 33) mouse
+mm_tablet_status:	; tablet 
+
+	pushf
+	cli
+	mov	al, mouse_status_byte	;get the status of the mouse
+	mov	ah, mouse_switch_byte		
+	mov	mouse_status_byte,0
+	mov	bx, mouse_x
+	mov	x1,bx
+	mov	cx, mouse_y
+	mov	y1,cx
+	popf
+	ret
+
+;
+;******************************************************************************
+; xxxxx_int_vector
+;-----------------
+;
+; 	Mouse hardware interrupt vector
+;
+;		Exit							      
+;			mouse_status_byte				      *
+;					  = 0 nothing happened		      *
+;									      *
+;					  = 1 button press		      *
+;						mouse_switch_byte	      *
+;						     = character information  *
+;									      *
+;					  = 2 coordinate information	      *
+;						     mouse_deltax = delta x   *
+;						     mouse_deltay = delta y   *
+;									      *
+;
+;******************************************************************************
+public ms_mouse_int_vector
+
+
+ms_mouse_int_vector:		; microsoft (int 33) mouse
+;-------------------
+	pushf
+	cli
+	push    ds
+	push    ax
+	mov     ax,seg MOUSE_BT
+	mov     ds,ax
+	pop	ax
+	cmp     bx,MOUSE_BT     ; has a mouse button changed
+	je      ms_mouse_crdchange ; handle a coordinate change
+
+ms_mouse_switch:       ; falls thru here if it is a button change
+
+	mov	CONTRL_STATUS, 0	; clear out control status in case kbd
+	mov     MOUSE_BT,bx
+	mov     old_mouse_but,bx
+	push    ax
+	mov     ax,bx
+	push    bx
+	callf   dword ptr userbut
+	pop     bx
+	pop     ax
+	and     al,00ah         ; is it a button press
+	jz      ms_mouse_exit   ; if not, it is a release
+	mov     al,mouse_status_byte
+	and     al,1
+	jnz     ms_mouse_exit   ; haven't read last switch closure
+	mov     mouse_switch_byte,20h
+	and     bl,1
+	jnz     ms_mouse_switch_exit
+	inc     mouse_switch_byte
+ms_mouse_switch_exit:
+	or      mouse_status_byte,1
+	jmp     ms_mouse_exit
+ms_mouse_crdchange:
+	mov	CONTRL_STATUS, 0 ; clear out control status in case kbd
+	cmp	FIRST_MOTN, 0	; is mouse motion the first
+	jnz	ms_mouse_crdchange_ok
+	mov	FIRST_MOTN, 0ffh
+	not	KBD_MOUSE_STS	; toggle the control status to off
+ms_mouse_crdchange_ok:	
+	test     mouse_lock,1    ; are we currently drawing a mouse
+	jnz      ms_mouse_exit   ; exit if we are
+;;;	mov	ax, 0Bh
+;;;	int	33h		; Read motion counters
+	or      mouse_status_byte,2     ; set the bit indicating a coordinate change
+	mov     mouse_lock,1    ; indicate we are drawing a mouse
+	sti     		; reenable interuupts while we are mouse drawing
+	mov     bx, cx          ; mov x count into bx
+	mov	cx, dx
+	cld
+	mov	mouse_x, bx
+	mov	mouse_y, cx
+	callf   dword ptr usermot
+	callf   dword ptr usercur
+	mov     mouse_lock,0
+ms_mouse_exit:
+	pop     ds
+	popf
+	retf
+
+
+eject
+;
+;******************************************************************************
+;keyboard_mouse_int_vector							      *
+;									      *
+;		Exit							      *
+;			mouse_status_byte				      *
+;					  = 0 nothing happened		      *
+;					  = 1 button press		      *
+;						mouse_switch_byte	      *
+;						     = character information  *
+;					  = 2 coordinate information	      *
+;						     mouse_deltax = delta x   *
+;						     mouse_deltay = delta y   *
+;									      *
+;
+;******************************************************************************
+KEYBOARD_MOUSE:
+	push	ds
+	push	bp
+	mov	FIRST_MOTN, 0ffh		;if first mouse then turn off
+	xor	dx, dx
+	mov	dx, bx
+	add	dx, cx
+	jz	keyboard_mouse_button
+	mov	mouse_status_byte, 2
+	add	bx,mouse_x			;
+	add	cx,mouse_y
+	call	clip_cross			;bx,cx = new coordinate values
+	mov	mouse_x, bx
+	mov	mouse_y, cx
+	callf	dword ptr	usermot		;call the user defined motion
+	callf	dword ptr	usercur		;call the cursor draw routine
+	jmps	keyboard_mouse_exit
+
+keyboard_mouse_button:
+	mov	mouse_status_byte, 1
+	xor	ah, ah
+	mov	MOUSE_BT,ax			;save the button status
+	push	ax
+	callf	dword ptr userbut		;call the user defined button
+	pop	ax
+	and	al, al
+	jz	kbd_mouse_switch_exit		;exit if the second call
+	mov	mouse_switch_byte,20h
+	test	al,1
+	jnz	kbd_mouse_switch_exit
+	inc	mouse_switch_byte
+	test	al,2
+	jnz	kbd_mouse_switch_exit
+	inc	mouse_switch_byte
+kbd_mouse_switch_exit:
+keyboard_mouse_exit:
+	pop	bp
+	pop	ds
+	ret
+

@@ -1,0 +1,374 @@
+eject
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+; This file was disassembled from ACORNBW.SYS on the BBC Master 512 boot 
+; discs, for which no source exists. The copyright message reads Digital 
+; Research and it is my understanding that all DRI GEM is covered by the
+; GPL whether or not source exists. Thus:
+; <http://www.simpits.org/pipermail/gem-dev/2007-March/001405.html>
+;
+
+
+IBMMOUSE	equ	1
+
+;--------------
+; Mouse version
+;--------------
+
+VERSION		EQU	22
+
+;-------------------
+; Mouse/Tablet modes
+;-------------------
+SERIALCOM1	EQU	0
+SERIALCOM2	EQU	1
+MM961TABLET	EQU	1
+MM1201TABLET	EQU	2
+MM1812TABLET	EQU	3
+MM1201STYLUS	EQU	4
+MM1201CURSOR	EQU	5
+MM961STYLUS	EQU	6
+MM961CURSOR	EQU	7
+MM1812STYLUS	EQU	8
+MM1812CURSOR	EQU	9
+
+MM961MAXLPI	EQU	508
+MM1201MAXLPI	EQU	508
+MM1812MAXLPI	EQU	1016
+
+;-------------------
+; PS/2 Mouse Equates
+;-------------------
+PSM_ENABLE	EQU	0C200H
+PSM_RESET	EQU	0C201H
+PSM_SAMPLE	EQU	0C202H
+PSM_RESOL	EQU	0C203H
+PSM_PACKET	EQU	0C205H
+PSM_EXT		EQU	0C206H
+PSM_ASR		EQU	0C207H
+
+;----------------------
+; CDOS XM (5.0) Equates
+;----------------------
+
+; BDOS
+;-----
+A_GET		EQU	169	
+A_SET		EQU	168
+A_CATTACH	EQU	167
+BDOS		EQU	224
+P_DELAY		EQU	141
+
+; XIOS 
+;-----
+IO_POINTER	EQU	14
+AUX_PROT	EQU	3
+XIOS		EQU	DWORD PTR .28H
+
+; PCMODE 
+;-------
+XMVER		EQU	4451h
+
+	cseg
+
+extrn	mouse_port:byte
+extrn	mouse_type:byte
+
+eject
+
+
+
+;******************************************************************************
+;mouse_function 							      *
+;	Entry point for all mouse code					      *
+;									      *
+;		Entry	bl = function number				      *
+;									      *
+;			bl = 0 Reserved 				      *
+;									      *
+;			bl = 1 Initialize mouse 			      *
+;				Set's baud rate, parity, stop bits	      *
+;				Initializes the interrupt vector location     *
+;									      *
+;			       Exit none				      *
+;									      *
+;			bl = 2 Deinitialize the mouse			      *
+;				Puts interrupt vector location back	      *
+;				Turns off receive interrupt		      *
+;									      *
+;			       Exit none				      *
+;									      *
+;			bl =  3 Return mouse status/coordinates		      *
+;									      *
+;			       Exit					      *
+;									      *
+;					al = 0 nothing happened 	      *
+;									      *
+;					al = 1 button press		      *
+;						ah = character information    *
+;									      *
+;					al = 2 coordinate information	      *
+;						x1 = current x		      *
+;						y1 = current y		      *
+;									      *
+;									      *
+;******************************************************************************
+public  mouse_function
+
+mouse_function:
+	sub	ax,ax			; pre-set status
+	dec	bl			; convert [bl] to index
+	cmp	bl,2			; only 0,1,2 allowed 
+	ja	mouse_none
+	xor	bh,bh			; [bx] = table index
+	add	bx,bx			; [bx] = table offset 
+	jmp	cs:mouse_funcs[bx]
+;
+mouse_none:
+	xor	ax,ax
+	ret
+;
+mouse_funcs:
+	dw	mouse_init
+	dw	mouse_deinit
+	dw	mouse_status	
+
+; dummy button/motion routines
+;------------------------------
+public  umotvec
+public  ubutvec
+umotvec:	retf			;call to user defined motion vector
+ubutvec:	retf
+
+eject
+dseg
+
+	public	MOUSE_BT
+
+; Version/Patch Area
+;-------------------
+; As from Version 14 we have an eight byte sequence:
+; NNzyxgPT where NN is the mouse version, P is the port number
+; and T is the mouse type.
+;
+mouse_version	db	VERSION/10 + '0'
+		db	VERSION MOD 10 + '0'
+
+		cseg
+;
+; BBC mouse_init turns on mouse polling
+;
+mouse_init:	pushf
+		cli
+		xor	ax, ax
+		mov	mouse_status_byte, al
+		mov	mouse_switch_byte, al
+		mov	ax, 86h	
+		xor	cx, cx		;Enable mouse events
+		mov	bx, cs
+		mov	dx, offset mouse_update
+		call	_xios
+		popf
+		ret
+;
+mouse_deinit:	pushf
+		cli
+		mov	ax, 86h
+		mov	cx, 1		;Disable mouse events
+		call	_xios
+		popf
+		ret
+;
+; Return current mouse status
+;
+mouse_status:	pushf
+		cli	
+		mov	al, mouse_status_byte
+		mov	ah, mouse_switch_byte
+		mov	mouse_status_byte, 0
+		mov	bx, gcurx
+		mov	X1, bx
+		mov	cx, gcury
+		mov	Y1, cx
+		popf	
+		ret
+;
+; Mouse poll callback. Called regularly whether or not the mouse
+; has done anything interesting.
+;
+mouse_update:	push	ds
+		push	es
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+		push	bp
+		push	si
+		push	di
+		mov	bx, seg mouse_x1
+		mov	ds, bx
+		mov	es, bx
+		mov	mouse_x1, cx
+		mov	mouse_y1, dx
+		and	al, 7		;Check buttons
+		test	al, 4
+		mov	mouse_btns, 0
+		jz	mouse_h1
+		mov	mouse_btns, 2
+		and	al, 0FBh
+mouse_h1:	and	al, al	
+		jz	mouse_h2
+		mov	al, 1
+mouse_h2:	xor	ah, ah		;AX = left button status
+		mov	bx, ax
+		cmp	ax, mouse_prevbtns
+		mov	mouse_prevbtns, ax
+		mov	MOUSE_BT, ax
+		jz	no_bchange
+		callf	dword ptr userbut
+		mov	bx, ax
+		and	ax, ax
+		jz	no_bchange
+		mov	mouse_status_byte, 1
+		mov	mouse_switch_byte, 20h
+		jmps	mouse_done
+;
+no_bchange:	mov	ax, mouse_x1
+		sub	ax, mouse_x0
+		shl	ax, 1
+		call	m_scale
+		mov	mouse_dx, ax
+		mov	bx, ax
+		mov	ax, mouse_y1
+		sub	ax, mouse_y0
+		call	m_scale
+		mov	mouse_dy, ax
+		or	ax, bx
+		jz	mouse_done	;No movement
+		mov	ax, mouse_x1
+		mov	mouse_x0, ax
+		mov	ax, mouse_y1
+		mov	mouse_y0, ax
+		cmp	mouse_status_byte, 1
+		jz	no_mcheck
+		mov	mouse_status_byte, 2
+no_mcheck:	cmp	mouse_lock, 0
+		jnz	mouse_done
+		mov	bx, gcurx
+		add	bx, mouse_dx
+		mov	cx, gcury
+		sub	cx, mouse_dy
+		call	clip_cross
+		callf	dword ptr usermot
+		callf	dword ptr usercur
+mouse_done:	pop	di
+		pop	si
+		pop	bp
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		pop	es
+		pop	ds
+		retf
+;
+m_scale:	cmp	ax, 6
+		jg	scale4
+		cmp	ax, -6
+		jl	scale4
+		cmp	ax, 3
+		jg	scale2
+		cmp	ax, -3
+		jl	scale2
+		ret
+;
+scale4:		shl	ax, 1
+scale2:		shl	ax, 1
+		ret
+;
+KEYBOARD_MOUSE:
+	push	ds
+	push	bp
+	mov	FIRST_MOTN, 0ffh		;if first mouse then turn off
+	xor	dx, dx
+	mov	dx, bx
+	add	dx, cx
+	jz	keyboard_mouse_button
+	mov	mouse_status_byte, 2
+	add	bx,gcurx ;mouse_x			;
+	add	cx,gcury ;mouse_y
+	call	clip_cross			;bx,cx = new coordinate values
+;;;	mov	mouse_x, bx
+;;;	mov	mouse_y, cx
+	callf	dword ptr	usermot		;call the user defined motion
+	callf	dword ptr	usercur		;call the cursor draw routine
+	jmps	keyboard_mouse_exit
+
+keyboard_mouse_button:
+	mov	mouse_status_byte, 1
+	xor	ah, ah
+	mov	MOUSE_BT,ax			;save the button status
+	push	ax
+	callf	dword ptr userbut		;call the user defined button
+	pop	ax
+	and	al, al
+	jz	kbd_mouse_switch_exit		;exit if the second call
+	mov	mouse_switch_byte,20h
+	test	al,1
+	jnz	kbd_mouse_switch_exit
+	inc	mouse_switch_byte
+	test	al,2
+	jnz	kbd_mouse_switch_exit
+	inc	mouse_switch_byte
+kbd_mouse_switch_exit:
+keyboard_mouse_exit:
+	pop	bp
+	pop	ds
+	ret
+
+
+
+		dseg
+mouse_btns		dw	0
+MOUSE_BT		dw	0	;data variable for button status
+mouse_status_byte	db	0
+mouse_switch_byte	db	0
+mouse_x1		dw	0
+mouse_y1		dw	0
+mouse_x0		dw	0
+mouse_y0		dw	0
+mouse_dx		dw	0
+mouse_dy		dw	0
+mouse_prevbtns		dw	0
+mouse_lock		db	0
+
+; public/global mouse vectors
+;----------------------------
+public usermot
+usermot	dw	offset umotvec
+	dw	seg    umotvec       
+public  userbut
+userbut	dw	offset ubutvec
+	dw	seg    ubutvec
+public  usercur
+usercur	dw	offset mov_cur
+	dw	seg    mov_cur		
+

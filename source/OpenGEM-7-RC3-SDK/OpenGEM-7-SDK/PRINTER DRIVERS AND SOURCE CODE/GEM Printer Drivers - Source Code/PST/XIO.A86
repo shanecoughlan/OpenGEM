@@ -1,0 +1,591 @@
+;/*		XIO.A86		11/17/86 - 11/17/86	J. Grant	*/
+
+CGROUP		GROUP	CODE
+DGROUP		GROUP	DATA
+		cseg
+
+		public	dinit_p
+		public	init_p
+		public	pout
+		public	printer_out
+
+
+ALLOCATE_MEMORY	equ	48h		; "allocate memory" function
+BUF_SIZE	equ	1024		; file buffer size
+CLOSE_FILE	equ	3eh		; "close file" function
+CREATE_FILE	equ	3ch		; "create file" function
+CRITICAL_ERROR	equ	24h		; DOS critical error interrupt
+DOS		equ	21h		; DOS function request interrupt
+FREE_MEMORY	equ	49h		; "free memory" function
+OPEN_FILE	equ	3dh		; "open file" function
+PRINTER_ERROR	equ	9		; critical error handler error code
+READ_WRITE	equ	2		; read/write access
+SEEK_FILE	equ	42h		; "move read/write pointer" function
+SEEK_TO_END	equ	2		; position at end of file
+WRITE_FILE	equ	40h		; "write to file" function
+
+DISK_IO		equ	0		; file I/O request type
+
+IO_ERROR	equ	00001000b	; parallel I/O error
+NOT_BUSY	equ	10000000b	; parallel I/O not busy
+PAPER_OUT	equ	00100000b	; parallel I/O paper out indication
+PARALLEL_IO	equ	2		; parallel I/O request type
+PAR_INT		equ	17h		; parallel I/O interrupt
+SELECTED	equ	00010000b	; parallel I/O selected
+TIME_OUT	equ	00000001b	; parallel output timeout
+
+CTS		equ	00010000b	; clear to send bit
+DSR		equ	00100000b	; data set ready bit
+INIT_SER	equ	0		; initialize RS-232 I/O
+SERIAL_AVAIL	equ	00000001b	; byte available
+SERIAL_ERROR	equ	80h		; serial output error
+SERIAL_IO	equ	1		; serial I/O request type
+SERIAL_OVERRUN	equ	00000010b	; overrun status
+SERIAL_READ	equ	2		; input via RS-232
+SERIAL_SETUP	equ	11100011b	; 9600,n,8,1
+SERIAL_STATUS	equ	3		; inquire status 
+SERIAL_TIMEOUT	equ	10000000b	; receive timeout
+SERIAL_WRITE	equ	1		; output via RS-232
+SER_INT		equ	14h		; ROM BIOS communications
+TIMEOUT_COUNT	equ	20		; long soft timeout count
+XOFF		equ	'S' - 40h	; control-S
+XON		equ	'Q' - 40h	; control-Q
+
+
+
+;************************************************************************
+;*		VOID							*
+;*	init_p()							*
+;************************************************************************
+init_p:
+
+; Process according to the type of I/O requested.
+		cmp	io_type, DISK_IO
+		je	ip_disk
+		cmp	io_type, PARALLEL_IO
+		je	ip_parallel
+		cmp	io_type, SERIAL_IO
+		jne	end_init_p
+
+; Serial I/O:  initialize to 9600 baud, no parity, eight data bits,
+; and 1 stop bit.
+ip_serial:
+		mov	al, SERIAL_SETUP
+		mov	ah, INIT_SER
+		xor	dh, dh
+		mov	dl, io_port
+		int	SER_INT
+
+; Check for "clear to send" and "data set ready".
+;;;;;;;		and	al, CTS OR DSR
+;;;;;;;		cmp	al, CTS OR DSR
+		je	end_init_p
+
+; The appropriate control lines are not set.  Critical error time.
+		call	critical_error_handler
+		jc	ip_serial
+		inc	abort
+		jmps	end_init_p
+
+; Initialize for parallel I/O.  Make sure the printer is there and listening.
+ip_parallel:
+		xor	dh, dh
+		mov	dl, io_port
+		mov	ah, 2			; status check
+		int	PAR_INT
+		test	ah, PAPER_OUT OR IO_ERROR
+		jnz	ip_parallel_error
+		test	ah, NOT_BUSY
+		jz	ip_parallel_error
+		test	ah, SELECTED
+		jnz	end_init_p
+ip_parallel_error:
+		call	critical_error_handler
+		jc	ip_parallel
+		inc	abort
+		jmps	end_init_p
+
+; Initialize for file I/O.
+ip_disk:
+		call	init_disk
+
+; That's all!
+end_init_p:
+		ret
+
+
+;************************************************************************
+;*	init_disk:							*
+;************************************************************************
+init_disk:
+
+; Allocate a buffer for I/O.
+		mov	bx, BUF_SIZE/16
+		mov	ah, ALLOCATE_MEMORY
+		int	DOS
+		jc	id_error
+		xor	dx, dx
+		mov	word ptr file_buf, dx
+		mov	word ptr file_buf + 2, ax
+
+; Open the file and seek to its end.  If the open fails, try a create.
+		mov	dx, offset io_fname
+;;;;;		mov	ax, 256*OPEN_FILE + READ_WRITE
+;;;;;		int	DOS
+;;;;;		jc	id_try_create
+;;;;;		mov	file_handle, ax
+;;;;;		mov	bx, ax			; bx = file handle
+;;;;;		xor	cx, cx
+;;;;;		mov	dx, cx			; cx:dx = offset from end
+;;;;;		mov	ax, 256*SEEK_FILE + SEEK_TO_END
+;;;;;		int	DOS
+;;;;;		jmps	end_init_disk
+id_try_create:
+		xor	cx, cx			; cx = file attribute
+		mov	ah, CREATE_FILE
+		int	DOS
+		jc	id_create_error
+		mov	file_handle, ax
+		jmps	end_init_disk
+
+; A file open error occurred.  Clean things up and exit.
+id_create_error:
+		mov	es, word ptr file_buf + 2
+		mov	ah, FREE_MEMORY
+		int	DOS
+
+; Indicate error.
+id_error:
+		mov	file_handle, 0
+		inc	abort
+
+; That's all!
+end_init_disk:
+		ret
+
+
+;************************************************************************
+;*		VOID							*
+;*	dinit_p()							*
+;************************************************************************
+dinit_p:
+
+; Process according to the type of I/O performed.
+		cmp	io_type, DISK_IO
+		jne	end_dinit_p
+
+; Handle file I/O termination:  if the file was opened, flush the buffer,
+; close the file, and release the I/O buffer.
+		cmp	file_handle, 0
+		je	end_dinit_p
+		mov	es, word ptr file_buf + 2
+		mov	ah, FREE_MEMORY
+		int	DOS
+		call	flush_to_disk
+		mov	bx, file_handle
+		mov	ah, CLOSE_FILE
+		int	DOS
+
+; That's all!
+end_dinit_p:
+		ret
+
+
+;************************************************************************
+;*	flush_to_disk:							*
+;************************************************************************
+flush_to_disk:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+
+; Write the contents of the buffer out.
+		mov	cx, word ptr file_buf
+		jcxz	ftd_update
+		mov	bx, file_handle
+		push	ds
+		mov	ds, word ptr file_buf + 2
+		xor	dx, dx
+		mov	ah, WRITE_FILE
+		int	DOS
+		pop	ds
+		cmp	ax, cx			; error?
+		je	ftd_update
+		inc	abort
+ftd_update:
+		mov	word ptr file_buf, 0
+
+; That's all!
+end_flush_to_disk:
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;*	printer_out:							*
+;*		DS:SI -> count, followed by string.			*
+;************************************************************************
+printer_out:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+
+; Process according to the type of I/O requested.
+		mov	bx, io_type
+		shl	bx, 1
+		call	string_out[bx]
+
+; Restore.
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;*	disk_string:							*
+;*		DS:SI -> count, followed by string.			*
+;************************************************************************
+disk_string:
+		push	es
+		push	di
+
+; Copy the string to the file buffer, flushing if necessary.
+		lodsb
+		cbw
+		mov	cx, ax
+		mov	dx, cx
+		add	dx, word ptr file_buf	; dx = resulting length
+		cmp	dx, BUF_SIZE
+		jb	ds_to_buffer
+		mov	cx, BUF_SIZE
+		sub	cx, word ptr file_buf	; cx = bytes to fill buffer
+		les	di, file_buf		; es:di -> write location
+		add	word ptr file_buf, cx
+	rep	movsb
+		call	flush_to_disk
+		mov	cx, dx
+		sub	cx, BUF_SIZE
+ds_to_buffer:
+		les	di, file_buf		; es:di -> write location
+		add	word ptr file_buf, cx	; update file pointer
+	rep	movsb
+		pop	di
+		pop	es
+		ret
+
+
+;************************************************************************
+;*	parallel_string:						*
+;*		DS:SI -> count, followed by string.			*
+;************************************************************************
+parallel_string:
+
+; Set up for the string output loop.
+		xor	dh, dh
+		mov	dl, io_port
+		lodsb
+		cbw
+		mov	cx, ax			; cx = string length
+
+; String output loop.
+ps_out_loop:
+		lodsb				; al = character to output
+		call	pb_retry_loop
+		loop	ps_out_loop
+		ret
+
+
+;************************************************************************
+;*	alw_string:							*
+;*		DS:SI -> count, followed by string.			*
+;************************************************************************
+alw_string:
+
+; Set up for the string output loop.
+		xor	dh, dh
+		mov	dl, io_port
+		lodsb
+		cbw
+		mov	cx, ax			; cx = string length
+
+; String output loop.
+as_out_loop:
+		lodsb				; al = character to output
+		call	ab_retry_loop
+		loop	as_out_loop
+		ret
+
+
+;************************************************************************
+;*	pout:								*
+;*		DL contains the byte to output.				*
+;************************************************************************
+pout:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+
+; Process according to the type of I/O requested.
+		mov	bx, io_type
+		shl	bx, 1
+		call	byte_out[bx]
+
+; Restore.
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;*	disk_byte:							*
+;*		DL contains the byte to output.				*
+;************************************************************************
+disk_byte:
+		push	es
+		push	di
+
+; Copy the byte to the file buffer, flushing if necessary.
+		cmp	word ptr file_buf, BUF_SIZE
+		jb	db_to_buffer
+		call	flush_to_disk
+db_to_buffer:
+		les	di, file_buf
+		mov	es:[di], dl
+		inc	word ptr file_buf
+		pop	di
+		pop	es
+		ret
+
+
+;************************************************************************
+;*	parallel_byte:							*
+;*		DL contains the byte to output.				*
+;************************************************************************
+parallel_byte:
+
+; Get the printer port number and data byte.
+		mov	al, dl			; al = data byte
+		xor	dh, dh
+		mov	dl, io_port
+
+; Top of the output loop.  If the abort flag is set, don't send the
+; character.  Otherwise, try until it's right or an abort is requested.
+pb_retry_loop:
+		cmp	abort, 0		; abort if error
+		jnz	end_parallel_byte
+		xor	ah, ah
+		int	PAR_INT			; output via BIOS
+		test	ah, TIME_OUT OR PAPER_OUT OR IO_ERROR
+		jz	end_parallel_byte
+		jmps	pb_retry_loop
+
+; That's all!
+end_parallel_byte:
+		ret
+
+
+;************************************************************************
+;*	alw_byte:							*
+;*		DL contains the byte to output.				*
+;************************************************************************
+alw_byte:
+
+; Get the serial port number and data byte.
+		mov	al, dl			; al = data byte
+		xor	dh, dh
+		mov	dl, io_port
+
+; Top of the output loop.  If the abort flag is set, don't send the
+; character.  Otherwise, try until it's right or an abort is requested.
+ab_retry_loop:
+		cmp	abort, 0		; abort if error
+		jnz	end_alw_byte
+		call	flagging_sync
+		jc	end_alw_byte
+		mov	ah, SERIAL_WRITE
+		int	SER_INT			; output via BIOS
+		test	ah, SERIAL_ERROR	; error set?
+		jz	end_alw_byte
+		jmps	ab_retry_loop
+
+; That's all!
+end_alw_byte:
+		ret
+
+
+;************************************************************************
+;*	flagging_sync:							*
+;*		Carry flag returns status:  set for abort.		*
+;************************************************************************
+flagging_sync:
+		push	ax
+		push	dx
+
+; Inquire on the line status:  is a character available?  (Note:  no
+; test is made for an overrun since if one occurs, it will "almost always"
+; be an XOFF followed by an XON -- perfect!).
+		mov	ah, SERIAL_STATUS
+		int	SER_INT			; status from BIOS
+		test	ah, SERIAL_AVAIL	; carry flag is cleared
+		jz	end_flagging_sync
+
+; Get a character.  If it is an XOFF, wait for an XON.
+		mov	ah, SERIAL_READ
+		int	SER_INT			; read via BIOS
+		cmp	al, XOFF
+		clc
+		jne	end_flagging_sync
+		call	wait_for_xon
+
+; That's all!
+end_flagging_sync:
+		pop	dx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;*	wait_for_xon:							*
+;*		Carry flag returns status:  set for abort.		*
+;************************************************************************
+wait_for_xon:
+
+; Set the timeout loop count.
+		mov	cx, TIMEOUT_COUNT
+
+; Top of the timeout loop.  Get a character.  If the BIOS returns a
+; timeout, keep looping until tired of it.  If an XON is returned, return
+; with status set to success.
+wfx_timeout_loop:
+		mov	ah, SERIAL_READ
+		int	SER_INT			; read via BIOS
+		test	ah, SERIAL_TIMEOUT
+		jnz	wfx_next_timeout
+		cmp	al, XON
+		clc
+		je	end_wait_for_xon
+wfx_next_timeout:
+		loop	wfx_timeout_loop
+		jmps	wait_for_xon
+
+; That's all!
+end_wait_for_xon:
+		ret
+
+
+;************************************************************************
+;*	critical_error_handler:						*
+;*		Carry flag returns status:  set for retry.		*
+;************************************************************************
+critical_error_handler:
+		push	ax			; save character
+		pushf
+		push	cs
+		push	critical_addr
+		push	es
+		push	ds
+		push	bp
+		push	di
+		push	si
+		push	dx
+		push	cx
+		push	bx
+		push	ax
+		mov	ah, 80h
+		mov	bp, seg dev_header
+		mov	si, offset dev_header
+		int	CRITICAL_ERROR
+
+; Save the ignore/retry/abort flag.
+		mov	bx, seg retry_flag
+		mov	ds, bx
+		mov	retry_flag, al
+
+; Restore the environment.
+		pop	ax
+		pop	bx
+		pop	cx
+		pop	dx
+		pop	si
+		pop	di
+		pop	bp
+		pop	ds
+		pop	es
+		pop	ax			; critical_addr
+		pop	ax			; cs
+		popf
+		pop	ax			; restore character to output
+
+; Check to see if the operation should be retried (ignored) or aborted.
+		cmp	retry_flag, 1
+		jg	ce_abort
+		stc
+		jmps	end_critical_error_handler
+
+; An abort has been requested.  Reset the printer and set the abort flag.
+ce_abort_return_entry:
+		pop	ax			; throw away
+ce_abort:
+		clc
+
+; That's all!
+end_critical_error_handler:
+		ret
+
+
+;************************************************************************
+;*	dummy:								*
+;************************************************************************
+dummy:
+		ret
+
+
+; Data segment data.
+		dseg
+
+		public	io_port
+		public	io_type
+		public	io_fname
+
+		extrn	abort:word
+
+
+retry_flag	rb	1
+
+file_buf	rd	1
+file_handle	dw	0
+
+io_time		rb	1
+io_port		rb	1
+io_type		dw	PARALLEL_IO
+io_fname	rb	128
+timeout_address	dw	0
+
+string_out	dw	disk_string
+		dw	alw_string
+		dw	parallel_string
+		dw	dummy
+
+byte_out	dw	disk_byte
+		dw	alw_byte
+		dw	parallel_byte
+		dw	dummy
+
+critical_addr	dw	ce_abort_return_entry
+dev_header	dw	0ffffh, 0ffffh		; end of device list
+		dw	8000h			; character device
+		dw	dummy			; pointer to strategy routine
+		dw	dummy			; pointer to interrupt routine
+		db	'PRINTER '		; device name
+
+		end

@@ -1,0 +1,15 @@
+# italian translation (CP850) based on version 4.3a by Roberto Mariottini
+
+0.0:Attende la pressione di un tasto, da una scelta di tasti
+0.1:tasti
+0.2:testo
+0.3:Specifica i tasti permessi.  Default:
+0.4:Non visualizzare i tasti alla fine del prompt
+0.5:Distingui maiuscole/minuscole
+0.6:Scegli automaticamente il tasto c dopo nn secondi
+0.7:Il testo da mostrare come prompt
+0.8:Avvertimento sonoro (bip) al prompt
+3.0:sn
+
+0.9:Sintassi errata per il timeout. Deve essere nella forma Tc,nn o T:c,nn
+0.10:Il tasto di timeout non Š compreso nei tasti specificati (o nei default)

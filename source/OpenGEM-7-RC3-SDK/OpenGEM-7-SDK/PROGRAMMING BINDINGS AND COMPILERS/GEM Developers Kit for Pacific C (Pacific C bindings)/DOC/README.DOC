@@ -1,0 +1,427 @@
+/*******************************************************************************
+*
+*	README.DOC - GEM/3 Programmer's Toolkit - Digital Research, Inc.
+*
+*******************************************************************************/
+
+
+	    GEM(R) Programmer's Toolkit(TM)  Version 3.1
+			    from
+		    DIGITAL RESEARCH, INC.
+
+	        T A B L E   O F   C O N T E N T S 
+	        =================================
+		[1]      Subjects Covered
+		[2]      Changes and Technical Notes
+		[3]      TURBO C Bindings Installation/Quick Reference
+		[4]      Note Regarding Lattice C
+		[5]      Caveats for Compilers
+		[6]      Platform Sampling
+		[7]      Corrections to the PTK Supplement
+		[8]      Conclusion
+
+
+			      [1]   
+
+		S U B J E C T S   C O V E R E D
+		===============================
+		Versions / Compilers 
+		Optimized Installation
+		AES Library:
+			Bezier Curves
+			GEM/3.1 Functions
+		Header Files:
+		New Libraries:
+			Enhanced Object Handling
+			Raster
+			Transformation
+			Expanded Memory
+			Miscellaneous New Enhancements:
+			  -    FARDRAW.ASM
+			  -    FIXICON.C
+			  -    FORMDO.C
+			  -    EV_EVENT.C
+		New Samples:
+			  -    FREEMEM
+			  -    SPOOLER
+			  -    USERDEF
+			  -    EVENTS
+			  -    CLOCK
+			  -    MEMGRAF
+			  -    HELLO
+			  -    XFORM
+       -----------------------------------------------------
+ All Libraries:
+    --   There is a new utility to install the bindings 
+         on your hard disk. With this utility, you can choose:
+          -   The compiler you want to use
+               -  Turbo C 1.0 - 2.0
+               -  Microsoft C 5.X
+               -  MetaWare High C 1.4 and 1.5
+          -   How you want the libraries built
+               -  All functions in one source (not optimized)
+               -  All functions of a specific category in one source (optimized)
+               -  Each function in a separate source (highly optimized)
+
+          -   What libraries you want to install. See "New Libraries"
+              for brief descriptions of what has been added.
+ AES Library:
+    -  GEM Version 3.1 functionality (including Bezier curves). 
+
+ Header Files:
+    -   All header files have been modified to work with ANSI-C function
+        prototyping. This is optional and can be switched off by setting
+        the preprocessor variable ANSI to a value of zero. This variable
+        is located in the header file PORTAB.H.
+
+    -   The number of header files has decreased to four major files:
+
+           -  PORTAB.H  which contains several definitions of compiler- and
+              operating-dependent items.
+
+           -  AES.H  which contains all important defines for AES programming.
+
+           -  VDI.H  which contains all important defines for VDI programming.
+
+           -  DOSBIND.H  which contains all important defines for calling the
+              operating system.
+
+ New Libraries:
+    -    Enhanced Object Handling
+	   This library contains several functions for handling dialogs.  You  
+	   can now show, handle, and remove a dialog by calling only three 
+           functions.  Many new functions give access to the object specific 
+           data (ob_state, ob_flags, pointers to objects text, and so on).
+	   A header file named OBLIB.H is part of this library; it contains 
+           the function prototypes of all OBLIB functions.
+
+    -    Raster
+	   This library contains calls that have been extracted from the
+	   "doodle" application. Use these functions when dealing with
+	   structures of type GRECT or when dealing with rectangles.
+	   A header file named RCLIB.H is part of this library; it
+	   contains the function prototypes of all RCLIB functions.
+
+    -    Transformation	
+	   This library contains functions that are useful when dealing with
+	   different output devices. There are new functions to calculate
+	   positions and offsets from device-independent into device-specific
+	   format and back.  A header file named RCLIB.H is part of this 
+           library; it contains the function prototypes of all XFMLIB
+           functions.
+          
+    -    Expanded Memory
+	   This library contains functions that deal with the expanded memory
+	   manager as defined by the LIM standard.  Only the basic functions
+	   from version 4.0 of the LIM  specifications have been built in. In
+	   most cases, there is no need for the remaining functionality.
+	   A header file named EMSLIB.H is part of this library;it contains
+	   the function prototypes of all EMSLIB functions.
+
+    -    Miscellaneous
+	   This library now consists of four sources:
+            -  FARDRAW.ASM
+		This small assembler source allows a C programmer to handle
+		user-defined objects more efficiently than before.
+
+            -  FIXICON.C
+		This source lets you transform icons and bit images 
+                contained in a resource file into device-specific format.
+
+            -  FORMDO.C
+		This is similar to the original source of form_do() with the
+		exception that it is now keyboard aware. You can now select
+		buttons by control keys.
+
+            -  EV_EVENT.C
+		This is the GEM implementation of the function EVNT_EVENT() in
+		X/GEM. This source is much easier to handle than EVNT_MULTI().
+
+ New Samples:
+  -- In this version of the PTK, existing samples have been enhanced, and 
+     new samples have been added:
+
+   -    FREEMEM   An accessory that shows the current date and time, the
+		  operating system version, and the amount of memory that is
+		  available.  This example shows how to build accessories or
+		  applications that deal with resources shown in windows.
+
+   -    SPOOLER   A small application that shows how to use the appl_write()
+		  call to communicate with other applications or accessories.
+
+   -    USERDEF   Shows how to program user-defined objects.
+
+   -    EVENTS    An application that lets you check all kinds of events
+		  in graphical form.
+
+   -    CLOCK     The analog clock application provided with the X/GEM PTK.
+
+   -    MEMGRAF   The graphical memory statistics provided with the X/GEM PTK.
+
+   DOODLE, HELLO and XFORM have been modified to work with ANSI-C.  The HELLO
+   sample now illustrates how to program applications that run in small and 
+   large memory model, and as an application and an accessory with one common 
+   source.
+
+
+				[2]     
+
+	      TECHNICAL NOTES ON THE DIFFERENCES BETWEEN 
+	     GEM PROGRAMMER'S TOOLKIT RELEASE 3.0 AND 3.1
+	     ============================================
+
+   If the public domain Turbo C bindings for GEM (by David Hunt/Steve
+   Palmer or PCS) have been used previously, there are several changes
+   that will need to be addressed.  The differences below may apply
+   to other binding sets as well. (Refer to "Caveats for Compilers" in 
+   Section 5 of this file.)
+
+   1. The 3.1 Toolkit bindings define an object structure.  Any
+      reference to an object, usually with an identifier "tree," must be
+      declared as a FAR POINTER.  This is in accordance with the ANSI
+      standard.  For example:
+
+                      OBJECT FAR      *tree;
+
+   2. New and revised names:
+      AES.H       - new and contains basic definitions for the GEM environment.
+      AESBIND.H   - formerly GEMBIND.H (in 3.0).  
+      VDI.H       - formerly VDIBIND.H (in 3.0).
+
+   3. Many of the MACROS previously found in MACHINE.H are now in AES.H.
+
+   4. OB_SPEC now takes two arguments, a pointer must be passed to the 
+      base of the tree.  For example:
+
+		OB_MACRO (object_id)             /* old method */
+		OB_MACRO (tree, object_id)       /* new method */
+
+   5. The need for several macros like LWSET, LLGET, and so on, has been 
+      eliminated as the OB_MACROS now reference the actual object 
+      and return those values.
+
+   6. When the high and low words of an address must be obtained, use:
+
+		FP_OFF          in place of LLOWD
+		FP_SEG          in place of LHIWD
+
+   7. The ADDR macro is no longer used.
+
+   8. The SIDSAMPL.DOC file has been superseded by DEBUG.DOC. Disregard
+      any references to this sample file in the documentation.
+
+
+				[3]
+
+     T U R B O   C   B I N D I N G   I N S T A L L A T I O N     
+     =======================================================
+          
+   1.  From the GEM DESKTOP, double-click on A:INSTALL.APP.  This will 
+       install and create the bindings on A:\TOOLKIT or from the root any 
+       drive selected.  See the PTK 3.1 Supplement for more detail.
+
+   2.  Once installed, you can select compilers and options.
+       Double-click on \TOOLKIT\BINDINGS\INSTLIB.APP and install.
+
+   3.  When the installation is complete, edit \TOOLKIT\INCLUDE\PORTAB.H. 
+       If you installed Turbo C, line numbers 31 & 32 should read:
+
+               #define TURBO_C    1     /*   selected     */
+               #define MS_C       0     /*   not selected */
+
+   4.  If Turbo C has been installed in C:\TC, edit the file C:\TC\TURBOC.CFG
+       to include the following:
+
+		-ml
+		-Ic:\TOOLKIT\INC
+		-Lc:\TOOLKIT\GEMLIB
+		-Ic:\TC\INCLUDE
+		-Lc:\TC\LIB
+
+   5.  Create a file called BUILTINS.MAK.  BUILTINS.MAK should read like 
+       this (TABS are critical!):
+
+		.c.obj:
+		     tcc -c $*
+		.asm.obj:
+		     tasm $* /MX;
+
+    6. Type these commands to verify that they are available.
+
+ 		TCC			      TASM
+		TLINK			      MAKE
+
+       Be certain that MAKE.EXE is by Borland. 
+   
+    7. From \TOOLKIT\GEMLIB and for Large Model, type:  MAKELIB L
+
+    8. Rename \TOOLKIT\SAMPLE\HELLO\MAKEFILE.TC  to  MAKEFILE.
+
+    9. Copy \TOOLKIT\GEMLIB\LTCGEM.LIB  to  \TC\LIB\
+
+   10. From \TOOLKIT\SAMPLE\HELLO, type MAKE.
+
+   At this point, the makefile will attempt to build HELLO as:
+
+	a large model accessory:      HELLOL.ACC
+	a large model application:    HELLOL.APP
+
+
+         S M A L L   M O D E L   L I B R A R Y 
+         =====================================
+
+   If you want SMALL MODEL, build STCGEM.LIB in step #7 by typing: MAKELIB S
+   Then edit the sample MAKEFILES to activate the SMALL MODEL build commands
+   by removing the # symbols.
+
+
+         F I N A L   I N S T A L L A T I O N   N O T E S 
+         ===============================================
+
+   If the libraries above were generated without error (Step #7), and the 
+   paths and tools are correct, your installation of the GEM/3.1 PROGRAMMERS
+   TOOLKIT will now be complete. 
+
+   During MAKELIB.BAT (Step #7 above), you might see warnings during the 
+   LIBRARY build regarding "Select." These should not affect the construction 
+   of the libraries; they are from a parameter that is documented, but not 
+   activated.
+
+   If any error messages were generated, check all steps concerning path names
+   first.  Path names and Makefiles are the most common causes of errors.
+
+
+				[4]
+
+   R E G A R D I N G   T H E   L A T T I C E   C   C O M P I L E R 
+   ===============================================================
+
+   Formerly, the GEM PROGRAMMERS TOOLKIT supplied example source code bindings
+   for LATTICE C, which was the first good optimizing C compiler.  As Lattice 
+   has been moving toward the ANSI C standard in small increments, and it is 
+   difficult to stay compatible with the bindings, this version of the 
+   Toolit will not support Lattice.  The source code bindings for version 3.2
+   of the Lattice C Compiler will be available on Compuserve in section 5 of 
+   DRFORUM. Those bindings could be readily adapted to accept a new version.
+
+
+				[5]
+
+              C A V E A T S   O F   C O M P I L E R S  
+              =======================================
+
+   Turbo C may require special memory handling in Large Model.
+
+	 Example:    1. Make a large MALLOC before any GEM calls
+		     2. Finish with the Resource load.
+		     3. FREE the MALLOCed memory.
+
+   MSC, DESK ACCESSORIES cannot use standard library calls such as SPRINTF().
+  
+   High C bindings will NOT support SMALL MODEL nor will it allow
+   Desk Accessories at the current time.
+
+
+				[6]
+
+   A  S M A L L   S A M P L I N G   O F   GEM   P L A T F O R M S 
+   ==============================================================
+   GEM runs on:
+		INTEL 8086 family based machines
+		The IBM PC, 
+		The IBM XT, 
+		The IBM AT, 
+		The IBM PS/2 line, 
+		COMPAQ 386, 
+		COMPAQ Portables
+		8086 Laptops
+		8088 Laptops
+		286  Laptops
+		386  Laptops
+		Motorolla 68000 machines, 
+		ATARI ST
+	   Including 100% compatibles of the above
+
+		PCDOS 2.x and up,
+		MSDOS 2.x and up,
+		DRDOS 3.x and up,
+		Concurrent DOS, "Virtual 86 mode"
+		Windows, 
+		DOS Extenders, (Ring Zero Protected Mode)
+		OS/2 Presentation Manager, (available December 1989)
+		FlexOS, the high end industrial operating system.
+		(True Protected Mode)
+
+   A "Real Time," "Multi-Tasking," "Protected Mode" version of GEM is 
+   available as X/GEM which does not have the 640K barrier; it can 
+   address Megabytes. X/GEM is designed for high-end industrial applications.
+
+
+				[7]
+
+       C O R R E C T I O N S   T O   T H E   S U P P L E M E N T
+       =========================================================
+
+   The following corrections should be made to the GEM/3 Programmer's
+   Toolkit Release 3.1 Supplement:
+
+   Page 9-7 -->  /M=ab is now: /M=xxyy  where xx = port name, yy = mouse type.
+                    
+	Example:  	GEMVDI DESKTOP /S=SDPSC9.VGA /M=0001 
+			Loads GEM DESKTOP.APP with the PS/2 VGA screen
+			driver and serial mouse on COM1.
+
+   Page 9-8 -->  Add --> Restrictions: -DRV:PROG.EXT only.
+                         Do not specify a directory path on the command line.
+
+   Page 9-36 --> Use the following changes:
+	   Output Arguments
+	       minmax		VDI return array consisting of:
+	       minx = ptsout[0]
+	       miny = ptsout[1]
+	       maxx = ptsout[2]
+	       maxy = ptsout[3]
+
+	Sample Call to C Language Binding
+               VOID v_bez();
+               WORD handle, count;
+               WORD FAR *xyarr;
+               UBYTE FAR *bezarr;
+               WORD FAR *minmax, *npts, *nmove
+
+               VOID v_bez(handle, count, xyarr, bezarr, minmax, npts, nmove)
+
+   Page 9-38 --> V_BEZ_FILL(9-CH) should be changed to V_BEZFILL(9-CH)
+
+	 Use the following changes:
+	   Output Arguments
+	       minmax		VDI return array consisting of:
+	       minx = ptsout[0]
+	       miny = ptsout[1]
+	       maxx = ptsout[2]
+	       maxy = ptsout[3]
+
+	Sample Call to C Language Binding
+	       VOID v_bezfill();
+	       WORD handle, count;
+	       WORD FAR *xyarr;
+	       UBYTE FAR *bezarr;
+	       WORD FAR *minmax, *npts, *nmove
+
+	       VOID v_bezfill(handle, count, xyarr, bezarr, minmax, npts, nmove)
+
+		
+				[8]		
+
+			 C O N C L U S I O N
+			 ===================     
+
+   As the TURBO DEBUGGER works with GEM, and in view of Turbo C's proven
+   upward compatibility, ANSI standard and price, most GEM Programmers are
+   switching to Turbo C.  If you are porting from the ATARI ST platform, 
+   check into our Compuserve "DRFORUM" in the hidden programmers section DL5.
+
+   We are pleased with this impressive set of bindings and trust they will
+   allow you to complete your projects with greater ease and speed.
+
+	   ===== End of README.DOC ====

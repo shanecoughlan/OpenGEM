@@ -1,0 +1,2411 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+HORZ_OFF	equ	2
+; Special effects masks.
+THICKEN		equ	1h
+LIGHT		equ	2h
+SKEW    	equ	4h
+UNDER		equ	8h
+OUTLINE		equ	10h
+SHADOW		equ	20h
+ROTATE		equ	0c0h
+ROT90		equ	040h
+ROT180		equ	080h
+ROT270		equ	0c0h
+ROTODD		equ	040h
+ROTHIGH		equ	080h
+SCALE		equ	100h
+		dseg
+;;;		extrn	points_out:word		; jn, justified text fix
+		extrn	fi_flags:word
+		extrn	lt_hoff:byte
+		extrn	rt_hoff:byte
+		extrn	off_htbl:word
+		extrn	CONTRL:word
+		extrn	INTIN:word
+		extrn	INTOUT:word
+		extrn	PTSIN:word
+		extrn	FG_BP_1:word
+		extrn	NEXT_PAT:word
+		extrn	patmsk:word
+		extrn	patptr:word 
+		extrn	SOLID:word
+		extrn	DITHER:word
+		extrn	DITHRMSK:word
+		extrn	X1:word
+		extrn	X2:word
+		extrn	Y1:word
+		extrn	Y2:word
+		extrn	SPECIAL:word
+		extrn	T_SCLSTS:word
+		extrn	MONO_STA:word
+		extrn	XACC_DDA:word
+		extrn	DDA_INC:word
+		extrn	WRT_MODE:word
+		extrn	TEXT_BP:word
+		extrn	MAP_COL:word
+		extrn	LN_MASK:word
+		extrn	plane_loop_count:byte
+if ( num_planes gt 1 ) and ( not segment_access )
+		extrn	plane_port_tbl:byte
+		extrn	plane_read_tbl:byte
+endif
+		extrn	WEIGHT:word		;bolding ammount for char
+		extrn	L_OFF:word,R_OFF:word	;offsets for italic chars
+		extrn	CHAR_DEL:word		;additional width to add
+		extrn	DESTX:word,DESTY:word	;destination pixel address
+		extrn	ACTDELY:word		;form height after scale
+		extrn	CLIP:word		;clipping flag
+		extrn	XMN_CLIP:WORD,XMX_CLIP:WORD
+		extrn	YMN_CLIP:WORD,YMX_CLIP:WORD
+		extrn	FLIP_Y:word
+		extrn	width:word
+		extrn	rot_case:word
+		extrn	PTSOUT:word
+
+		extrn	FIR_CHR:word
+		extrn	f_i_last:word
+		extrn	OFF_TBL:dword
+		extrn	FOFF:word
+		extrn	FWIDTH:word
+		extrn	DELY:word
+		extrn	txbuf1:word
+		extrn	txbuf2:word
+		extrn	buff_ptr:word
+		extrn	source_seg:word
+		extrn	tempdely:word		;temporary char height storage
+		extrn	foffindex:word		;temporary char offset index
+		extrn	JUST_DEL_WORD:word
+		extrn	JUST_DEL_WORD_REM:word
+		extrn	JUST_DEL_CHAR:word
+		extrn	JUST_DEL_CHAR_REM:word
+		extrn	JUST_DEL_SIGN:word
+		extrn	JUST_NEG:word
+
+		extrn	byte_mask_table:byte
+		extrn	text_ix:byte		;text color index
+		extrn	text_mode:byte		;text write mode
+		extrn	font_off:word		;temp storage for font offset
+		extrn	port_sel:word
+		just_width	dw	0
+		extrn	line_table:word
+		extrn	pixel_table:word
+
+		cseg
+		extrn	chk_fnt:near
+		extrn	txt_blt_branch_table:word
+		extrn	double_table:word
+		extrn	txtblt_xor_rr_s:near
+		extrn	txtblt_xor_rl_s:near
+		extrn	d_gtext:near
+		extrn	ACT_SIZ:near
+		extrn	RECTFILL:near
+		extrn	CONCAT:near
+		extrn	check_ade:near
+
+		extrn	next_dest:word
+		extrn	next_source:word
+		extrn	rot_height:word
+		extrn	SPECIAL_CS:word
+
+		public	clr_skew_next_line_0
+		public	clr_skew_next_line_90
+		public	clr_skew_next_line_180
+		public	clr_skew_next_line_270
+		public	clr_skew_next_pixel_0
+		public	clr_skew_next_pixel_90
+		public	clr_skew_next_pixel_180
+		public	clr_skew_next_pixel_270
+		public	text_blit
+		public	text_move
+		public	clr_skew
+		if not GSX
+		 public	dqt_just
+		endif
+		public	d_justif	
+		public	text_rotate
+		public	text_scale
+		public	text_grey
+		public	text_bold
+		public	text_italic
+;****************************************************************
+; TEXT_BLIT							*
+; moves the character from temp form to screen			*
+; Inputs:							*
+;		ES:DI		Pointer to the screen		*
+;		foffindex	Source form lines to skip	*
+;		tempdely	Char height in pels		*
+;		bl		Char buffer form width in bytes	*
+;		si		char width in pels		*
+;		ax		source x			*
+;		bp		dest x				*
+; Uses:		all						*
+; Returns:	none						*
+;****************************************************************
+text_blit:
+	xor	bh, bh
+	push	ax
+	mov	ax, foffindex
+	cmp	ax, 0
+	je	text_blit_set_offset
+	mul	bx
+text_blit_set_offset:
+	add	ax, buff_ptr		;add in the char buff ptr
+	mov	font_off, ax
+	pop	ax
+	push	bx			;save the source form width
+
+;si = CHAR WIDTH
+;bp = destx
+;ax = sourcex
+;calculate the right mask right mask = dh
+	mov	cx, 7
+	mov	bx, bp
+	add	bx, si			;right x = DESTX+DELX
+	and	bx, cx 
+	mov	dh, byte_mask_table[bx] ;dh = right mask
+;calculate the left mask
+;left mask = dl
+	mov	bx, bp			;get dest x in bx
+	and	bx, cx
+	mov	dl, byte_mask_table[bx]
+	not	dl
+;calculate rotate value
+;rotate value = bh 0000drrr	d=0 if right 1 if left rrr = count 0 - 7
+	mov	ch, al
+	and	ch, cl			;mask off all but 3 lsbits
+	mov	bh, bl
+	sub	bh, ch			;if destx >= source x
+	jns	text_blit_clc_height
+	add	bh, 16			;get the left rotate index
+;calculate the vertical loop count
+;vertical loop count = cl
+text_blit_clc_height:
+	mov	cx, tempdely
+	or	cl, cl			;vertical loop count must be
+	jnz	text_blit_clc_ok	;non-zero
+	inc	cl
+;calculate the middle byte count
+;middle byte count = ch
+text_blit_clc_ok:
+	push	ax
+	sub	bl, 8			;left count max = 8-xposn
+	neg	bl
+	mov	ah, bh
+	xor	bh, bh
+	sub	si, bx			;delx - leftx 
+	jnc	text_blit_clc_middle
+	or	dl, dh			;if left only then must modify masks
+	mov	dh, 0ffh		;the right mask is now none
+	xor	ch, ch			;the middle count is 0
+	jmps	text_blit_op_branch
+text_blit_clc_middle:
+	mov	bx, si
+	shr	bx, 1
+	shr	bx, 1
+	shr	bx, 1			;divide out the low order bits
+	mov	ch, bl
+text_blit_op_branch:
+	pop	si			;get the source x back
+	shr	si, 1
+	shr	si, 1
+	shr	si, 1 
+	add	si, font_off		;offset from the top
+	pop	bp			;get the char form width	
+	mov	bl, text_mode
+	mov	al, ah			;get the rotate flag
+	and	al, 8
+	shr	al, 1
+	or	bl, al
+	xor	bh, bh
+	and	ah, 11110111b		;mask off the rotate flag
+	shl	bx, 1			;index in by words
+	push	ds
+	mov	ds, source_seg
+	call	txt_blt_branch_table[bx]
+	pop	ds
+	ret
+
+;****************************************************************
+; TEXT_MOVE							*
+;								*
+; moves the character from font form to temp			*
+; Inputs:							*
+;		ES:DI	Pointer to the char buffer		*
+;		DELY	Char height in pels			*
+;		foff	font offset 				*
+;		fseg	font segment				*
+;		bl	Char buffer form width in bytes		*
+;		si	char width in pels			*
+;		ax	source x				*
+; Uses:								*
+;		all						*
+; Returns:							*
+;		dx = to next form				*
+;****************************************************************
+text_move:
+	push	di			;save the orriginal pointers
+	push	si
+	push	di			;clear out the char buffer
+	push	ax
+	mov	ax, bx
+	xor	ah, ah
+	mov	cx, DELY
+	mul	cx
+	mov	dx, ax
+	mov	cx, ax
+	xor	al, al
+	rep	stosb			;clear out the temp buffer
+	pop	ax
+	pop	di
+	push	dx
+	push	bx			;save the dest form width
+	xor	bp, bp
+;si = CHAR WIDTH			;calculate the masks , rotate counts
+;bp = destx = 0
+;ax = sourcex
+	mov	cx, 7
+	mov	bx, si			;right x = DESTX+DELX
+	and	bx, cx 
+	mov	dh, byte_mask_table[bx] ;dh = right mask
+;left mask = dl
+	mov	bx, bp			;get dest x in bx
+	mov	dl, bl
+;calculate rotate value
+;rotate value = bh 0000drrr	d=0 if right 1 if left rrr = count 0 - 7
+	mov	bh, al
+	and	bh, cl			;mask off all but 3 lsbits
+	neg	bh			;if destx >= source x
+	jns	text_move_clc_height
+	add	bh, 16			;get the left rotate index
+;calculate the vertical loop count
+;vertical loop count = cl
+text_move_clc_height:
+	mov	cx, DELY
+;calculate the middle byte count
+;middle byte count = ch
+	push	ax			;save the source x
+	mov	ah, bh
+	sub	si, 8			;delx - (leftx max = 8)
+	jnc	text_move_clc_middle
+	or	dl, dh			;if it is left only then must modify masks
+	mov	dh, 0ffh		;the right mask is now none
+	xor	ch, ch			;the middle count is 0
+	jmps	text_move_op_branch
+text_move_clc_middle:
+	mov	bx, si
+	shr	bx, 1
+	shr	bx, 1
+	shr	bx, 1			;divide out the low order bits
+	mov	ch, bl
+text_move_op_branch:
+	pop	si			;get the source x back
+	shr	si, 1
+	shr	si, 1
+	shr	si, 1 
+	add	si, FOFF		;offset from the top
+	mov	bp, FWIDTH
+	pop	bx			;get the dest form width back
+	push	ds
+	mov	ds, FOFF + 2
+	mov	al, ah			;get the rotate flag
+	and	ah, 11110111b		;mask off the rotate flag
+	mov	bh, ah
+	and	al, 8
+	jnz	text_move_left
+text_move_right:
+	push	cx
+	push	di
+	push	bx
+	push	dx
+	mov	cl, 1
+	mov	ah, bh
+	call	txtblt_xor_rr_s
+	pop	dx
+	pop	bx
+	pop	di
+	pop	cx
+	mov	ax, bx
+	xor	ah, ah
+	add	di, ax
+	dec	cl
+	jnz	text_move_right	
+	pop	ds
+	pop	dx
+	pop	si
+	pop	di
+	ret
+text_move_left:
+	push	cx
+	push	di
+	push	bx
+	push	dx
+	mov	cl, 1
+	mov	ah, bh
+	call	txtblt_xor_rl_s
+	pop	dx
+	pop	bx
+	pop	di
+	pop	cx
+	mov	ax, bx
+	xor	ah, ah
+	add	di, ax
+	dec	cl
+	jnz	text_move_left
+	pop	ds
+	pop	dx
+	pop	si
+	pop	di
+	ret
+
+
+;****************************************************************
+; TEXT_ITALIC							*
+; Italicizes the form passed to it				*
+; Inputs:							*
+;		ES:DI	Pointer to the char buffer		*
+;		cx	Char height in pels			*
+;		bl	Char buffer width in bytes		*
+;		dx	Char width in pels			*
+; Uses:		all						*
+; Returns:	none						*
+;****************************************************************
+
+text_italic:
+	push	di
+	push	si
+	push	es
+	push	ds
+	push	dx
+	push	cx
+	push	bx
+	mov	si, di
+	mov	ax, ds
+	mov	bp, es
+	mov	es, ax				;es:di pointer at temp buffer
+	mov	ds, bp				;ds:si pointer at char buffer
+	mov	al, bl
+	xor	ah, ah
+	mov	bp, dx
+	mov	bx, dx
+	and	bl, 7				;get the right x value 
+	xor	bh, bh
+	mov	di, ax
+	mov	dx, cx
+	dec	dx
+	mul	dx				;calculate the bottom of char
+	add	si, ax
+	mov	ax, di
+	mov	di, offset PTSIN
+;es:di = pointer to ptsin	ds:si = pointer to bottom of char form
+;bh = leftx  = 00000xxx		bl = rightx = 00000xxx
+;cx = vert scan count in pels	ax = char form width in bytes
+;bp = char width in pels
+text_italic_calc_rot_loop:			;this code is executed every two scan lines
+	push	bp				;save the char width in pels
+	push	bx				;save the left/ right x
+	push	di				;save the dest ptr
+	push	cx				;save the vert count
+	push	ax				;save the middle byte count
+	push	si				;save the source ptr
+	mov	cx, ax				;clear out the temp dest
+	mov	dx, di
+	xor	al, al
+	mov	di, offset PTSIN
+	rep	stosb
+	mov	di, dx
+	xor	dl, dl				;calculate the left mask
+	mov	cx, bx
+	xor	bh, bh
+	mov	dh, es:byte_mask_table[bx] 	;dh = right mask
+	mov	bh, ch				;bh = rotate count = dest leftx
+	mov	al, ch
+	sub	al, 8
+	neg	al
+	xor	ah, ah
+	sub	bp, ax			;delx - leftx 
+	jnc	text_italic_calc_rot_middle
+	or	dl, dh			;if it is left only then must modify masks
+	mov	dh, 0ffh		;the right mask is now none
+	xor	ch, ch			;the next add delta is 0
+	jmps	text_italic_calc_rot_branch
+text_italic_calc_rot_middle:
+	mov	ax, bp
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1			;divide out the low order bits
+	mov	ch, al
+text_italic_calc_rot_branch:
+	mov	cl, 1
+	mov	ah, bh
+	push	dx
+	call	txtblt_xor_rr_s
+	pop	dx
+	mov	bl, ch			;save the middle byte count
+	pop	si			;get the source pointer back
+	mov	di, offset PTSIN
+	pop	cx
+	push	cx
+	push	si
+text_italic_copy_temp_loop:
+	mov	al, es:[di]
+	mov	[si], al
+	inc	di
+	inc	si
+	loop	text_italic_copy_temp_loop
+	pop	si			;get char buff ptr back
+	pop	ax			;get the bytes per line back
+	sub	si, ax			;move backwards up the char
+	pop	bp			;get the vert count back	
+	dec	bp
+	jnz	text_italic_second_scan
+	pop	di
+	pop	bx
+	pop	bp
+	jmps	text_italic_done
+text_italic_second_scan:
+	mov	di, offset ptsin	;clear out the ptsin temp buffer
+	mov	cx, ax
+	xchg	ah, al			;save the bytes / line
+	rep	stosb			;clear out the line 	
+	xchg	ah, al
+	pop	di
+	push	di
+	push	bp
+	push	ax
+	push	si
+	push	dx
+	mov	ch, bl
+	mov	cl, 1
+	mov	ah, bh
+	call	txtblt_xor_rr_s
+	pop	dx
+	pop	si			;get the char buff ptr back
+	pop	bx			;get the bytes / line back
+	mov	cx, bx
+	mov	di, offset PTSIN
+	push	si
+text_italic_second_copy_loop:
+	mov	al, es:[di]
+	mov	[si], al
+	inc	di
+	inc	si
+	loop	text_italic_second_copy_loop
+	pop	si
+	mov	ax, bx
+	pop	cx			;get the vertical count back
+	pop	di			;get the tmp buffer pointer back
+	pop	bx			;get the left / right x back
+	pop	bp			;get the char width in pels back
+	dec	cx
+	jz	text_italic_done
+	sub	si, ax
+	mov	dl, 7
+	inc	bh
+	inc	bl			;move the x's one pel right
+	cmp	bh, dl			;is bh gt dl
+	jle	text_italic_no_inc
+	inc	di
+text_italic_no_inc:
+	and	bh, dl
+	and	bl, dl
+	jmp	text_italic_calc_rot_loop
+text_italic_done:
+	pop	bx
+	pop	cx
+	pop	dx
+	pop	ds
+	pop	es
+	pop	si
+	pop	di
+	ret
+
+
+;****************************************************************
+; TEXT_BOLD							*
+; Bolds the form passed to it					*
+; Inputs:							*
+;		ES:DI	Pointer to the char buffer		*	
+;		cx	Char height				*
+;		bl	Char buffer width in bytes		*
+; Uses:		all						*
+; Returns:	bx, cx, dx, ds					*
+;****************************************************************
+
+text_bold:
+	push	di
+	push	si
+	push	ds
+	push	dx
+	push	cx
+	push	bx
+	mov	dx, WEIGHT	;get the bolding ammount	
+	mov	ax, es
+	mov	ds, ax		;source pointer = dest pointer
+	mov	si, di
+text_bold_vert_loop:		;this loop bolds the character cell
+	mov	dh, dl		;re initialize the bold counter
+text_bold_out_scan_loop:	;this loop bolds the scan line  
+	mov	bp, si
+	clc
+	mov	bh, bl		;re initialize the byte counter
+text_bold_scan_loop:		;this loop bolds by 1 pel the scan line 
+	lodsb			;get the orriginal byte
+	mov	ah, al
+	rcr	ah, 1
+	pushf	
+	or	al, ah		;or in the rotated source
+	popf
+	stosb			;update the destination
+	dec	bh
+	jnz	text_bold_scan_loop
+	dec	dh		;have we finished the number of passes on this line
+	jz	text_bold_vert_test
+	mov	si, bp
+	mov	di, bp
+	jmps	text_bold_out_scan_loop
+text_bold_vert_test:
+	loop	text_bold_vert_loop
+	pop	bx
+	pop	cx
+	pop	dx
+	pop	ds		;get our data seg back
+	pop	si
+	pop	di
+	ret 
+
+
+;****************************************************************
+; TEXT_GREY							*
+; Greys the form passed to it					*
+; Inputs:							*
+;		ES:DI	Pointer to the char buffer		*
+;		cx	Char height				*
+;		bl	Char buffer width in bytes		*
+; Uses:		ax, bx, cx, di, ds				*
+; Returns:	bx, cx, dx					*
+;****************************************************************
+
+text_grey:
+	push	ds
+	push	cx
+	push	bx
+	push	di
+	mov	ax, es
+	mov	ds, ax
+	mov	al, 0aah	;alternately mask by aa then 55
+text_grey_vert_loop:		;this loop greys the character cell
+	mov	bh, bl		;re initialize the byte counter
+text_grey_scan_loop:		;this loop greys by 1 pel the scan line 
+	and	[di], al
+	inc	di
+	dec	bh
+	jnz	text_grey_scan_loop
+	not	al		;invert the mask on alternating scans
+	loop	text_grey_vert_loop
+	pop	di
+	pop	bx
+	pop	cx
+	pop	ds
+	ret 
+
+
+;****************************************************************
+; TEXT_SCALE							*
+; Scales the form passed to it					*
+; Inputs:							*
+;		ES:DI	Pointer to the char buffer		*
+;		cx	Char height				*
+;		bl	Char buffer width in bytes		*
+; 		si	Char width in pels			*
+;		dx	Source form size in bytes		*
+; Uses:		ax, bx, cx, di, ds				*
+; Returns:	bl, si						*
+;****************************************************************
+
+text_scale:
+	test	T_SCLSTS, 1		;is this a scale up
+	jnz	text_scale_double_check
+	jmp	text_scale_down
+text_scale_double_check:
+	cmp	DDA_INC, 0ffffh		;is this a double
+	jz	text_scale_double
+	jmp	text_scale_up
+
+;doubles the current character in size
+text_scale_double:
+	push	bp			;save the dest x
+;11/6/86 horizontal offset enhancement
+	mov	al, lt_hoff
+	mov	ah, rt_hoff
+	shl	ax, 1			;double the offsets
+	mov	lt_hoff, al
+	mov	rt_hoff, ah
+;
+	xor	bh, bh
+	mov	cx, bx
+	mov	ax, bx			; ax = temporary:  source form width
+	shl	si, 1
+	mov	bx, si
+	add	bx, CHAR_DEL
+	add	bx, 7
+	shr	bx, 1
+	shr	bx, 1
+	shr	bx, 1
+	mov	cx, si
+	add	cx, 7
+	shr	cx, 1
+	shr	cx, 1
+	shr	cx, 1			; cx = character width in bytes
+	mov	bp, bx
+	sub	bp, cx			; bp = bytes used for effects
+	push	bx			;save new form width
+	push	si			;save new char width
+	push	ds
+	add	dx, buff_ptr		;offset into the buffer properly
+	mov	buff_ptr, dx
+	push	dx			;the new di
+	mov	si, di
+	mov	di, dx
+	mov	dx, ACTDELY
+	mov	bx, es
+	mov	ds, bx			;get the pointers correct
+; ds:si = first temp buffer
+; es:di = second temp buffer
+; ax = source form width
+; cx = character width in bytes (no effects)
+; dx = height of dest
+; bp = dest (skew + bold) 
+text_scale_double_oloop:
+	push	ax			; save source form width
+ 	push	cx
+	push	si
+	push	di
+text_scale_double_first_scan:
+	lodsb				; get the source byte
+	mov	bl, al
+	xor	bh, bh
+	shl	bx, 1
+	mov	ax, cs:double_table[bx]	; get the doubled source byte
+if byte_swap
+	xchg	ah, al
+endif
+	stosb
+	dec	cx
+	jcxz	text_scale_first_moved
+	xchg	ah, al
+	stosb
+	loop	text_scale_double_first_scan
+text_scale_first_moved:
+	mov	cx, bp
+	jcxz	text_scale_do_second_scan
+	xor	al, al
+	rep	stosb			; clear out remaining space 
+text_scale_do_second_scan:
+	pop	si			; get old destination
+	push	ds
+	mov	cx, es
+	mov	ds, cx			; ds:si -> first scan line of pair
+	mov	cx, di
+	sub	cx, si
+	rep	movsb			; duplicate the line
+	pop	ds
+	pop	si
+	pop	cx
+	pop	ax
+	add	si, ax			; bump source to next line
+; Do another line, if necessary.
+	dec	dx
+	dec	dx
+	jnz	text_scale_double_oloop
+	pop	di
+	pop	ds
+	pop	si
+	pop	bx
+	pop	bp
+	ret
+;
+;
+text_scale_up:
+	add	dx, buff_ptr		;offset into the buffer properly
+	mov	buff_ptr, dx
+	push	dx
+	push	dx			;save the the new buffer pointer
+	mov	cx, si
+	mov	bp, XACC_DDA
+	mov	dx, DDA_INC
+	xor	ax, ax
+	push	bp
+;left horizontal offset scale calculation
+	mov	cl, lt_hoff		;do we need to scale this?
+	and	cl, cl
+	jz	text_scale_up_calc_rhoff
+	xor	ch, ch
+text_scale_up_calc_lhoff_loop:
+	add	bp, dx
+	jnc	text_scale_up_calc_lhoff_noinc
+	inc	ax
+text_scale_up_calc_lhoff_noinc:
+	inc	ax
+	loop	text_scale_up_calc_lhoff_loop
+	mov	lt_hoff, al		;save the new horizontal offset
+	pop	bp
+	push	bp
+	xor	ax, ax
+;right horizontal offset scale calculation
+text_scale_up_calc_rhoff:
+	mov	cl, rt_hoff
+	and	cl, cl
+	jz	text_scale_up_calc_forminit
+	xor	ch, ch
+text_scale_up_calc_rhoff_loop:
+	add	bp, dx
+	jnc	text_scale_up_calc_rhoff_noinc	
+	inc	ax
+text_scale_up_calc_rhoff_noinc:
+	inc	ax
+	loop	text_scale_up_calc_rhoff_loop
+	mov	rt_hoff, al
+	pop	bp
+	push	bp
+text_scale_up_calc_forminit:
+	xor	ax, ax
+	mov	cx, si
+text_scale_up_calc_form:
+	add	bp, dx
+	jnc	text_scale_up_calc_form_1
+	inc	ax
+text_scale_up_calc_form_1:
+	inc	ax
+	loop	text_scale_up_calc_form
+	mov	XACC_DDA,bp		;save the accumulator
+	pop	bp			;restore the x_dda_accumulator
+	mov	cx, si
+	mov	si, di
+	pop	di
+	push	ax			;save the new char width
+	add	ax, CHAR_DEL
+	add	ax, 7			;force it to next byte
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	mov	bx, DELY
+	mov	bh, bl
+	mov	bl, al
+	push	bx
+	push	ds
+	mov	ax, es
+	mov	ds, ax
+	mov	ax, 32767		;init the y dda acumulator
+;ax = y_dda_acumulator
+;bx = bh,bl bh = source vertical count  bl = dest form width in bytes
+;cx = source horizontal char width in pels
+;es:di = dest		;ds:si = source
+;dx = dda increment	;bp = x_dda_accumulator
+text_scale_up_y_loop:
+	push	ax
+	push	bx
+	push	di
+	push	cx
+	push	bp
+	mov	ah, 80h
+	mov	bh, ah
+	call	text_scale_up_x
+	pop	bp
+	pop	cx			;get the source bit count back
+	pop	di			;get the dest pointer back 
+	pop	bx
+	pop	ax
+	push	bx
+	xor	bh, bh
+	add	ax, dx			;is the next line a double
+	jc	text_scale_up_y_double
+	add	di, bx			;get to the next dest line
+	jmps	text_scale_up_y_test
+text_scale_up_y_double:
+	push	si			;save the old pointer
+	push	cx
+	push	ax
+	mov	cx, bx			;get the dest form width
+	mov	si, di
+	add	di, bx			;get to the next dest line
+	push	di
+	rep	movsb			;copy the last line over
+	pop	di
+	add	di, bx			;move to the next dest line
+	pop	ax
+	pop	cx
+	pop	si
+text_scale_up_y_test:
+	pop	bx
+	dec	bh			;is the character done
+	jnz	text_scale_up_y_loop
+text_scale_up_exit:
+	pop	ds
+	pop	bx
+	pop	si
+	pop	di
+	ret
+;es:di = dest pointer		;ds:si = source pointer
+;ah = source bit mask		;bh = dest bit mask
+;al = dest accumulator		;bl = source accumulator
+;bp = x_dda_accumulator		;dx = x_dda_increment
+;cx = source bit count
+text_scale_up_x:
+	xor	al, al
+	mov	bl, [si]
+	inc	si			;get the source byte 
+text_scale_up_x_loop:
+	test	bl, ah			;is the source bit set
+	jz	text_scale_up_0
+	add	bp, dx			;increment the x accumulator
+	jnc	text_scale_up_1_dontrep
+	or	al, bh
+	ror	bh, 1
+	jnc	text_scale_up_1_dontrep
+	stosb				;save the byte
+	xor	al, al			;clear out the dest accumulator
+text_scale_up_1_dontrep:
+	or	al, bh
+	ror	bh, 1
+	jnc	text_scale_up_1_nextsrc
+	stosb
+	xor	al, al			;clear out the dest accumulator
+text_scale_up_1_nextsrc:
+	dec	cx
+	jcxz	text_scale_up_x_ret
+	ror	ah, 1
+	jnc	text_scale_up_1_nextsrc_ok
+	mov 	bl, [si]
+	inc	si
+text_scale_up_1_nextsrc_ok:
+	jmps	text_scale_up_x_loop
+text_scale_up_0:
+	add	bp, dx			;increment the x accumulator
+	jnc	text_scale_up_0_dontrep
+	ror	bh, 1
+	jnc	text_scale_up_0_dontrep
+	stosb				;save the byte
+	xor	al, al			;clear out the dest accumulator
+text_scale_up_0_dontrep:
+	ror	bh, 1
+	jnc	text_scale_up_0_nextsrc
+	stosb
+	xor	al, al			;clear out the dest accumulator
+text_scale_up_0_nextsrc:
+	dec	cx
+	jcxz	text_scale_up_x_ret
+	ror	ah, 1
+	jnc	text_scale_up_0_nextsrc_ok
+	mov 	bl, [si]
+	inc	si
+text_scale_up_0_nextsrc_ok:
+	jmps	text_scale_up_x_loop
+text_scale_up_x_ret:
+	test	bh, 80h			;are we at the first bit
+	jnz	text_scale_up_x_ret_ok 
+	stosb				;save the last byte
+text_scale_up_x_ret_ok:
+	xor	al, al			;clear out one extra byte
+	stosb  
+	ret
+
+
+text_scale_down:
+	add	dx, buff_ptr		;offset into the buffer properly
+	mov	buff_ptr, dx
+	push	dx
+	push	dx			;save the the new buffer pointer
+	mov	cx, si
+	mov	bp, XACC_DDA
+	mov	dx, DDA_INC
+	xor	ax, ax
+	push	bp
+;left horizontal offset scale calculation
+	mov	cl, lt_hoff		;do we need to scale this?
+	and	cl, cl
+	jz	text_scale_down_calc_rhoff
+	xor	ch, ch
+text_scale_down_calc_lhoff_loop:
+	add	bp, dx
+	jnc	text_scale_down_calc_lhoff_noinc
+	inc	ax
+text_scale_down_calc_lhoff_noinc:
+	loop	text_scale_down_calc_lhoff_loop
+	mov	lt_hoff, al		;save the new horizontal offset
+	pop	bp
+	push	bp
+	xor	ax, ax
+;right horizontal offset scale calculation
+text_scale_down_calc_rhoff:
+	mov	cl, rt_hoff
+	and	cl, cl
+	jz	text_scale_down_calc_forminit
+	xor	ch, ch
+text_scale_down_calc_rhoff_loop:
+	add	bp, dx
+	jnc	text_scale_down_calc_rhoff_noinc	
+	inc	ax
+text_scale_down_calc_rhoff_noinc:
+	loop	text_scale_down_calc_rhoff_loop
+	mov	rt_hoff, al
+	pop	bp
+	push	bp
+text_scale_down_calc_forminit:
+	mov	cx, si
+	xor	ax, ax
+text_scale_down_calc_form:
+	add	bp, dx
+	jnc	text_scale_down_calc_form_1
+	inc	ax
+text_scale_down_calc_form_1:
+	loop	text_scale_down_calc_form
+	mov	XACC_DDA, bp
+	pop	bp			;restore the x_dda_accumulator
+	mov	cx, si
+	mov	si, di
+	pop	di
+	push	ax			;save the new char width
+	add	ax, CHAR_DEL
+	add	ax, 7			;force it to next byte
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	jnz	text_scale_down_ok
+	inc	ax			;must have byte width
+text_scale_down_ok:
+	mov	bx, DELY
+	mov	bh, bl
+	mov	bl, al
+	push	bx
+	push	ds
+	mov	ax, es
+	mov	ds, ax
+	mov	ax, 32767		;init the y dda acumulator
+;ax = y_dda_acumulator
+;bx = bh,bl bh = source vertical count  bl = dest form width in bytes
+;cx = source horizontal char width in pels
+;es:di = dest		;ds:si = source
+;dx = dda increment	;bp = x_dda_accumulator
+text_scale_down_y_loop:		;clear out the dest line
+	push	cx
+	mov	cx, bx
+	xor	ch, ch
+	push	ax
+	push	di
+	xor	al, al
+	rep	stosb
+	pop	di
+	pop	ax
+	pop	cx
+text_scale_down_no_inc_loop:
+	push	ax
+	push	bx
+	push	di
+	push	cx
+	push	bp
+	mov	ah, 80h
+	mov	bh, ah
+	call	text_scale_down_x
+	pop	bp
+	pop	cx			;get the source bit count back
+	pop	di			;get the dest pointer back 
+	pop	bx
+	pop	ax
+	push	bx
+	xor	bh, bh
+	add	ax, dx			;is the next line a double
+	jnc	text_scale_down_y_next
+	add	di, bx
+	pop	bx
+	dec	bh			;is the character done
+	jnz	text_scale_down_y_loop
+	jmps	text_scale_down_exit
+text_scale_down_y_next:
+	pop	bx
+	dec	bh			;is the character done
+	jnz	text_scale_down_no_inc_loop
+;we must or in the last line done with the previous line
+	mov	si, di
+	xor	bh, bh
+	sub	di, bx			;set the dest back one line
+text_scale_down_ynotinc_loop:
+	lodsb				;get a byte
+	or	es:[di], al		;or it into the dest
+	inc	di
+	dec	bl
+	jnz	text_scale_down_ynotinc_loop
+text_scale_down_exit:
+	pop	ds
+	pop	bx
+	pop	si
+	pop	di
+	ret
+;es:di = dest pointer		;ds:si = source pointer
+;ah = source bit mask		;bh = dest bit mask
+;al = dest accumulator		;bl = source accumulator
+;bp = x_dda_accumulator		;dx = x_dda_increment
+;cx = source bit count
+text_scale_down_x:
+	mov	al, es:[di]		;get the dest byte 
+	mov	bl, [si]
+	inc	si			;get the source byte 
+text_scale_down_x_loop:
+	test	bl, ah			;is the source bit set
+	jz	text_scale_down_0
+	or	al, bh			;set the bit	
+	add	bp, dx			;increment the x accumulator
+	jnc	text_scale_down_1_nextsrc_noinc
+	ror	bh, 1
+	jnc	text_scale_down_1_nextsrc
+	stosb				;save the byte
+	mov	al, es:[di]		;get the new dest byte
+text_scale_down_1_nextsrc:
+	dec	cx
+	jcxz	text_scale_down_x_ret
+text_scale_down_1_nextsrc_incok:
+	ror	ah, 1
+	jnc	text_scale_down_1_nextsrc_ok
+	mov 	bl, [si]
+	inc	si
+text_scale_down_1_nextsrc_ok:
+	jmps	text_scale_down_x_loop
+text_scale_down_1_nextsrc_noinc:
+	dec	cx
+	jnz	text_scale_down_1_nextsrc_incok
+text_scale_1_down_nextsrc_noinc_set:
+	not	bh
+	and	al, bh			;clear the bit that was set for bolding
+	not	bh
+	rol	bh,1			;the last bit if no carry must be set
+	jc	text_scale_down_1_nextsrc_noinc_back
+	or	al, bh
+	ror	bh, 1
+	jmps	text_scale_down_x_ret
+text_scale_down_1_nextsrc_noinc_back:
+	dec	di
+	mov	al,es:[di]
+	or	al, bh
+	jmps	text_scale_down_x_ret
+text_scale_down_0:
+	add	bp, dx			;increment the x accumulator
+	jnc	text_scale_down_0_nextsrc_notinc
+	ror	bh, 1
+	jnc	text_scale_down_0_nextsrc
+	stosb				;save the byte
+	mov	al, es:[di]		;clear out the dest accumulator
+text_scale_down_0_nextsrc:
+	dec	cx
+	jcxz	text_scale_down_x_ret
+text_scale_down_0_nextsrc_notinc_ok:
+	ror	ah, 1
+	jnc	text_scale_down_0_nextsrc_ok
+	mov 	bl, [si]
+	inc	si
+text_scale_down_0_nextsrc_ok:
+	jmps	text_scale_down_x_loop
+text_scale_down_0_nextsrc_notinc:
+	dec	cx
+	jnz	text_scale_down_0_nextsrc_notinc_ok
+	test	al, bh			;was a bit set here?
+	jz	text_scale_down_x_ret
+	jmps	text_scale_1_down_nextsrc_noinc_set
+text_scale_down_x_ret:
+	test	bh, 80h			;are we at the first bit
+	jnz	text_scale_down_x_ret_ok 
+	stosb				;save the last byte
+text_scale_down_x_ret_ok:
+	xor	al, al			;clear out one extra byte
+	stosb  
+	ret
+
+
+;****************************************************************
+; TEXT_ROTATE							*
+; Inputs:							*
+;	bl = character buffer width, in bytes			*
+;	cx = height of the character cell			*
+;	dx = offset to the next character			*
+;	si = character width -- all horizontal effects applied	*
+;	es:di -> temporary character buffer			*
+;****************************************************************
+
+text_rotate:
+		push	bx
+		push	dx
+		push	si
+		push	ds
+		mov	dx, si			; dx = cell width in pixels
+		mov	rot_height, cx
+
+; The source and destination pointers must be modified.  The source will
+; be somewhere in the temporary buffer and the destination will be somewhere
+; else in the second temporary buffer.  Exactly where depends on the rotation
+; angle.
+		mov	si, di
+		mov	di, txbuf2
+		mov	buff_ptr, di		; save for screen output
+		mov	ax, SPECIAL
+		mov	SPECIAL_CS, ax		; code segment copy
+		mov	ax, es
+		mov	ds, ax			; ds:si -> temporary buffer
+
+; Text rotated 180 degrees is handled differently from text rotated either
+; 90 or 270 degrees.
+		test	SPECIAL_CS, ROTODD
+		jnz	rotate_odd
+		jmp	rotate_180
+
+; Set up the increment values to the next source line and next destination
+; line.
+rotate_odd:
+		or	dx, dx			;if no width, give it
+		jnz	rotate_odd_ok		;width
+		inc	dx
+rotate_odd_ok:
+		xor	bh, bh
+		mov	next_source, bx
+		mov	ax, cx
+		add	ax, 7
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; al = "width" in bytes
+		mov	next_dest, ax
+		test	SPECIAL_CS, ROTHIGH	; just checking the high bit
+		jnz	rotate_270_pointers
+
+; 90 degrees:  the starting source will be the beginning of the
+; temporary character buffer and the starting destination will be the
+; beginning of the last scan line in the second buffer.
+		neg	next_dest
+		mov	ah, dl
+		dec	ah			; ah = "height" - 1
+		mul	ah
+		add	di, ax			; es:di -> 2nd buff last scan
+		jmps	rotate_odd_prep_loop
+
+; 270 degrees:  the starting source will be the beginning of the last scan
+; line in the temporary character buffer and the starting destination will
+; be the beginning of the second buffer.
+rotate_270_pointers:
+		neg	next_source		; scan up from source bottom
+		mov	ax, cx
+		dec	ax			; al = height - 1
+		mul	bl
+		add	si, ax			; ds:si -> buffer last scan
+
+rotate_odd_prep_loop:
+		mov	cx, dx			; cx = width in pixels
+if byte_swap
+		mov	dx, 8000h		; dx = source mask
+else
+		mov	dx, 0080h		; dx = source mask
+endif
+
+; Top of the outer 90/270 degree rotation loop.
+rotate_odd_outer_loop_top:
+		xor	bx, bx			; start clean
+		push	cx			; save width in pixels
+		mov	cx, rot_height
+		push	si			; save source pointer
+		push	di			; save destination pointer
+		mov	bp, 8000h		; bp = destination mask
+
+; Top of the inner 90/270 degree rotation loop.
+rotate_odd_inner_loop_top:
+		test	[si], dx		; is the pixel set?
+		jz	rotate_odd_not_set
+		or	bx, bp			; set corresponding pixel
+rotate_odd_not_set:
+		ror	bp, 1			; rotate destination mask
+		jc	rotate_odd_next_dest
+rotate_odd_next_source:
+		dec	cx
+		jz	rotate_odd_inner_loop_done
+		add	si, next_source		; bump to next line
+		jmps	rotate_odd_inner_loop_top
+
+rotate_odd_next_dest:
+		dec	cx
+		jz	rotate_odd_save_word
+if not byte_swap
+		xchg	bh, bl
+endif
+		mov	es:[di], bx		; save it off
+		add	di, 2
+		xor	bx, bx			; start clean
+		add	si,next_source
+		jmps	rotate_odd_inner_loop_top
+
+rotate_odd_inner_loop_done:
+		test	next_dest, 1		; odd or even form width?
+		jz	rotate_odd_save_word
+		mov	es:[di], bh		; save a byte only
+		jmps	rotate_odd_save_done
+rotate_odd_save_word:
+if not byte_swap
+		xchg	bh, bl
+endif
+		mov	es:[di], bx		; save the entire word
+rotate_odd_save_done:
+		pop	di
+		add	di, next_dest		; bump to next destination
+		pop	si			; restore source
+if not byte_swap
+		xchg	dh, dl
+endif
+		ror	dx, 1			; next source pixel column
+if not byte_swap
+		xchg	dh, dl
+endif
+		jnc	rotate_odd_outer_loop_done
+		add	si, 2			; next source byte column
+rotate_odd_outer_loop_done:
+		pop	cx
+		loop	rotate_odd_outer_loop_top
+		jmps	rotate_done
+
+; 180 degrees:  the starting source will be the beginning of the temporary
+; character buffer and the starting destination will be the last used byte
+; in the second temporary buffer.
+rotate_180:
+		mov	al, bl			; width in bytes
+		mul	cl			; width * height (bytes)
+		add	di, ax
+		dec	di			; es:di -> 2nd buff last byte
+		mov	cl, dl			; cell width in pixels
+		and	cl, 7			; what's in the leftover byte?
+		mov	ch, 80h
+		rol	ch, cl			; ch = destination rotate mask
+		mov	bx, ax			; bx = number of bytes to do
+		lodsb				; prime with the first byte
+		mov	cl, 1h			; cl = source rotate mask
+		xor	ah, ah			; start clean
+
+; Top of the 180 degree byte processing loop.
+rotate_180_loop_top:
+		rol	al, 1			; get high bit into carry
+		rcr	ah, 1			; store the bit
+		rol	cl, 1			; count the source bit
+		jnc	rotate_180_rotate_dest
+		lodsb				; get the next byte
+rotate_180_rotate_dest:
+		ror	ch, 1			; count the destination
+		jnc	rotate_180_loop_top
+		mov	es:[di], ah		; store the flipped byte
+		xor	ah, ah			; start clean
+		dec	di
+		dec	bx			; another one bites the dust
+		jnz	rotate_180_loop_top
+
+; Restore input registers.
+rotate_done:
+		pop	ds
+		pop	si
+		pop	dx
+		pop	bx
+
+; Swap height and width information in the input registers if the rotation
+; is either 90 or 270 degrees.
+		test	SPECIAL, ROTODD
+		jz	end_text_rotate
+		mov	tempdely, si		; update "height" of the cell
+		mov	si, rot_height		; si = "width" in pixels
+		mov	bx, si
+		add	bl, 7
+		shr	bl, 1
+		shr	bl, 1
+		shr	bl, 1			; bl = "width" in bytes
+end_text_rotate:
+		ret
+
+
+W_0	equ	word ptr 0
+W_1	equ	word ptr 2
+W_2	equ	word ptr 4
+W_3	equ	word ptr 6
+
+;*******************************************
+;d_justif
+;	justified text entry point
+;	Entry
+;********************************************	
+
+d_justif:
+	call chk_fnt
+	or intin, 1			; jn 11-21-87, force interword spacing
+	call	d_justif_calc
+	and	ax, ax
+	jz	d_justif_nodraw
+	jmp	d_gtext				;branch to the text routine
+d_justif_nodraw:
+	ret	
+;
+d_justif_sub:
+	cmp	ax,FIR_CHR
+	jc	d_justif_sub1
+	cmp	ax,f_i_last
+	ja	d_justif_sub1
+	ret
+;
+d_justif_sub1:
+	push	si
+	push	ax
+	push	cx
+	push	ax
+	call	check_ade
+	pop	bx
+	mov	dx,ax
+	pop	cx
+	pop	ax
+	pop	si
+	and	dx,dx
+	jnz	d_justif_sub2
+	mov	ax,' '
+d_justif_sub2:
+	les	di,dword ptr OFF_TBL
+	mov	bx,di
+	ret
+;
+;*******************************************
+;d_justif_calc
+;	justified text entry point
+;
+;	Entry
+;********************************************	
+;
+d_justif_calc:
+	push	bp
+;;; not in SDPSC9	or intin, 1	; jn 12-29-87, force interword spacing for query also
+	xor	bp, bp				;init the width counter
+	mov	dx, bp				;init the spaces counter
+	mov	CONTRL + 4, dx			;set the intout to 0;
+	mov	cx, CONTRL + 6			;get the intin count
+	dec	cx
+	dec	cx				;are there any chars?
+	mov	CONTRL+6, cx			;put back the correct width
+	jnz	d_justif_calc_ok
+	xor	ax, ax
+	pop	bp
+	ret
+d_justif_calc_ok:
+	mov	si, offset INTIN + 4		;point at the string
+
+;;; Not in SDPSC9	
+;;;	push ax				; jn 10-27-87
+;;;	mov ax, [si]
+;;;	call set_fnthdr
+;;;	mov [si], ax			; jn 11-21-87
+;;;	pop ax
+
+	les	di, OFF_TBL			;point at the offset table
+	mov	bx, di
+	xor	ch, ch				;clear out the space counter
+;;; Not in SDPSC9	mov	dx, FIR_CHR
+	mov	ax, INTIN
+	and	ax, 0fffeh			;turn off the low bit if on
+	cmp	ax, 8000h			;is this a width inquire only
+	jnz	d_justif_calc_width_loop
+	jmp	d_justif_calc_inq
+d_justif_calc_width_loop:
+
+;;; Not in SDPSC9
+;;;	push ax				; jn 10-27-87
+;;;	mov ax, [si]
+;;;	call set_fnthdr
+;;;	mov [si], ax			; jn 11-21-87
+;;;	pop ax
+;;;	les di, OFF_TBL			;point at the offset table
+;;;	mov bx, di
+;;;	mov	dx, FIR_CHR
+
+	lodsw					;get the char
+	call	d_justif_sub
+	cmp	al, 20h				;is this a space char?
+	jnz	d_justif_calc_width_notspace
+	inc	ch				;found a space
+d_justif_calc_width_notspace:
+	sub	ax, FIR_CHR			;index into offset table
+	shl	ax, 1				;x values stored as words
+	mov	di, bx
+	add	di, ax
+	add	bp, es:W_1[di]
+	sub	bp, es:[di]
+;11/6/86 DH
+;added to horizontal offset calculation
+	test	fi_flags, HORZ_OFF		;must we account for hor off?
+	jz	d_justif_calc_width_nohorz
+	mov	di, off_htbl			;get the horizontal table ptr
+	add	di, ax				;index into the table
+	xor	ah, ah
+	mov	al, es:[di]
+	sub	bp, ax
+	inc	di
+	mov	al, es:[di]
+	sub	bp, ax				;subtract away the hor offsets 
+d_justif_calc_width_nohorz:
+;
+	dec	cl
+	jnz	d_justif_calc_width_loop
+	mov	ax, 20h				;get the width of a space char
+
+;;;	push ax				; jn 10-28-87
+;;;	call set_fnthdr
+;;;	pop ax
+;;;	mov dx, FIR_CHR
+;;;	les bx, OFF_TBL
+
+	call	d_justif_sub
+	sub	ax, FIR_CHR
+	shl	ax, 1
+	add	bx, ax
+	mov	di, es:W_1[bx]
+	sub	di, es:[bx]
+;11/6/86 DH
+;added to horizontal offset calculation
+	test	fi_flags, HORZ_OFF		;must we account for hor off?
+	jz	d_justif_calc_spc_nohorz
+	mov	ax,FIR_CHR
+	mov	bl, 20h
+	sub	bl, al
+	xor	bh, bh
+	shl	bx, 1
+	add	bx, off_htbl			;get the horizontal table ptr
+	mov	ax, es:[bx]
+	xor	bh, bh
+	mov	bl, al
+	sub	di, bx
+	mov	bl, ah
+	sub	di, bx
+d_justif_calc_spc_nohorz:
+;
+;width of string with no attributes
+;width = bp
+;space width = di
+;space count = ch
+;
+	test	SPECIAL, SCALE			;is this doubled
+	jz	d_justif_calc_width_nodouble
+	cmp	DDA_INC, 0ffffh
+	jnz	d_justif_calc_width_scale
+	shl	bp, 1				;this is doubled so 2*width
+	shl	di, 1
+	jmps	d_justif_calc_width_nodouble
+d_justif_calc_width_scale:
+	push	cx				;save the space count
+	push	di
+	push	bp
+	call	ACT_SIZ
+	pop	bp
+	mov	bp, ax
+	pop	di
+	pop	cx
+d_justif_calc_width_nodouble:
+	test	SPECIAL, THICKEN
+	jz	d_justif_calc_width_nothicken
+	mov	ax, CONTRL+6
+	mov	dx, WEIGHT
+	mul	dx				;ax = the additional thicken
+	add	bp, ax
+d_justif_calc_width_nothicken:
+;	mov	width, bp
+;	cmp	CONTRL, 11			;is this the justified command
+;	jz	d_justif_calc_calc_intword
+;	mov	ax, bp
+;	pop	bp
+;	ret					;return with the width in ax
+d_justif_calc_calc_intword:
+	mov	ax, PTSIN+4			;get the width of string desired
+	xor	si, si
+	test	SPECIAL, ROTODD
+	jz	d_justif_calc_norot
+	mov	bx, xsize			;if 90/270 scale width
+	mul	bx
+	mov	bx, ysize
+	div	bx
+	shl	dx, 1
+	cmp	dx, bx
+	jl	d_justif_calc_norot
+	inc	ax
+d_justif_calc_norot:
+	mov	width, ax
+	mov	bx, 1
+	sub	ax, bp				;get the delta to the width
+	js	d_justif_calc_calc_intword_neg
+;******
+;This is where max space and min space can be set by application
+;****** 
+	test	INTIN+2,0FFFFh
+	jnz	d_justif_calc_calc_intword_pos	
+	mov	di, 1000			;for now make max very large
+	jmps	d_justif_calc_calc_intword_pos
+d_justif_calc_calc_intword_neg:
+	neg	bx
+	neg	ax
+	inc	si				;set the negative flag
+;******
+;This is where max space and min space can be set by application
+;****** 
+	shr	di, 1				;set min space = 1/2
+d_justif_calc_calc_intword_pos:
+	mov	JUST_NEG, si
+	mov	JUST_DEL_SIGN, bx
+	xor	dx, dx
+	mov	cl, ch
+	xor	ch, ch
+	xor	bx, bx
+	mov	JUST_DEL_WORD, bx
+	mov	JUST_DEL_WORD_REM, bx
+	mov	JUST_DEL_CHAR, bx
+	mov	JUST_DEL_CHAR_REM, bx
+	test	INTIN, 0ffffh			;is inter word justify allowed
+	jz	d_justif_calc_calc_intchar
+	and	cl, cl				;are there any spaces in string
+	jz	d_justif_calc_calc_intchar
+	mov	bx, ax				;save the width
+	div	cx				;get the pels per space and remainder of pels per space
+	cmp	ax, di
+	jle	d_justif_calc_calc_intword_done
+	mov	ax, bx				;set the extra space = max
+	mov	JUST_DEL_WORD, di
+	jmps	d_justif_calc_calc_intchar
+d_justif_calc_calc_intword_done:
+	mov	JUST_DEL_WORD, ax
+	mov	JUST_DEL_WORD_REM, dx
+	jmps	d_justif_calc_calc_exit
+d_justif_calc_calc_intchar:				;inter character only is allowed
+;width     = ax
+;dir       = si
+;numspaces = cx
+;max space = di
+	test	INTIN+2, 0ffffh			;is inter char allowed?
+	jz	d_justif_calc_calc_exit
+	xchg	ax, di
+	mul	cx				;get the space taken up by words
+	sub	di, ax
+d_justif_calc_calc_intchar_rem:
+	mov	ax, di
+	mov	bx, CONTRL+6			;Don't divide by 0
+	dec	bx
+	jle	d_justif_calc_calc_exit
+	div	bx				;get the additional char space
+	mov	JUST_DEL_CHAR, ax
+	mov	JUST_DEL_CHAR_REM, dx
+d_justif_calc_calc_exit:
+	mov	ax, bp				;return the width
+	and	si, si
+	jz	d_justif_calc_calc_exit_pos
+	neg	JUST_DEL_CHAR
+	neg	JUST_DEL_WORD
+d_justif_calc_calc_exit_pos:
+	pop	bp
+	ret
+;
+;returns the width of each character in the string in dev coords
+;after having justified the string
+d_justif_calc_inq:
+;;; not in SDPSC9	mov	ah, dl				;ah = the first char value
+	mov	dx, offset INTOUT		;point at the intout array
+	mov	just_width, 0			;init the width to 0
+d_justif_calc_inq_loop:
+	lodsw					;get the char
+	push	dx
+	call	d_justif_sub	
+	pop	dx
+	cmp	al, 20h				;is this a space char?
+	jnz	d_justif_calc_inq_notspace
+	inc	ch				;found a space
+d_justif_calc_inq_notspace:
+	sub	ax,FIR_CHR
+	mov	bx, ax
+	shl	bx, 1				;x values stored as words
+	add	bx, di
+	mov	bp, es:W_1[bx]
+	sub	bp, es:[bx]
+;11/6/86 DH
+;added to horizontal offset calculation
+	test	fi_flags, HORZ_OFF		;must we account for hor off?
+	jz	d_justif_calc_inq_nohorz
+	mov	bx, ax
+	shl	bx, 1
+	add	bx, off_htbl			;get the horizontal table ptr
+	push	ax
+	mov	ax, es:[bx]
+	xor	bh, bh
+	mov	bl, al
+	sub	bp, bx
+	mov	bl, ah
+	sub	bp, bx
+	pop	ax
+d_justif_calc_inq_nohorz:
+;
+	add	just_width, bp			;add in this width
+	mov	bx, dx
+	mov	[bx], bp
+	inc	dx
+	inc	dx				;point to next word int intout
+	dec	cl
+	jnz	d_justif_calc_inq_loop
+	mov	ax, 20h
+	call	d_justif_sub
+	sub	ax,FIR_CHR
+	mov	bx,ax
+	shl	bx, 1
+	add	bx, di
+	mov	di, es:W_1[bx]
+	sub	di, es:[bx]
+;11/6/86 DH
+;added to horizontal offset calculation
+	test	fi_flags, HORZ_OFF		;must we account for hor off?
+	jz	d_justif_calc_spcinq_nohorz
+	mov	bl, 20h
+	mov	ax, FIR_CHR
+	sub	bl, al
+	xor	bh, bh
+	shl	bx, 1
+	add	bx, off_htbl			;get the horizontal table ptr
+	mov	ax, es:[bx]
+	xor	bh, bh
+	mov	bl, al
+	sub	di, bx
+	mov	bl, ah
+	sub	di, bx
+d_justif_calc_spcinq_nohorz:
+;
+	mov	bp, just_width
+;width of string with no attributes
+;width = bp
+;space width = di
+;space count = ch
+;
+	test	SPECIAL, SCALE			;is this doubled
+	jnz	d_justif_calc_inq_double
+	jmp	d_justif_calc_inq_nodouble
+d_justif_calc_inq_double:
+	cmp	DDA_INC, 0ffffh
+	jnz	d_justif_calc_inq_scale
+	shl	bp, 1				;this is doubled so 2*width
+	shl	di, 1
+	mov	dx, di
+	mov	si, offset INTOUT
+	mov	di, si
+	mov	ax, ds
+	mov	es, ax
+	mov	bx, cx
+	mov	cx, CONTRL+6
+d_justif_calc_inq_double_loop:
+	lodsw
+	shl	ax, 1
+	stosw
+	loop	d_justif_calc_inq_double_loop
+	mov	di, dx
+	mov	cx, bx
+	jmps	d_justif_calc_inq_nodouble
+d_justif_calc_inq_scale:
+	push	cx				;save the space count
+	push	di
+	push	bp
+	call	ACT_SIZ
+	pop	bp
+	mov	bp, ax
+	pop	di
+	pop	cx
+	test	T_SCLSTS, 1		;is this a scale up
+	jnz	d_justif_calc_inq_scale_up
+d_justif_calc_inq_scale_down:
+	push	di
+	push	cx
+	push	bp
+	mov	si, offset INTOUT
+	mov	di, si
+	mov	ax, ds
+	mov	es, ax
+	mov	bx, CONTRL+6
+	mov	bp, 32767		;init the accumulator to 1/2
+	mov	dx, DDA_INC
+d_justif_calc_inq_scale_down_loop:
+	lodsw
+	mov	cx, ax
+	xor	ax, ax
+d_justif_calc_inq_scale_down_calc_form:
+	add	bp, dx
+	jnc	d_justif_calc_inq_scale_down_calc_form_1
+	inc	ax
+d_justif_calc_inq_scale_down_calc_form_1:
+	loop	d_justif_calc_inq_scale_down_calc_form
+	stosw
+	dec	bx
+	jnz	d_justif_calc_inq_scale_down_loop
+	pop	bp
+	pop	cx
+	pop	di
+	jmps	d_justif_calc_inq_nodouble
+;
+d_justif_calc_inq_scale_up:
+	push	di
+	push	cx
+	push	bp
+	mov	si, offset INTOUT
+	mov	di, si
+	mov	ax, ds
+	mov	es, ax
+	mov	bx, CONTRL+6
+	mov	bp, 32767		;init the accumulator to 1/2
+	mov	dx, DDA_INC
+d_justif_calc_inq_scale_up_loop:
+	lodsw
+	mov	cx, ax
+	xor	ax, ax
+d_justif_calc_inq_scale_up_calc_form:
+	add	bp, dx
+	jnc	d_justif_calc_inq_scale_up_form_1
+	inc	ax
+d_justif_calc_inq_scale_up_form_1:
+	inc	ax
+	loop	d_justif_calc_inq_scale_up_calc_form
+	stosw
+	dec	bx
+	jnz	d_justif_calc_inq_scale_up_loop
+	pop	bp
+	pop	cx
+	pop	di
+d_justif_calc_inq_nodouble:
+	test	SPECIAL, THICKEN
+	jz	d_justif_calc_inq_nothicken
+	mov	ax, CONTRL+6
+	mov	dx, WEIGHT
+	mov	bx, dx
+	mul	dx				;ax = the additional thicken
+	add	bp, ax
+	push	cx
+	mov	dx, di
+	mov	si, offset INTOUT
+	mov	di, si
+	mov	ax, ds
+	mov	es, ax
+	mov	cx, CONTRL+6
+d_justif_calc_inq_thicken_loop:
+	lodsw
+	add	ax, bx				;add in the thicken ammount
+	stosw
+	loop	d_justif_calc_inq_thicken_loop
+	pop	cx
+	mov	di, dx
+d_justif_calc_inq_nothicken:
+;	mov	width, bp
+	mov	ax, PTSIN+4			;get the width of string desired
+	mov	width, ax
+	xor	si, si
+	mov	bx, 1
+	sub	ax, bp				;get the delta to the width
+	js	d_justif_calc_inq_calc_intword_neg
+;******
+;This is where max space and min space can be set by application
+;****** 
+	test	INTIN+2, 0FFFFh
+	jnz	d_justif_calc_inq_calc_intword_pos
+	mov	di, 1000			;for now make max very large
+	jmps	d_justif_calc_inq_calc_intword_pos
+d_justif_calc_inq_calc_intword_neg:
+	neg	bx
+	neg	ax
+	inc	si				;set the negative flag
+;******
+;This is where max space and min space can be set by application
+;****** 
+	shr	di, 1				;set min space = 1/2
+d_justif_calc_inq_calc_intword_pos:
+	mov	JUST_NEG, si
+	mov	JUST_DEL_SIGN, bx
+	xor	dx, dx
+	mov	cl, ch
+	xor	ch, ch
+	xor	bx, bx
+	mov	JUST_DEL_WORD, bx
+	mov	JUST_DEL_WORD_REM, bx
+	mov	JUST_DEL_CHAR, bx
+	mov	JUST_DEL_CHAR_REM, bx
+	test	INTIN, 0001h			;is inter word justify allowed
+	jz	d_justif_calc_inq_calc_intchar
+	and	cl, cl				;are there any spaces in string
+	jz	d_justif_calc_inq_calc_intchar
+	mov	bx, ax				;save the width
+	div	cx				;get the pels per space and remainder of pels per space
+	cmp	ax, di
+	jle	d_justif_calc_inq_calc_intword_done
+	mov	ax, bx				;set the extra space = max
+	mov	JUST_DEL_WORD, di
+	jmps	d_justif_calc_inq_calc_intchar
+d_justif_calc_inq_calc_intword_done:
+	mov	JUST_DEL_WORD, ax
+	mov	JUST_DEL_WORD_REM, dx
+	jmps	d_justif_calc_inq_calc_exit
+d_justif_calc_inq_calc_intchar:				;inter character only is allowed
+;width     = ax
+;dir       = si
+;numspaces = cx
+;max space = di
+	test	INTIN+2, 0001h			;is inter char allowed?
+	jz	d_justif_calc_inq_calc_exit
+	xchg	ax, di
+	mul	cx				;get the space taken up by words
+	sub	di, ax
+d_justif_calc_inq_calc_intchar_rem:
+	mov	ax, di
+	mov	bx, CONTRL+6
+	dec	bx
+	jle	d_justif_calc_inq_calc_exit
+	div	bx				;get the additional char space
+	mov	JUST_DEL_CHAR, ax
+	mov	JUST_DEL_CHAR_REM, dx
+d_justif_calc_inq_calc_exit:
+	and	si, si
+	jz	d_justif_calc_inq_calc_exit_pos
+	neg	JUST_DEL_CHAR
+	neg	JUST_DEL_WORD
+d_justif_calc_inq_calc_exit_pos:
+	mov	bx, offset INTIN + 4
+	mov	si, offset INTOUT
+	mov	di, si
+	mov	ax, ds
+	mov	es, ax
+	mov	dx, JUST_DEL_WORD
+	mov	bp, JUST_DEL_WORD_REM
+	mov	cx, JUST_DEL_CHAR
+	or	cx, JUST_DEL_CHAR_REM
+	or	ch, cl
+	mov	ax, CONTRL+6
+	mov	cl, al
+	mov	CONTRL+8, ax		;set the intout array size	
+;;; Not in SDPSC9 (exact duplicates of 2 lines above!)
+;;;	mov cl, al			; jn 11-20-87
+;;;	mov CONTRL+8, ax		; jn 11-20-87
+d_justif_calc_inq_justify_loop:
+	mov	al, [bx]
+	inc	bx			;get the character
+	inc	bx
+	cmp	al, 20h			;is it a space?
+	lodsw
+	jnz	d_justif_calc_inq_justify_nospace
+	add	ax, dx			;add in the word offset
+	and	bp, bp			;done with extra space
+	jz	d_justif_calc_inq_justify_nospace
+	add	ax, JUST_DEL_SIGN
+	dec	bp
+	jmps	d_justif_calc_inq_justify_done
+d_justif_calc_inq_justify_nospace:
+	and	ch, ch
+	jz	d_justif_calc_inq_justify_done
+	add	ax, JUST_DEL_CHAR
+	cmp	JUST_DEL_CHAR_REM, 0
+	jz	d_justif_calc_inq_justify_done
+	add	ax, JUST_DEL_SIGN	
+	dec	JUST_DEL_CHAR_REM
+d_justif_calc_inq_justify_done:
+	stosw
+	dec	cl
+	jnz	d_justif_calc_inq_justify_loop
+d_justif_calc_inq_justify_exit:
+	pop	bp
+	mov	ax, INTIN+2		;check to see if we are to draw this
+	and	ax, 0fffeh		;mask off the low bit
+	cmp	ax, 8000h
+	jz	d_justif_calc_inq_nodraw
+	mov	ax, width
+	ret
+d_justif_calc_inq_nodraw:
+	xor	ax, ax			;dont draw it
+	ret
+;
+dqt_calc_sub:
+	cmp	ax,FIR_CHR
+	jc	dqt_calc_sub1
+	cmp	ax,f_i_last
+	ja	dqt_calc_sub1
+	ret
+;
+dqt_calc_sub1:
+	push	bx
+	push	es
+	push	ds
+	push	di
+	push	si
+	push	dx
+	push	cx
+	push	ax
+	call	check_ade
+	and	ax,ax
+	pop	ax
+	jnz	dqt_calc_sub2
+	mov	ax,' '
+dqt_calc_sub2:
+	pop	cx
+	pop	dx
+	pop	si
+	pop	di
+	pop	ds
+	pop	es
+	les	bp,dword ptr OFF_TBL
+	mov	bx,FIR_CHR
+	shl	bx,1
+	sub	bp,bx
+	pop	bx
+	ret
+;
+	if not GSX
+;
+;****************************************************************
+; dqt_justified - inquire offsets for justified text		*
+;****************************************************************
+
+dqt_just:
+	push	bp
+	call	chk_fnt
+	call	dqt_just_setup		;set up data for justified text
+	or	ax, ax
+	jnz	dqt_justif_work
+dqt_justif_exit:
+	pop	bp
+	ret
+
+dqt_justif_work:
+	mov	FLIP_Y, 1		;we return magnitudes
+	mov	si, offset CONTRL	;saves code
+	mov	cx, 6[si]		;get the intin count
+	mov	4[si], cx		;this is the vertex count
+	push	cx			;save for after clear
+	shl	cx, 1			;make a word count
+
+	mov	di, offset PTSOUT	;zero out the ptsin array
+;;;	mov	PTSOUT, di		;we will return PTSIN as PTSOUT
+;;;	mov points_out, di		;^ jn, justified text fix
+	push	ds
+	pop	es
+	push	di
+	xor	ax, ax
+	rep	stosw
+	pop	di			;restore pointer to output array
+	pop	cx			;restore character count
+
+	mov	si, offset INTIN+4	;point at the string
+	les	bp, OFF_TBL
+	mov	dx, FIR_CHR
+	shl	dx, 1
+	sub	bp,dx
+
+	xor	dx, dx			;width starts at zero
+
+	mov	ax, rot_case		;determine starting address
+	test	ax, 1			;in ptsin array
+	jz	dqt_extent_in_x
+	inc	di			;start at PTSIN[1]
+	inc	di
+
+dqt_extent_in_x:
+	or	ax, ax			;jump to correct math op
+	jz	dqt_add_loop
+	cmp	ax, 3
+	jz	dqt_add_loop
+
+dqt_sub_loop:
+	call	dqt_calc
+	sub	dx, bx
+	mov	[di], dx
+	add	di, 4
+	loop	dqt_sub_loop
+
+	jmps	dqt_justif_exit
+
+dqt_add_loop:
+	call	dqt_calc
+	add	dx, bx
+	mov	[di], dx
+	add	di, 4
+	loop	dqt_add_loop
+
+	jmps	dqt_justif_exit
+
+
+
+dqt_calc:
+
+	lodsw				;get the char
+
+	call	dqt_calc_sub
+	push	bp
+
+;;;	push dx				; jn 10-29-87
+;;;	call set_fnthdr			; jn 11-21-87, modify ax
+;;;
+;;;	les bp, off_tbl
+;;;	mov dx, fir_chr
+;;;	shl dx, 1
+;;;	sub bp, dx
+;;;	pop dx
+
+	mov	bx, ax			;index into offset table
+	shl	bx, 1			;x values stored as words
+	add	bp, bx
+	mov	bx, es:W_1[bp]
+	sub	bx, es:[bp]
+	pop	bp
+
+; jn 1-5-88
+; Horz offset code added
+;
+; register state:
+;	ax = character in question
+;	bx = width of char
+
+;;; Not in SDPSC9
+;;;	push ax				; save all regs used
+;;;	push dx
+;;;	push si
+;;;
+;;;	mov si, off_htbl		; es:si = horz offset table addr
+;;;	mov dx, fir_chr			; dx = ADE of first char in font seg
+;;;	shl dx, 1
+;;;	shl ax, 1
+;;;	sub ax, dx			; ax = byte offset chars offset info
+;;;	add si, ax			; si = offset of chars horz off info
+;;;	mov ax, es:[si]			; ah = right offset, al = left offset
+;;;	add al, ah			; al = total offset
+;;;	xor ah, ah			; ax = total offset
+;;;	sub bx, ax			; bx = horz offset compensated width
+	
+;;;	pop si				; restore used regs
+;;;	pop dx
+;;;	pop ax
+
+
+
+	test	SPECIAL, SCALE
+	jz	dqt_nodouble
+	push	ax
+	push	cx
+	push	dx
+	push	bx
+	call	ACT_SIZ
+	pop	bx
+	mov	bx, ax
+	pop	dx
+	pop	cx
+	pop	ax
+
+dqt_nodouble:
+	test	SPECIAL, THICKEN
+	jz	dqt_interword
+	add	bx, WEIGHT
+
+dqt_interword:
+	cmp	al, 20h			;is this a space char?
+	jne	dqt_interchar
+	add	bx, JUST_DEL_WORD	; yes:  add in the word offset
+	cmp	JUST_DEL_WORD_REM, 0	; need to add remainder?
+	je	dqt_interchar
+	add	bx, JUST_DEL_SIGN	; add in remainder
+	dec	JUST_DEL_WORD_REM	; account for remainder
+	jmps	dqt_calc_exit
+
+dqt_interchar:
+	add	bx, JUST_DEL_CHAR	; add in character offset
+	cmp	JUST_DEL_CHAR_REM, 0	; need to add remainder?
+	je	dqt_calc_exit
+	add	bx, JUST_DEL_SIGN	; add in remainder
+	dec	JUST_DEL_CHAR_REM	; account for remainder
+dqt_calc_exit:
+	ret
+
+dqt_just_subsetup:
+	cmp	ax,FIR_CHR
+	jc	dqt_just_subsetup1
+	cmp	ax,f_i_last
+	ja	dqt_just_subsetup1
+	ret
+dqt_just_subsetup1:
+	push	bx
+	push	bp
+	push	es
+	push	ds
+	push	di
+	push	si
+	push	dx
+	push	cx
+	push	ax
+	call	check_ade
+	and	ax,ax
+	pop	ax
+	jnz	dqt_just_subsetup2
+	mov	ax,' '
+dqt_just_subsetup2:
+	pop	cx
+	pop	dx
+	pop	si
+	pop	di
+	pop	ds
+	pop	es
+	pop	bp
+	les	di,dword ptr OFF_TBL
+	mov	bx,FIR_CHR
+	shl	bx,1
+	sub	di,bx
+	pop	bx
+	ret
+;
+dqt_just_setup:
+	push	bp
+	xor	bp, bp
+	mov	si, offset CONTRL
+	mov	4[si], bp
+	mov	cx, 6[si]
+	dec	cx
+	dec	cx
+	mov	6[si], cx
+	jz	dqt_just_setup_0
+	mov	si, offset INTIN+4
+	les	di, dword ptr OFF_TBL
+	xor	ch, ch
+	mov	dx, FIR_CHR
+	shl	dx, 1
+	sub	di,dx
+dqt_just_setup_loop:
+	lodsw
+	call	dqt_just_subsetup
+	cmp	al,' '
+	jnz	dqt_just_setup_notspace
+	inc	ch
+dqt_just_setup_notspace:
+	shl	ax,1
+	mov	bx,ax
+	add	bp, es:2[bx+di]
+	sub	bp, es:[bx+di]
+	dec	cl
+	jnz	dqt_just_setup_loop
+	push	ax
+	mov	ax,' '
+	call	dqt_just_subsetup
+	pop	ax
+	mov	bx,20h
+	shl	bx,1
+	add	bx,di
+	mov	di, es:2[bx]
+	sub	di, es:[bx]
+	test	SPECIAL,SCALE
+	jz	dqt_just_setup_noscale
+	jmps	dqt_just_setup_scale
+;
+dqt_just_setup_0:
+	pop	bp
+	xor	ax,ax
+	ret
+;
+dqt_just_setup_scale:
+	push	cx
+	push	bp
+	call	ACT_SIZ
+	pop	bp
+	mov	bp, ax
+	push	di
+	call	ACT_SIZ
+	pop	di
+	mov	di, ax
+	pop	cx
+dqt_just_setup_noscale:
+	test	SPECIAL, THICKEN
+	jz	dqt_just_setup_nobold
+	mov	ax, CONTRL + 6
+	mov	dx, WEIGHT
+	mul	dx
+	add	bp, ax
+dqt_just_setup_nobold:
+	mov	ax, PTSIN+4
+	cmp	ax, 0
+	jle	dqt_just_setup_0
+	test	SPECIAL, ROT90
+	jz	dqt_just_setup_norot
+	mov	bx, xsize
+	mul	bx
+	mov	bx, ysize
+	div	bx
+	shl	dx,1
+	cmp	dx,bx
+	jl	dqt_just_setup_norot
+	inc	ax
+dqt_just_setup_norot:
+	mov	width,ax
+	xor	si,si
+	mov	bx,1
+	sub	ax,bp
+	js	dqt_just_setup_neg
+	shl	di,1
+	jmps	dqt_just_setup_pos
+;
+dqt_just_setup_neg:
+	neg	bx
+	neg	ax
+	inc	si
+	shr	di,1
+dqt_just_setup_pos:
+	mov	just_neg, si
+	mov	just_del_sign, bx
+	mov	cl, ch
+	xor	ch, ch
+	xor	dx, dx
+	mov	just_del_word, dx
+	mov	just_del_word_rem, dx
+	mov	just_del_char, dx
+	mov	just_del_char_rem, dx
+	test	INTIN, 0FFFFh
+	jz	loc_0_6B2D
+	and	cl,cl
+	jz	loc_0_6B2F
+	mov	bx,ax
+	div	cx
+	cmp	ax,di
+	jle	loc_0_6B24
+	mov	ax, bx
+	mov	just_del_word, di
+	jmps	loc_0_6B2F
+;
+loc_0_6B24:
+	mov	just_del_word,ax
+	mov	just_del_word_rem,dx
+	jmps	loc_0_6B4E
+;
+loc_0_6B2D:
+	xor	cl,cl
+loc_0_6B2F:
+	test	INTIN+2,0FFFFh
+	jz	loc_0_6B4E
+	xchg	ax, di
+	mul	cx
+	sub	di, ax
+	mov	ax, di
+	mov	bx, CONTRL + 6
+	dec	bx
+	jle	loc_0_6B4E
+	div	bx
+	mov	just_del_char, ax
+	mov	just_del_char_rem, dx
+loc_0_6B4E:
+	and	si,si
+	jz	loc_0_6B5A
+	neg	just_del_char
+	neg	just_del_word
+loc_0_6B5A:
+	pop	bp
+	mov	ax,-1
+	ret
+;
+	endif	
+	
+;****************************************************************
+; CLR_SKEW							*
+;****************************************************************
+
+clr_skew:
+		push	bp
+		push	FG_BP_1
+		push	LN_MASK
+
+; If replace mode, use the background color.
+		cmp	WRT_MODE, 0
+		jne	clr_skew_rotation_index
+		mov	bx, MAP_COL
+		mov	FG_BP_1, bx		; set to background color
+
+; Set the rotation case index:  0 for 0 degrees, 2 for 90 degrees, 4 for
+; 180 degrees, and 6 for 270 degrees.  Prepare for the output loop.
+clr_skew_rotation_index:
+		mov	LN_MASK, 0ffffh		; set to solid line
+		mov	bx, SPECIAL
+		and	bx, ROTATE
+		mov	cl, 5
+		shr	bx, cl			; bx = rotation case index
+		mov	cx, ACTDELY		; character cell height
+		mov	bp, 5555h		; skewing mask
+
+; Top of the line output loop.
+clr_skew_loop:
+		push	bx
+		push	cx
+		push	bp
+		push	X1
+		push	Y1
+		push	X2
+		push	Y2
+		call	RECTFILL		; draw a line
+		pop	Y2
+		pop	X2
+		pop	Y1
+		pop	X1
+		pop	bp
+		pop	cx
+		pop	bx
+
+; Location of the next line depends on the rotation angle.
+		jmp	line_table[bx]
+clr_skew_next_line_270:
+		inc	X1			; next line right
+		inc	X2
+		jmps	clr_skew_next_line_done
+clr_skew_next_line_180:
+		inc	Y1			; next line down
+		inc	Y2
+		jmps	clr_skew_next_line_done
+clr_skew_next_line_90:
+		dec	X1			; next line left
+		dec	X2
+		jmps	clr_skew_next_line_done
+clr_skew_next_line_0:
+		dec	Y1			; next line up
+		dec	Y2
+clr_skew_next_line_done:
+		rol	bp, 1
+		jnc	clr_skew_next_loop
+		jmp	pixel_table[bx]
+clr_skew_next_pixel_270:
+		inc	Y1			; bump every other y
+		inc	Y2
+		jmps	clr_skew_next_loop
+clr_skew_next_pixel_180:
+		dec	X1			; bump every other x
+		dec	X2
+		jmps	clr_skew_next_loop
+clr_skew_next_pixel_90:
+		dec	Y1			; bump every other y
+		dec	Y2
+		jmps	clr_skew_next_loop
+clr_skew_next_pixel_0:
+		inc	X1			; bump every other x
+		inc	X2
+clr_skew_next_loop:
+		dec	cx
+		jcxz	end_clr_skew
+		jmp	clr_skew_loop
+end_clr_skew:
+		pop	LN_MASK
+		pop	FG_BP_1
+		pop	bp
+		ret
+
+

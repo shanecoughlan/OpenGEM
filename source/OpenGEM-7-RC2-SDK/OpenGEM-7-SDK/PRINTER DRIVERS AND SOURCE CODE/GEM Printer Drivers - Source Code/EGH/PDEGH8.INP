@@ -1,0 +1,17 @@
+pentry+
+jmptbl+
+monoprin+
+monout+
+buf+
+io+
+isin+
+devdep+
+300x300+
+text+
+textblt+
+devtext+
+dvtasm+
+image+
+imageasm+
+alphtext+
+enddseg

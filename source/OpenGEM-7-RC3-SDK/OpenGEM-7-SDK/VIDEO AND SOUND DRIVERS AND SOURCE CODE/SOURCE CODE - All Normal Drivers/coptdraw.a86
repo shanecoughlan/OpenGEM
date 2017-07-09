@@ -1,0 +1,1402 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+
+		cseg
+;;;		public	set_fnthdr
+;;;		public	chk_ade		; jn 10-27-87
+		public	chk_fnt
+		public	inc_lfu
+		public	CLC_DDA
+		public	ACT_SIZ
+		public	in_rot
+		public	in_doub
+		public	cpy_head
+		public	ftmgradd
+		public	txtblt_rrot_table_1
+if VESA_MULTISEG
+		extrn	VESA_SLICE:word
+		extrn	setslice:near
+		extrn	incdi1024:near
+endif
+
+ega_seq_add	equ	3c4h		;the ega sequencer add reg
+ega_seq_data	equ	3c5h		;the ega sequencer data reg
+ega_wmapmask_reg equ	2		;the write plane mask reg
+ega_graphic_add	equ	3ceh		;the ega graphics add reg
+ega_graphic_data equ	3cfh
+ega_setres_reg	equ	0		;the ega plane set reset values 
+ega_ensetres_reg equ	1		;the ega plane set reset enable bits
+ega_datarot_reg	equ	3		;the ega data rotate register
+ega_rmapmask_reg equ	4		;the ega plane read mask
+ega_mode_reg	equ	5		;the ega data source mode register
+ega_bitmask_reg	equ	8		;the ega bit mask register
+
+public	txtblt_rep_rr
+public	txtblt_tran_rr
+public	txtblt_itran_rr
+public	txtblt_rep_rl
+public	txtblt_tran_rl
+public	txtblt_itran_rl
+public	txtblt_xor_rl_s
+public	txtblt_xor_rr_s
+
+
+set_flag	rb	1
+
+;
+;these two tables are initialized to rotate and mask the data 
+;
+txtblt_rrot_table_1 rb	2048
+txtblt_rrot_table_2 rb	2048
+double_table	    rb	512	
+public	double_table
+;
+		dseg
+
+		extrn	font_inf:word
+		extrn	first:dword
+
+		extrn	cur_font:dword
+		extrn	act_font:dword
+		extrn	cur_head:dword
+		extrn	T_SCLSTS:word
+		extrn	DDA_INC:word
+		extrn	fi_flags:word
+		extrn	FOFF:word
+		extrn	poff_tbl:word
+		extrn	seg_htbl:word
+if ( num_planes gt 1 ) and ( not segment_access )
+		extrn	plane_port_tbl:byte
+		extrn	plane_read_tbl:byte
+endif
+ftmgradd	rd	0	
+ftmgroff	dw	0		;offset of font mgr call
+ftmgrseg	dw	0		;segment of font mgr call
+		public	ftmgroff
+		public	ftmgrseg
+		cseg
+;*******************************************
+;txtblt_rep_rr
+;	replace mode rotate right 
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+;this code draws a character with left fringe only
+;
+txtblt_rep_rr_noright:
+	out	dx, al				;apply the left mask
+	xor	ch, ch
+txtblt_rep_rr_noright_loop:
+	mov	al, es:[di]			;get the dest byte
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	stosb
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 dec	di
+	 call	incdi1024
+	else
+	 add	di, next_line-1			;move to the next screen line
+	endif
+
+	loop	txtblt_rep_rr_noright_loop
+	ret
+;
+;this code draws a character with left + right mask only
+;
+txtblt_rep_rr_nomid:
+	mov	ch, al				;save the right mask here
+	and	ah, ah
+	jz	txtblt_rep_rr_noright
+	dec	bp				;make the add -1 for speed
+txtblt_rep_rr_nomid_loop:
+	mov	al, ch
+	out	dx, al				;apply the left mask
+	mov	bl, [si]			;get the source data
+	mov	al, es:[di]			;read the dest data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	stosb					;apply the byte
+	mov	al, ah
+	out	dx, al				;apply the right mask
+ 	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	stosb
+	add	si, bp				;add the souce width in
+	add	di, next_line-2			;move to the next screen line
+	if	VESA_MULTISEG
+	 jnc	G0002
+	 inc	cs:VESA_SLICE
+	 call	setslice
+G0002:
+	endif
+	dec	cl
+	jnz	txtblt_rep_rr_nomid_loop
+	ret
+;
+;this code is for middle + left + right
+;
+txtblt_rep_rr:
+	mov	bx, ax
+	mov	ax, dx				;save the masks
+	not	ax				;invert the masks
+	mov	dx, ega_graphic_data 		;get the port address
+	and	ch, ch				;is this a no middle one
+	jz	txtblt_rep_rr_nomid
+txtblt_rep_rr_wide:
+	push	si
+	push	di
+	push	ax				;save the masks
+	out	dx, al				;set the left mask value
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	mov	ah, es:[di]			;get the dest byte
+	stosb					;apply the byte
+	mov	al, 0ffh			;allow all bits to be set
+	out	dx, al				;set the middle mask
+	mov	ah, ch				;ah will be the middle count
+txtblt_rep_rr_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	stosb	
+	dec	ah
+	jnz	txtblt_rep_rr_wide_bloop
+	pop	ax
+	push	ax
+	mov	al, ah
+	out	dx, al				;apply the right mask
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	mov	ah, es:[di]			;get the dest byte
+	stosb					;apply the byte
+	pop	ax				;restore the masks
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+txtblt_rep_rr_wide_end:
+	dec	cl
+	jnz	txtblt_rep_rr_wide
+	ret
+;*******************************************
+;txtblt_rep_rl
+;	replace mode rotate left 
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;this code is for left only
+txtblt_rep_rl_noright:
+	out	dx, al				;apply the left mask
+	xor	ch, ch
+txtblt_rep_rl_noright_loop:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]
+	mov	ah, es:[di]			;get the dest byte
+	stosb					;apply the byte
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 dec	di	
+	 call	incdi1024
+	else
+	 add	di, next_line-1			;move to the next screen line
+	endif
+	loop	txtblt_rep_rl_noright_loop
+	ret
+;this code is for left + right
+txtblt_rep_rl_nomid:
+	dec	bp
+	mov	ch, al
+	and	ah, ah
+	jz	txtblt_rep_rl_noright
+	dec	bp				;set up the next line counter
+txtblt_rep_rl_nomid_loop:
+	mov	al, ch
+	out	dx, al				;apply the left mask
+	mov	al, es:[di]			;get the dest data
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]
+	stosb					;apply the byte
+	mov	al, ah
+	out	dx, al				;apply the right mask
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	mov	es:[di], al			;apply the byte
+	add	si, bp				;add the source width in
+	if	VESA_MULTISEG
+	 dec	di	
+	 call	incdi1024
+	else
+	 add	di, next_line-1			;move to the next screen line
+	endif
+	dec	cl
+	jnz	txtblt_rep_rl_nomid_loop
+	ret
+;this code is for left + middle + right
+txtblt_rep_rl:
+	mov	bx, ax
+	mov	ax, dx
+	not	ax				;invert the masks
+	mov	dx, ega_graphic_data 		;get the port
+	and	ch, ch
+	jz	txtblt_rep_rl_nomid
+txtblt_rep_rl_wide:
+	push	si
+	push	di
+	push	ax
+	out	dx, al				;apply the left mask
+	mov	al, es:[di]			;get the dest byte
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]
+	stosb					;apply the byte
+	mov	ah, ch				;ah will be the middle count
+	mov	al, 0ffh			;don't mask the middle
+	out	dx, al
+txtblt_rep_rl_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	stosb	
+	dec	ah
+	jnz	txtblt_rep_rl_wide_bloop
+txtblt_rep_rl_wide_right:
+	pop	ax				;get the masks back
+	push	ax
+	mov	al, ah
+	out	dx, al				;apply the right mask
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	stosb					;apply the byte
+	pop	ax				;restore the masks
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+	dec	cl
+	jnz	txtblt_rep_rl_wide
+	ret
+;
+;*******************************************
+;txtblt_tran_rr
+;	transparent mode rotate right 
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+txtblt_tran_rr:
+	mov	bx, ax
+	mov	ax, dx
+	not	ax
+	mov	dx, ega_graphic_data 		;get the port
+	and	ch, ch
+	jnz	txtblt_tran_rr_wide
+	jmp	txtblt_rep_rr_nomid
+;
+;this code is for middle + left + right
+;
+txtblt_tran_rr_wide:
+	push	si
+	push	di
+	push	ax
+	out	dx, al				;apply the left mask
+	mov	bl, [si]			;get the source data
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	stosb					;apply the dest
+	mov	ah, ch				;ah will be the middle count
+	mov	al, 0ffh			;don't mask the middle
+	out	dx, al
+txtblt_tran_rr_wide_bloop:
+	mov	al, es:[di]			;fetch the dest
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	stosb
+	dec	ah
+	jnz	txtblt_tran_rr_wide_bloop
+txtblt_tran_rr_wide_right:
+	pop	ax
+	push	ax
+	mov	al, ah				;apply the right mask
+	out	dx, al
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	mov	es:[di], al
+	pop	ax
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+	dec	cl
+	jnz	txtblt_tran_rr_wide
+	ret
+;*******************************************
+;txtblt_tran_rl
+;	transparent mode rotate left 
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+;this code is for middle + left + right
+;
+txtblt_tran_rl:
+	mov	bx, ax
+	mov	ax, dx
+	not	ax
+	mov	dx, ega_graphic_data 		;get the port
+	and	ch, ch
+	jnz	txtblt_tran_rl_wide
+	jmp	txtblt_rep_rl_nomid
+txtblt_tran_rl_wide:
+	push	si
+	push	di
+	push	ax
+	out	dx, al				;apply the left mask
+	mov	bl, [si]			;get the source data
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]
+	stosb					;apply the byte
+	mov	ah, ch				;ah will be the middle count
+	mov	al, 0ffh			;no mask in the middle
+	out	dx, al
+txtblt_tran_rl_wide_bloop:
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	stosb
+	dec	ah
+	jnz	txtblt_tran_rl_wide_bloop
+txtblt_tran_rl_wide_right:
+	pop	ax
+	push	ax
+	mov	al, ah
+	out	dx, al				;apply the right mask
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	mov	es:[di], al
+	pop	ax
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+	dec	cl
+	jnz	txtblt_tran_rl_wide
+	ret
+;
+;*******************************************
+;txtblt_itran_rr
+;	inverse transparent mode rotate right 
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+;
+;this code draws a character with left fringe only
+;
+txtblt_itran_rr_noright:
+	out	dx, al				;apply the left mask
+	xor	ch, ch
+txtblt_itran_rr_noright_loop:
+	mov	al, es:[di]			;get the dest byte
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al				;invert the source
+	stosb
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 dec	di
+	 call	incdi1024
+	else
+	 add	di, next_line-1			;move to the next screen line
+	endif
+	loop	txtblt_itran_rr_noright_loop
+	ret
+;
+;this code draws a character with left + right mask only
+;
+txtblt_itran_rr_nomid:
+	mov	ch, al				;save the right mask here
+	and	ah, ah
+	jz	txtblt_itran_rr_noright
+	dec	bp				;make the add -1 for speed
+txtblt_itran_rr_nomid_loop:
+	mov	al, ch
+	out	dx, al				;apply the left mask
+	mov	bl, [si]			;get the source data
+	mov	al, es:[di]			;read the dest data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al				;invert the source
+	stosb					;apply the byte
+	mov	al, ah
+	out	dx, al				;apply the right mask
+ 	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al				;invert the source
+	stosb
+	add	si, bp				;add the souce width in
+	add	di, next_line-2			;move to the next screen line
+	if	VESA_MULTISEG
+	 jnc	G0009
+	 inc	cs:VESA_SLICE
+	 call	setslice
+G0009:
+	endif
+	dec	cl
+	jnz	txtblt_itran_rr_nomid_loop
+	ret
+;
+txtblt_itran_rr:
+	mov	bx, ax
+	mov	ax, dx
+	not	ax
+	mov	dx, ega_graphic_data 		;get the port
+	and	ch, ch
+	jnz	txtblt_itran_rr_wide
+	jmp	txtblt_itran_rr_nomid
+;
+;this code is for middle + left + right
+;
+txtblt_itran_rr_wide:
+	push	si
+	push	di
+	push	ax
+	out	dx, al				;apply the left mask
+	mov	bl, [si]			;get the source data
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al				;invert the data
+	stosb					;apply the dest
+	mov	ah, ch				;ah will be the middle count
+	mov	al, 0ffh			;don't mask the middle
+	out	dx, al
+txtblt_itran_rr_wide_bloop:
+	mov	al, es:[di]			;fetch the dest
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	not	al				;invert the data
+	stosb
+	dec	ah
+	jnz	txtblt_itran_rr_wide_bloop
+txtblt_itran_rr_wide_right:
+	pop	ax
+	push	ax
+	mov	al, ah				;apply the right mask
+	out	dx, al
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al				;invert the data
+	mov	es:[di], al
+	pop	ax
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+	dec	cl
+	jnz	txtblt_itran_rr_wide
+	ret
+;*******************************************
+;txtblt_itran_rl
+;	transparent mode rotate left color ix = 1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+;this code is for left only
+txtblt_itran_rl_noright:
+	out	dx, al				;apply the left mask
+	xor	ch, ch
+txtblt_itran_rl_noright_loop:
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]
+	mov	ah, es:[di]			;get the dest byte
+	not	al				;invert the source
+	stosb					;apply the byte
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 dec	di
+	 call	incdi1024
+	else
+	 add	di, next_line-1			;move to the next screen line
+	endif
+	loop	txtblt_itran_rl_noright_loop
+	ret
+;this code is for left + right
+txtblt_itran_rl_nomid:
+	dec	bp
+	mov	ch, al
+	and	ah, ah
+	jz	txtblt_itran_rl_noright
+	dec	bp				;set up the next line counter
+txtblt_itran_rl_nomid_loop:
+	mov	al, ch
+	out	dx, al				;apply the left mask
+	mov	al, es:[di]			;get the dest data
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]
+	not	al				;invert the source
+	stosb					;apply the byte
+	mov	al, ah
+	out	dx, al				;apply the right mask
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al				;invert the source
+	mov	es:[di], al			;apply the byte
+	add	si, bp				;add the source width in
+	if	VESA_MULTISEG
+	 dec	di
+	 call	incdi1024
+	else
+	 add	di, next_line-1			;move to the next screen line
+	endif
+	dec	cl
+	jnz	txtblt_itran_rl_nomid_loop
+	ret
+;
+txtblt_itran_rl:
+	mov	bx, ax
+	mov	ax, dx
+	not	ax
+	mov	dx, ega_graphic_data 		;get the port
+	and	ch, ch
+	jnz	txtblt_itran_rl_wide
+	jmp	txtblt_itran_rl_nomid
+;
+;this code is for middle + left + right
+;
+txtblt_itran_rl_wide:
+	push	si
+	push	di
+	push	ax
+	out	dx, al				;apply the left mask
+	mov	bl, [si]			;get the source data
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]
+	not	al				;invert the data
+	stosb					;apply the byte
+	mov	ah, ch				;ah will be the middle count
+	mov	al, 0ffh			;no mask in the middle
+	out	dx, al
+txtblt_itran_rl_wide_bloop:
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	not	al
+	stosb
+	dec	ah
+	jnz	txtblt_itran_rl_wide_bloop
+txtblt_itran_rl_wide_right:
+	pop	ax
+	push	ax
+	mov	al, ah
+	out	dx, al				;apply the right mask
+	mov	al, es:[di]			;get the dest byte
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+	mov	es:[di], al
+	pop	ax
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+	dec	cl
+	jnz	txtblt_itran_rl_wide
+	ret
+;
+;*******************************************
+;txtblt_xor_rr_s
+;txtblt_xor_rr_0
+;	xor mode rotate right color ix = 0/1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+txtblt_xor_rr_0:
+txtblt_xor_rr_s:
+	mov	bx, ax
+	not	dx				;invert the masks
+txtblt_xor_rr_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+if rev_vid
+	not	al
+endif
+	and	al, dl
+	xor	es:[di], al
+	inc	di
+	mov	ah, ch				;ah will be the middle count
+	and	ah, ah
+	jz	txtblt_xor_rr_s_wide_right
+txtblt_xor_rr_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+endif
+	xor	es:[di], al
+	inc	di
+	dec	ah
+	jnz	txtblt_xor_rr_s_wide_bloop
+txtblt_xor_rr_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	and	al, dh
+	xor	es:[di], al			;xor in the source data
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+if (num_planes eq 1) and ( segment_access eq FALSE )
+	jnc	txtblt_xor_rr_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if multiseg
+	cmp	di, plane_size
+	jc	txtblt_xor_rr_s_wide_end
+	add	di, move_to_first
+endif
+txtblt_xor_rr_s_wide_end:
+	dec	cl
+	jnz	txtblt_xor_rr_s_wide
+	ret
+;*******************************************
+;txtblt_xor_rl_s
+;txtblt_xor_rl_0
+;	xor mode rotate left color ix = 0/1
+;
+;	Entry
+;		es:di = dest pointer ( screen )
+;		ds:si = source pointer ( memory )
+;		ah    = rotate count
+;		dl    = left mask
+;		dh    = right mask
+;		ch    = middle byte count
+;		cl    = vertical scan count
+;		bp    = source form width
+;********************************************	
+;
+txtblt_xor_rl_0:
+txtblt_xor_rl_s:
+	mov	bx, ax
+	not	dx				;invert the mask if not revvid
+txtblt_xor_rl_s_wide:
+	push	si
+	push	di
+	mov	bl, [si]			;get the source data
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]
+endif	
+	and	al, dl				;apply the mask
+	xor	es:[di], al
+	inc	di				;apply the byte
+	mov	ah, ch				;ah will be the middle count
+	and	ah, ah
+	jz	txtblt_xor_rl_s_wide_right
+txtblt_xor_rl_s_wide_bloop:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;fetch the second byte from src
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;fetch the first byte from nxt src
+endif
+	xor	es:[di], al
+	inc	di
+	dec	ah
+	jnz	txtblt_xor_rl_s_wide_bloop
+txtblt_xor_rl_s_wide_right:
+	mov	al, cs:txtblt_rrot_table_2[bx]	;rotate and mask the source 
+	inc	si
+	mov	bl, [si]
+if rev_vid
+	and	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+	not	al
+else
+	or	al, cs:txtblt_rrot_table_1[bx]	;rotate and mask the source 
+endif
+	and	al, dh				;apply the right mask
+	xor	es:[di], al
+	pop	di
+	pop	si
+	add	si, bp				;add the souce width in
+	if	VESA_MULTISEG
+	 call	incdi1024
+	else
+	 add	di, next_line			;move to the next screen line
+	endif
+if (num_planes eq 1) and ( segment_access eq FALSE )
+	jnc	txtblt_xor_rl_s_wide_end
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if multiseg
+	cmp	di, plane_size
+	jc	txtblt_xor_rl_s_wide_end
+	add	di, move_to_first
+endif
+txtblt_xor_rl_s_wide_end:
+	dec	cl
+	jnz	txtblt_xor_rl_s_wide
+	ret
+
+;*************************
+; in_doub
+;	
+;	initializes the double table
+;*************************
+in_doub:
+	push	ds
+	push	es
+	push	bp
+	mov	ax, cs
+	mov	es, ax
+	mov	di, offset double_table
+	mov	cx, 256
+	mov	bp, 0C000h			;we will set two bits in dest
+	mov	dl, 80h				;start at the high bit
+	xor	bx, bx
+in_double_loop:
+	xor	ax, ax
+in_double_byte_loop:
+	test	bl, dl				;is this bit set in dest
+	jz	in_double_not_set
+	or	ax, bp
+in_double_not_set:
+	ror	bp,1
+	ror	bp,1
+	ror	dl,1				;point at the next bit
+	jnc	in_double_byte_loop
+	xchg	ah, al
+	stosw
+	inc	bl
+	loop	in_double_loop
+	pop	bp
+	pop	es
+	pop	ds
+	ret
+;*************************
+; in_rot
+;	initialize the two rotation tables
+;	
+;*************************
+in_rot:
+	push	ds
+	push	es
+	push	bp
+	mov	ax, cs
+	mov	ds, ax
+	mov	es, ax
+	mov	di, offset txtblt_rrot_table_1
+	mov	si, offset txtblt_rrot_table_2
+	mov	ch, 8			;we will build two tables of 2k	
+	xor	ax, ax
+	mov	dx, ax
+	not	dl			;init the source and mask data
+	mov	cl, al
+in_rot_out_loop:
+	mov	bp, 256
+in_rot_in_loop:
+	mov	al, ah			;get the current byte value
+	ror	al, cl
+	mov	bl, al
+	and	al, dl
+	and	bl, dh
+if rev_vid
+	not	al
+	not	bl
+endif
+	stosb
+	mov	[si], bl
+	inc	si
+	inc	ah
+	dec	bp
+	jnz	in_rot_in_loop
+	xor	ah, ah
+	shr	dl, 1			;move the table one mask over 1 bit
+	mov 	dh, dl
+	not	dh
+	inc	cl			;increment the rotate count
+	dec	ch
+	jnz	in_rot_out_loop
+	pop	bp
+	pop	es
+	pop	ds
+	ret
+;
+;*************************
+; CLC_DDA
+; entry
+;	4[bp] = actual size
+;	6[bp] = requested size
+;
+; exit
+;	ax = dda_inc
+;************************** 
+CLC_DDA:
+	push	bp
+	mov	bp,sp
+	mov	dx, 6[bp]
+	mov	bx, 4[bp]
+	xor	ax, ax
+	cmp	dx, bx			; if dx less than bx then scale down
+	jle	clc_dda_small
+	mov	T_SCLSTS, 1
+	sub	dx, bx			; dx = req - act
+	cmp	dx, bx
+	jge	CLC_DDA_BIG
+	div	bx			; ax = dda_inc
+	pop	bp
+	ret
+CLC_DDA_BIG:
+	mov	ax, 0ffffh		; return dda = 2X
+	pop	bp
+	ret
+CLC_DDA_SMALL:
+	mov	T_SCLSTS, 0
+	and	dx, dx			; if requested size is 0 then make 1
+	jnz	clc_dda_small_ok
+	inc	dx
+clc_dda_small_ok:
+	div	bx
+	pop	bp
+	ret
+;**************************
+; ACT_SIZ
+; entry
+;	4[bp] = size to scale
+; exit
+;	ax = actual size
+;**************************
+ACT_SIZ:
+	push	bp
+	mov	bp, sp
+	mov	cx, 4[bp]
+	mov	dx, DDA_INC
+	cmp	dx, 0ffffh
+	jz	ACT_SIZ_DOUBLE
+	mov	bx, 32767		; bx = accumulator = 1/2
+	xor	ax, ax			; ax = new count
+	and	cx,cx
+	jz	ACT_SIZ_0
+	test	T_SCLSTS, 1
+	jz	ACT_SIZ_SMALL_LOOP	
+ACT_SIZ_LOOP:
+	add	bx, dx
+	jnc	ACT_SIZ_TIME1
+	inc	ax
+ACT_SIZ_TIME1:
+	inc	ax
+	loop	ACT_SIZ_LOOP
+ACT_SIZ_0:
+	pop	bp
+	ret
+ACT_SIZ_DOUBLE:
+	mov	ax, cx
+	shl	ax, 1			; ax = size * 2
+	pop	bp
+	ret
+ACT_SIZ_SMALL_LOOP:
+	add	bx, dx
+	jnc	act_siz_small_1
+	inc	ax
+act_siz_small_1:
+	loop	ACT_SIZ_SMALL_LOOP
+	pop	bp
+	and	ax, ax			; if ax = 0 then make = 1
+	jnz	act_siz_small_2
+	inc	ax
+act_siz_small_2:
+	ret
+;**************************
+; CPY_HEAD
+;**************************
+cpy_head:
+		push	ds
+		les	di, cur_head
+		lds	si, cur_font
+		mov	cx, 56
+	rep	movsw
+		pop	ds
+		ret
+;**************************
+;  inc_lfu
+;**************************
+inc_lfu:
+	les	di, act_font
+	inc 	es: word ptr 92[di]
+	jnc	inc_lfu_done
+	inc	es: word ptr 94[di]
+inc_lfu_done:
+	ret
+
+;*************************
+;  chk_fnt
+;*************************
+chk_fnt:
+;;; Not in SDPSC9
+;;;	test	fi_flags, 10h		;is this font not here!!!!!
+;;;	jz	chk_fnt_done
+	push	es
+	push	di
+	push	ax
+	push	bx
+	les	di, act_font
+	mov	bx, 66
+	add	bx, di	
+	mov	ax, es:[bx]
+	test	ax, 10h			; Font not here?
+	jz	chk_fnt_done
+	mov	ax, di
+	mov	bx, es
+	callf	ftmgradd		;here we go	
+	and	fi_flags, 0ffefh	;enable the local font header
+	mov	ax, es:word ptr 70[di]
+	mov	poff_tbl+2, ax		;fix up the segment
+	mov	seg_htbl, ax		;fix up segment of horz off table
+	mov	ax, es:word ptr 78[di]
+	mov	FOFF+2, ax
+chk_fnt_done:
+	pop	bx
+	pop	ax
+	pop	di
+	pop	es
+	ret
+
+;
+; Below this point, not present in SDPSC9
+;
+
+if 0
+
+;==========
+set_fnthdr:	; set font header
+;==========
+;
+;	Set the current font header.
+;
+;	Entry:	ax = char
+;
+;	Exit:	act_font = font header for this character
+;		cur_font = act_font
+;		font_inf = *cur_font
+
+	push ax
+	call chk_ade
+	; Is the proper header in place?
+	cmp ax, 0 ! je sfe
+	  ; Nope, 
+	  ; Is the char out of range
+	  cmp ax, 2 ! jne sf1
+	    ; Yes,  force a space
+	    pop ax			; clear the incoming char from stack
+	    mov ax, 20h			; set a space
+	    push ax			
+	    call chk_ade
+	    cmp ax, 0 ! je sfe
+sf1:
+	    call chk_fnt
+sfe:
+	pop ax
+	ret
+
+eject
+
+;=======
+chk_ade:	; check the ADE value of a char
+;=======
+;
+; jn 10-27-87
+; This is the support for a segmented screen font.
+;
+; This routine must be called for every character.
+;
+; If the ADE value of the character passed in falls within
+; the range of the characters in the currently selected font
+; then we just return.
+;
+; If the ADE value of the character passed in not within the
+; the range of the characters in the currently selected font
+; the following is done:
+;
+;	1) The font chain traversed, starting with first, until
+;	   the first font header segment for the currently selected
+;	   font is found.
+;
+;	2) The font segments for the currently selected font are
+;	   traversed until the font segment containing 
+;	   the required ADE value is found.
+;
+;	3) act_font is set to the new font header.
+;
+;	Entry:	char passed in on stack
+;
+;	Exit:	act_font = the proper font header for the entry character 
+;		cur_font = act_font
+;		the new font header is copied into the current virtual
+;		work station font info structure.
+;		ax = 0 - if no change to the font_inf header
+;		   = 1 - if there was a change.
+;			 or if the font in the font header is not loaded.
+;		   = 2 - if the character was out of range.
+;
+;	Note:	This routine preserves all registers used
+;		except ax.  This is because is was added onto an
+;		existing system.
+;
+;		act_font is relative to the current virtual work 
+;		station
+
+	push bp				; C type preamble
+	mov bp, sp
+
+	mov ax, 4[bp]			; ax = the character
+
+	push si				; save regs we need.
+	push es
+
+	; Does the ADE value of the character fall
+	; within the range of the current font header ADE values?
+
+	and ax, 0ffh			; mask off the high byte
+	les si, act_font		; es:si = act_font
+
+	; check the low bound
+	cmp ax, es:24h[si] ! jl ca1
+	  ; check the upper bound
+	  cmp ax, es:26h[si] ! jg ca1
+	    ; The character falls within
+	    ; the ADE bounds of the current font header.
+	    ;---
+	    ; Is the font present?
+	    test es:42h[si], word ptr 010h ! jz ca2
+	      ; the font is not present.
+	      mov ax, 01
+	      jmps cae
+ca2:	; the font is present.
+	    xor ax, ax
+	    jmps cae
+
+ca1:	; the character does not fall within the bounds of the
+	; current font header.  find the correct header.
+
+	call find_font_seg0		; es:si -> font_seg0
+	call find_ade_seg		; es:si -> font header seg we want
+	; Is the character with in range
+	cmp ax, 0 ! jz ca3
+	  ; Nope, set the out of range return code...
+	  mov ax, 2
+	  jmps cae
+ca3:
+	mov word ptr act_font, si	; set up the actual font pointer
+	mov word ptr act_font + 2, es
+
+	mov word ptr cur_font, si	; set up the current font pointer
+	mov word ptr cur_font + 2, es
+
+	push cx
+	push di
+	call cpy_head			; put the new font header into the
+	pop di				; virtual work station font info
+	pop cx				; structure.
+
+	mov ax, 1			; set the return code.
+
+cae:
+	pop es				; restore the regs used in
+	pop si				; the basic search.
+	pop bp
+
+	ret
+
+eject
+
+;------------
+find_ade_seg:
+;------------
+;
+;	Find the font header segment that contains the
+;	ADE segment range
+;
+;	Entry:	ax = char
+;		es:si = first header for this font style and point size
+;
+;	Exit:	es:si = header we want.
+;		ax = 0 - if we found a font segment that contains
+;			 the char we want
+;		   = 1 - if the character is out of bounds
+
+	push bx				; preserve reg that is used
+fas4:
+	; Is this character within range
+	cmp ax, es:24h[si] ! jl fas1	; check low bound.
+	  ; Its greater >= the low bound
+	  cmp ax, es:26h[si] ! jg fas2	; check the high bound.
+	    ; We found the header we want
+	    mov ax, 0
+	    jmps fase
+
+fas1:	; The character value is below the lowest ADE for this font.
+	; So, return the lowest header.
+	mov ax, 1
+	jmps fase
+
+fas2:	; Check the next header
+	; Is the next header NULL?
+	mov bx, es:58h[si]
+	or bx, es:5Ah[si]
+	jnz fas3
+	  ; The next header is 0
+	  ; So just return the one we have.
+	  mov ax, 1
+	  jmps fase
+fas3:
+	; Point to thenext font segment.
+	les si, es:58h[si]
+	jmps fas4
+
+fase:	; find ade segment exit
+	pop bx
+	ret
+
+eject
+
+;--------------
+find_font_seg0:
+;--------------
+;
+;	Find the first segment of this font.
+;
+;	Entry:	es:si = act_font
+;
+;	Exit:	es:si = addr of first font header segment of the
+;			desired font face and point size.
+
+	push ax				; save regs used
+	push bx
+	push cx
+
+	; register usage for search
+	;  ax = desired font style
+	;  bx = desired point size
+	;  es:si = ptr to font header
+
+	mov ax, es:[si]			; ax = desired font style
+	mov bx, es:2[si]		; bx = desired point size
+
+	; first is in the physical work station segment
+
+	mov si, seg first
+	mov es, si
+	mov si, offset first		; es:si = -> to first font in chain
+ffs3:
+	; is the correct font style?
+	cmp ax, es:[si]	! jne ffs1
+	  ; this is the font style we want.
+	  ; Is this the correct point size?
+	  cmp bx, es:2[si] ! jne ffs1
+	    ; This is the correct point size also.
+	    ; We have found the font header we seek
+	    jmps ffse
+ffs1:
+	; the current font header is not the one we seek.
+	; Is there another font header in the chain?
+	mov cx, es:54h[si]
+	or cx, es:56h[si]
+	jnz ffs2
+	  ; This was the last header.
+	  ; THIS IS AN ERROR.
+	  ; Return the last font header we found
+	  jmps ffse
+ffs2:
+	; there is another font 
+	; point to it and go to the top of the loop
+	les si, es:54h[si]
+	jmps ffs3
+
+ffse:	; find font segment 0 exit point
+
+	pop cx				; restore regs that were used	
+	pop bx
+	pop ax
+	ret
+endif
+

@@ -1,0 +1,28 @@
+;/*	ACCSTART.A86		4/18/84 - 10/18/84	Lee Lorenzen	*/
+;
+;
+;
+;
+	cseg
+	extrn	gemain:near
+;
+	cli
+	mov	ax,seg stk
+	mov	ds,ax
+	mov	ss,ax
+	mov	es,ax
+	mov	sp,offset stk
+	sti
+;
+;
+	call	gemain
+	mov	ax,0ch
+	mov	di,ax
+	mov	ax,0
+	int	24h
+;
+	dseg
+	rw	100
+stk	dw	0
+	end
+

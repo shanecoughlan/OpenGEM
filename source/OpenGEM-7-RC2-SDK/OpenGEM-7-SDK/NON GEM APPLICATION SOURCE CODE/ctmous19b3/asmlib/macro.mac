@@ -1,0 +1,346 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Export: MOVREG_, MOVOFF_, MOVSEG_,
+;	  MOVRR_, MOVRO_, MOVOO_, MOVRRR_, MOVRRO_, MOVROO_,
+;	  MOVREG2, MOVREGax_, MOVOFFax_
+
+MOVREG_		macro	reg,val:vararg
+	ifnb <reg>
+	ifnb <val>
+	ifdifi <val>,<reg>
+	irp r,<ax,cx,dx,bx,sp,bp,si,di,eax,ecx,edx,ebx,esp,ebp,esi,edi,*>
+	  ifidni <r>,<*>
+		mov	reg,val
+	  elseifidni <reg>,<r>
+	    if (.type val) eq 00100100b
+	    ;; symbol is defined and expression is a constant value
+	    if val eq 0
+		xor	reg,reg
+		exitm
+	    endif
+	    endif
+	  endif
+	endm
+	endif
+	endif
+	endif
+endm
+
+MOVOFF_		macro	reg,offs:vararg
+	ifnb <reg>
+	ifnb <offs>
+	ifdifi <offs>,<reg>
+		mov	reg,offset offs
+	endif
+	endif
+	endif
+endm
+
+MOVSEG_		macro	segreg,val,temp,segname:vararg
+	ifnb <segreg>
+	  ifnb <val>
+	  ifdifi <val>,<segreg>
+	  irp r,<cs,ss,ds,es,fs,gs,*>
+	    ifidni <r>,<*>
+	      if (.type val) eq 00100100b
+		;; symbol is defined and expression is a constant value
+		errifb <temp> "Temporary register should be present!"
+		MOVREG_	<temp>,<val>
+		mov	segreg,temp
+	      else
+		mov	segreg,val
+	      endif
+	    elseifidni <val>,<r>
+	      ifb <temp>
+		push	val
+		pop	segreg
+	      else
+		;; <val> is a segment register and <temp> present
+		MOVREG_	<temp>,<val>
+		mov	segreg,temp
+	      endif
+	      exitm
+	    endif
+	  endm
+	  endif
+	  endif
+	  ifnb <segname>
+		assume	segreg:segname
+	  endif
+	endif
+endm
+
+;-------------------------------------------------------------------------
+MOVRR_		macro	r1,v1,r2,v2:vararg
+	ifdifi <v2>,<r1>
+		MOVREG_	<r1>,<v1>
+	  ifnb <v2>
+	  ifidni <v2>,<v1>
+		MOVREG_	<r2>,<r1>
+	  else
+		MOVREG_	<r2>,<v2>
+	  endif
+	  endif
+	elseifdifi <v1>,<r2>
+		MOVREG_	<r2>,<v2>
+		MOVREG_	<r1>,<v1>
+	else
+		xchg	r1,r2
+	endif
+endm
+
+MOVRO_		macro	r1,v,r2,off:vararg
+	ifdifi <off>,<r1>
+		MOVREG_	<r1>,<v>
+	  ifnb <off>
+	  ifidni <off>,<v>
+		MOVREG_	<r2>,<r1>
+	  else
+		MOVOFF_	<r2>,<off>
+	  endif
+	  endif
+	elseifdifi <v>,<r2>
+		MOVOFF_	<r2>,<off>
+		MOVREG_	<r1>,<v>
+	else
+		xchg	r1,r2
+	endif
+endm
+
+MOVOO_		macro	r1,off1,r2,off2:vararg
+	ifdifi <off2>,<r1>
+		MOVOFF_	<r1>,<off1>
+	  ifnb <off2>
+	  ifidni <off2>,<off1>
+		MOVREG_	<r2>,<r1>
+	  else
+		MOVOFF_	<r2>,<off2>
+	  endif
+	  endif
+	elseifdifi <off1>,<r2>
+		MOVOFF_	<r2>,<off2>
+		MOVOFF_	<r1>,<off1>
+	else
+		xchg	r1,r2
+	endif
+endm
+
+;-------------------------------------------------------------------------
+MOVRRR_		macro	r1,v1,r2,v2,r3,v3:vararg
+	ifidni <v3>,<r1>
+	  ifdifi <v1>,<r2>
+		MOVREG_	<r2>,<v2>
+		MOVRR_	<r1>,<v1>,<r3>,<v3>
+	  elseifdifi <v2>,<r3>
+		MOVREG_	<r3>,<v3>
+		MOVRR_	<r1>,<v1>,<r2>,<v2>
+	  else
+		xchg	r1,r2
+		xchg	r2,r3
+	  endif
+	elseifidni <v3>,<r2>
+	  ifdifi <v2>,<r1>
+		MOVREG_	<r1>,<v1>
+		MOVRR_	<r2>,<v2>,<r3>,<v3>
+	  elseifdifi <v1>,<r3>
+		MOVREG_	<r3>,<v3>
+		MOVRR_	<r1>,<v1>,<r2>,<v2>
+	  else
+		xchg	r1,r3
+		xchg	r3,r2
+	  endif
+	else
+		MOVRR_	<r1>,<v1>,<r2>,<v2>
+		MOVREG_	<r3>,<v3>
+	endif
+endm
+
+MOVRRO_		macro	r1,v1,r2,v2,r3,off:vararg
+	ifidni <off>,<r1>
+		MOVRRR_	<r1>,<v1>,<r2>,<v2>,<r3>,<off>
+	elseifidni <off>,<r2>
+		MOVRRR_	<r1>,<v1>,<r2>,<v2>,<r3>,<off>
+	else
+		MOVRR_	<r1>,<v1>,<r2>,<v2>
+		MOVOFF_	<r3>,<off>
+	endif
+endm
+
+MOVROO_		macro	r1,v1,r2,off2,r3,off3:vararg
+	ifidni <off3>,<r1>
+		MOVRRO_	<r1>,<v1>,<r3>,<off3>,<r2>,<off2>
+	elseifidni <off3>,<r2>
+		MOVRRO_	<r1>,<v1>,<r3>,<off3>,<r2>,<off2>
+	else
+		MOVRO_	<r1>,<v1>,<r2>,<off2>
+		MOVOFF_	<r3>,<off>
+	endif
+endm
+
+;-------------------------------------------------------------------------
+MOVREG2		macro	r,rhi,rlo,hi,lo:vararg
+	ifnb <hi>
+	ifnb <lo>
+	if ((.type hi) eq 00100100b) and ((.type lo) eq 00100100b)
+		;; symbol is defined and expression is a constant value
+		MOVREG_	<r>,<(hi shl 8)+(low lo)>
+		exitm
+	endif
+	endif
+	endif
+	ifidni <lo>,<al>
+	ifidni <hi>,<ah>
+		MOVREG_	<r>,ax
+		exitm
+	endif
+	endif
+	ifidni <lo>,<cl>
+	ifidni <hi>,<ch>
+		MOVREG_	<r>,cx
+		exitm
+	endif
+	endif
+	ifidni <lo>,<dl>
+	ifidni <hi>,<dh>
+		MOVREG_	<r>,dx
+		exitm
+	endif
+	endif
+	ifidni <lo>,<bl>
+	ifidni <hi>,<bh>
+		MOVREG_	<r>,bx
+		exitm
+	endif
+	endif
+	MOVRR_	<rlo>,<lo>,<rhi>,<hi>
+endm
+
+MOVREGax_	macro	r:req,rhi:req,rlo:req,val,ahi:=<ah>,alo:vararg
+	local flag
+	flag = 0
+	ifb <alo>
+		flag = 00001b
+	elseifidni <alo>,<al>
+		flag = 00001b
+	elseifidni <alo>,<ah>
+		flag = 00010b
+	endif
+	ifidni <ahi>,<al>
+		flag = flag or 01000b
+	elseifidni <ahi>,<ah>
+		flag = flag or 01000b
+	endif
+	irp v,<<rlo>,<rhi>>
+	  ifidni <alo>,<v>
+		flag = flag or 00100b
+	  endif
+	  ifidni <ahi>,<v>
+		flag = flag or 10000b
+	  endif
+	endm
+	ifidni <val>,<ax>
+	  if ((flag and 00110b) ne 0) or ((flag and 10001b) eq 10001b)
+		MOVREG2	<r>,<rhi>,<rlo>,<ahi>,<alo>
+		xchg	ax,r
+	  elseif flag and 01001b
+		mov	r,ax
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	  else
+		xchg	r,ax
+	    ifidni <ahi>,<rhi>
+		mov	al,alo
+	    elseifidni <ahi>,<rlo>
+		MOVREG2	ax,ah,al,al,<alo>
+	    else
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	    endif
+	  endif
+	elseifb <val>
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	elseifidni <val>,<r>
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	elseifidni <alo>,<rlo>
+		MOVREG_	<rhi>,<ahi>
+		xchg	ax,r		;; OPTIMIZE: instead MOV AX,r
+		MOVREG_	<r>,<val>
+	elseif flag and 10100b
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+		MOVREG_	<r>,<val>
+	else
+		MOVREG_	<r>,<val>
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	endif
+endm
+
+MOVOFFax_	macro	r:req,rhi:req,rlo:req,off,ahi:=<ah>,alo:vararg
+	local flag
+	flag = 0
+	ifb <alo>
+		flag = 00001b
+	elseifidni <alo>,<al>
+		flag = 00001b
+	elseifidni <alo>,<ah>
+		flag = 00010b
+	endif
+	ifidni <ahi>,<al>
+		flag = flag or 01000b
+	elseifidni <ahi>,<ah>
+		flag = flag or 01000b
+	endif
+	irp v,<<rlo>,<rhi>>
+	  ifidni <alo>,<v>
+		flag = flag or 00100b
+	  endif
+	  ifidni <ahi>,<v>
+		flag = flag or 10000b
+	  endif
+	endm
+	ifidni <off>,<ax>
+	  if ((flag and 00110b) ne 0) or ((flag and 10001b) eq 10001b)
+		MOVREG2	<r>,<rhi>,<rlo>,<ahi>,<alo>
+		xchg	ax,r
+	  elseif flag and 01001b
+		mov	r,ax
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	  else
+		xchg	r,ax
+	    ifidni <ahi>,<rhi>
+		mov	al,alo
+	    elseifidni <ahi>,<rlo>
+		MOVREG2	ax,ah,al,al,<alo>
+	    else
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	    endif
+	  endif
+	elseifb <off>
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	elseifidni <off>,<r>
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	elseifidni <alo>,<rlo>
+		MOVREG_	<rhi>,<ahi>
+		xchg	ax,r		;; OPTIMIZE: instead MOV AX,r
+		MOVOFF_	<r>,<off>
+	elseif flag and 10100b
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+		MOVOFF_	<r>,<off>
+	else
+		MOVOFF_	<r>,<off>
+		MOVREG2	ax,ah,al,<ahi>,<alo>
+	endif
+endm

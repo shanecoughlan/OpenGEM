@@ -1,0 +1,19 @@
+sduni9.vga= entry, uni_zyxg,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+uni_drv,
+uopttxt1,
+uopttxt2,
+uoptdraw,
+unimblit,
+uniblit,
+unipat,
+enddseg,
+unicp,
+unifont[nop]
+
+                                                                                                                                                                                                                

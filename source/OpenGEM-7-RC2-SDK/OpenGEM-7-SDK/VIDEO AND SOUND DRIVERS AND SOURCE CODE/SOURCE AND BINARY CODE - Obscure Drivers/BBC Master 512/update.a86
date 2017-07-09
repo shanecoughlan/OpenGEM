@@ -1,0 +1,106 @@
+eject
+
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+; This code was disassembled from ACORNBW.SYS on the BBC Master 512 boot 
+; discs, for which no source exists. The copyright message reads Digital 
+; Research and it is my understanding that all DRI GEM is covered by the
+; GPL whether or not source exists. Thus:
+; <http://www.simpits.org/pipermail/gem-dev/2007-March/001405.html>
+
+	cseg
+;
+; This file deals with maintaining a 'touched' rectangle - an area of
+; the screen that needs updating.
+;
+	public	touch_x1y1, touch
+
+touch_x1y1:
+	push	ax
+	push	dx
+	push	bp
+	mov	bp, sp
+	push	Y2
+	push	X2
+	push	Y1
+	push	X1
+	call	touch
+	mov	sp, bp
+	pop	bp
+	pop	dx
+	pop	ax
+	ret
+;
+touch:	push	bp
+	mov	bp, sp
+	mov	ax, 4[bp]	;First X
+	mov	dx, 8[bp]	;Second X
+	cmp	ax, dx
+	jl	touch1
+	mov	4[bp], dx
+	mov	8[bp], ax	;Swap them so the low X is on the left	
+touch1:	mov	ax, 6[bp]	;First Y
+	mov	dx, 10[bp]	;Second Y
+	cmp	ax, dx
+	jl	touch2
+	mov	6[bp], dx
+	mov	10[bp], ax	;Swap them
+touch2:	cmp	touched, 0	;Is there an existing touched rectangle?
+	jnz	touch_merge
+	mov	ax, 4[bp]
+	mov	update_left, ax
+	mov	ax, 6[bp]
+	mov	update_top, ax
+	mov	ax, 8[bp]
+	mov	update_right, ax
+	mov	ax, 10[bp]
+	mov	update_bottom, ax
+	mov	touched, 1
+	pop	bp
+	ret
+;
+touch_merge:
+	mov	ax, 4[bp]
+	cmp	ax, update_left
+	jg	tm1
+	mov	update_left, ax
+tm1:	mov	ax, 6[bp]
+	cmp	ax, update_top
+	jg	tm2
+	mov	update_top, ax
+tm2:	mov	ax, 8[bp]
+	cmp	ax, update_right
+	jl	tm3
+	mov	update_right, ax
+tm3:	mov	ax, 10[bp]
+	cmp	ax, update_bottom
+	jl	tm4
+	mov	update_bottom, ax
+tm4:	pop	bp
+	ret	
+;
+	dseg
+touched		db	0	;Is there an update rectangle?
+update_left	dw	0	;And if so, what's in it?
+update_top	dw	0
+update_right	dw	0
+update_bottom	dw	0
+
+

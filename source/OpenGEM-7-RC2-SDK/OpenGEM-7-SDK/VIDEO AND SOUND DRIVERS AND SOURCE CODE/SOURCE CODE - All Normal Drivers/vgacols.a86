@@ -1,0 +1,421 @@
+dispmode	dw	1
+mode_save	db	0
+if num_planes eq 4
+		if	GSX
+act_col_tbl	dw	   0,    0,    0	;black
+		else
+act_col_tbl	dw	1000, 1000, 1000	;white
+		endif
+		dw	1000,    0,    0	;red
+		dw	   0, 1000,    0	;green
+		dw	1000, 1000,    0	;yellow
+		dw	   0,    0, 1000	;blue
+		dw	1000,    0, 1000	;magenta
+		dw	   0, 1000, 1000	;cyan
+		dw	 666,  666,  666	;grey
+		dw	 333,  333,  333	;light grey
+		dw	 333,    0,    0	;light red
+		dw	   0,  333,    0	;light green
+		dw	 333,  333,    0	;light yellow
+		dw	   0,    0,  333	;light blue
+		dw	 333,    0,  333	;light magenta
+		dw	   0,  333,  333	;light cyan
+		if	GSX
+		dw	1000, 1000, 1000	;white
+		else
+		dw	   0,    0,    0	;black
+		endif
+
+		if	GSX
+req_col_tbl	dw	   0,    0,    0	;black
+		else
+req_col_tbl	dw	1000, 1000, 1000	;white
+		endif
+		dw	1000,    0,    0	;red
+		dw	   0, 1000,    0	;green
+		dw	1000, 1000,    0	;yellow
+		dw	   0,    0, 1000	;blue
+		dw	1000,    0, 1000	;magenta
+		dw	   0, 1000, 1000	;cyan
+		dw	 666,  666,  666	;gray
+		dw	 333,  333,  333	;light grey
+		dw	 333,    0,    0	;light red
+		dw	   0,  333,    0	;light green
+		dw	 333,  333,    0	;light yellow
+		dw	   0,    0,  333	;light blue
+		dw	 333,    0,  333	;light magenta
+		dw	   0,  333,  333	;light cyan
+		if	GSX
+		dw	1000, 1000, 1000	;white
+		else
+		dw	   0,    0,    0	;black
+		endif
+
+initial_color_table	db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00110110b		;pel val = 3 yellow
+			db	00001001b		;pel val = 4 blue
+			db	00101101b		;pel val = 5 magenta
+			db	00011011b		;pel val = 6 cyan
+			db	00000111b		;pel val = 7 black
+			db	00111000b		;pel val = 0 grey
+			db	00000100b		;pel val = 1 lt red
+			db	00000010b		;pel val = 2 lt green
+			db	00000110b		;pel val = 3 lt yellow
+			db	00000001b		;pel val = 4 lt blue
+			db	00000101b		;pel val = 5 lt magenta
+			db	00000011b		;pel val = 6 lt cyan
+			db	00000000b		;pel val = 7 black
+			db	0			;overscan = 0
+
+
+					; ...
+		if	GSX
+vga_col_table	db  0, 0, 0		;Black
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63, 0		;Yellow
+		db  0, 0,63		;Blue
+		db 63, 0,63		;Magenta
+		db  0,63,63		;Cyan
+		db 42,42,42		;Light grey
+		db 21,21,21		;Dark grey
+		db 42, 0, 0		;Dark red
+		db  0,42, 0		;Dark green
+		db 42,42, 0		;Dark yellow
+		db  0, 0,42		;Dark blue
+		db 42, 0,42		;Dark magenta
+		db  0,42,42		;Dark cyan
+		db 63,63,63		;White
+		else
+
+vga_col_table	db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63, 0		;Yellow
+		db  0, 0,63		;Blue
+		db 63, 0,63		;Magenta
+		db  0,63,63		;Cyan
+		db 42,42,42		;Light grey
+		db 21,21,21		;Dark grey
+		db 42, 0, 0		;Dark red
+		db  0,42, 0		;Dark green
+		db 42,42, 0		;Dark yellow
+		db  0, 0,42		;Dark blue
+		db 42, 0,42		;Dark magenta
+		db  0,42,42		;Dark cyan
+		db  0, 0, 0		;Black
+		endif
+
+
+MAP_COL		dw	0		;white
+		dw	0fh		;black
+		dw	1		;red
+		dw	2		;green
+		dw	4		;blue
+		dw	6		;cyan
+		dw	3		;yellow	
+		dw	5		;magenta
+		dw	7		;white
+		dw	8		;black
+		dw	9		;lt red
+		dw	10		;lt green
+		dw	12		;lt blue
+		dw	14		;lt cyan
+		dw	11		;lt yellow	
+		dw	13		;lt magenta
+endif
+if num_planes eq 3
+act_col_tbl	dw	1000, 1000, 1000	;white
+		dw	1000,    0,    0	;red
+		dw	   0, 1000,    0	;green
+		dw	1000, 1000,    0	;yellow
+		dw	   0,    0, 1000	;blue
+		dw	1000,    0, 1000	;magenta
+		dw	   0, 1000, 1000	;cyan
+		dw	   0,    0,    0	;black
+		dw	 333,  333,  333	;grey
+		dw	 333,    0,    0	;light red
+		dw	   0,  333,    0	;light green
+		dw	 333,  333,    0	;light yellow
+		dw	   0,    0,  333	;light blue
+		dw	 333,    0,  333	;light magenta
+		dw	   0,  333,  333	;light cyan
+		dw	   0,    0,    0	;black
+
+req_col_tbl	dw	1000, 1000, 1000	;white
+		dw	1000,    0,    0	;red
+		dw	   0, 1000,    0	;green
+		dw	1000, 1000,    0	;yellow
+		dw	   0,    0, 1000	;blue
+		dw	1000,    0, 1000	;magenta
+		dw	   0, 1000, 1000	;cyan
+		dw	   0,    0,    0	;black
+		dw	 333,  333,  333	;grey
+		dw	 333,    0,    0	;light red
+		dw	   0,  333,    0	;light green
+		dw	 333,  333,    0	;light yellow
+		dw	   0,    0,  333	;light blue
+		dw	 333,    0,  333	;light magenta
+		dw	   0,  333,  333	;light cyan
+		dw	   0,    0,    0	;black
+
+initial_color_table	db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00110110b		;pel val = 3 yellow
+			db	00001001b		;pel val = 4 blue
+			db	00101101b		;pel val = 5 magenta
+			db	00011011b		;pel val = 6 cyan
+			db	00000000b		;pel val = 7 black
+			db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00110110b		;pel val = 3 yellow
+			db	00001001b		;pel val = 4 blue
+			db	00101101b		;pel val = 5 magenta
+			db	00011011b		;pel val = 6 cyan
+			db	00000000b		;pel val = 7 black
+			db	0			;overscan = 0
+
+
+		if	GSX
+vga_col_table	db  0, 0, 0		;Black
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63, 0		;Yellow
+		db  0, 0,63		;Blue
+		db 63, 0,63		;Magenta
+		db  0,63,63		;Cyan
+		db 63,63,63		;White
+		db  0, 0, 0		;Black
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63, 0		;Yellow
+		db  0, 0,63		;Blue
+		db 63, 0,63		;Magenta
+		db  0,63,63		;Cyan
+		db 63,63,63		;White
+		else
+
+vga_col_table	db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63, 0		;Yellow
+		db  0, 0,63		;Blue
+		db 63, 0,63		;Magenta
+		db  0,63,63		;Cyan
+		db  0, 0, 0		;Black
+		db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63, 0		;Yellow
+		db  0, 0,63		;Blue
+		db 63, 0,63		;Magenta
+		db  0,63,63		;Cyan
+		db  0, 0, 0		;Black
+		endif
+
+
+MAP_COL		dw	0		;white
+		dw	7		;black
+		dw	1		;red
+		dw	2		;green
+		dw	4		;blue
+		dw	6		;cyan
+		dw	3		;yellow	
+		dw	5		;magenta
+		dw	7		;white
+		dw	7		;black
+		dw	7		;lt red
+		dw	7		;lt green
+		dw	7		;lt blue
+		dw	7		;lt cyan
+		dw	7		;lt yellow	
+		dw	7		;lt magenta
+endif
+if num_planes eq 2
+act_col_tbl	dw	1000, 1000, 1000	;white
+		dw	1000,    0,    0	;red
+		dw	   0, 1000,    0	;green
+		dw	1000, 1000,    0	;yellow
+		dw	   0,    0, 1000	;blue
+		dw	1000,    0, 1000	;magenta
+		dw	   0, 1000, 1000	;cyan
+		dw	   0,    0,    0	;black
+		dw	 333,  333,  333	;grey
+		dw	 333,    0,    0	;light red
+		dw	   0,  333,    0	;light green
+		dw	 333,  333,    0	;light yellow
+		dw	   0,    0,  333	;light blue
+		dw	 333,    0,  333	;light magenta
+		dw	   0,  333,  333	;light cyan
+		dw	   0,    0,    0	;black
+
+req_col_tbl	dw	1000, 1000, 1000	;white
+		dw	1000,    0,    0	;red
+		dw	   0, 1000,    0	;green
+		dw	1000, 1000,    0	;yellow
+		dw	   0,    0, 1000	;blue
+		dw	1000,    0, 1000	;magenta
+		dw	   0, 1000, 1000	;cyan
+		dw	   0,    0,    0	;black
+		dw	 333,  333,  333	;grey
+		dw	 333,    0,    0	;light red
+		dw	   0,  333,    0	;light green
+		dw	 333,  333,    0	;light yellow
+		dw	   0,    0,  333	;light blue
+		dw	 333,    0,  333	;light magenta
+		dw	   0,  333,  333	;light cyan
+		dw	   0,    0,    0	;black
+
+		if	GSX
+vga_col_table	db  0, 0, 0		;Black
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63,63		;White
+		db  0, 0, 0		;Black
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63,63		;White
+		db  0, 0, 0		;Black
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63,63		;White
+		db  0, 0, 0		;Black
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db 63,63,63		;White
+		else
+
+vga_col_table	db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db  0, 0, 0		;Black
+		db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db  0, 0, 0		;Black
+		db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db  0, 0, 0		;Black
+		db 63,63,63		;White
+		db 63, 0, 0		;Red
+		db  0,63, 0		;Green
+		db  0, 0, 0		;Black
+		endif
+
+
+initial_color_table	db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00000000b		;pel val = 3 black
+			db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00000000b		;pel val = 3 black
+			db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00000000b		;pel val = 3 black
+			db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00000000b		;pel val = 3 black
+			db	0			;overscan = 0
+
+
+MAP_COL		dw	0		;white
+		dw	3		;black
+		dw	1		;red
+		dw	2		;green
+		dw	3		;blue
+		dw	3		;cyan
+		dw	3		;yellow	
+		dw	3		;magenta
+		dw	3		;white
+		dw	3		;black
+		dw	3		;lt red
+		dw	3		;lt green
+		dw	3		;lt blue
+		dw	3		;lt cyan
+		dw	3		;lt yellow	
+		dw	3		;lt magenta
+endif
+if num_planes eq 1
+MAP_COL		dw	0		;white
+		dw	0fh		;black
+		dw	0fh		;red
+		dw	0fh		;green
+		dw	0fh		;blue
+		dw	0fh		;cyan
+		dw	0fh		;yellow	
+		dw	0fh		;magenta
+		dw	0fh		;white
+		dw	0fh		;black
+		dw	0fh		;lt red
+		dw	0fh		;lt green
+		dw	0fh		;lt blue
+		dw	0fh		;lt cyan
+		dw	0fh		;lt yellow	
+		dw	0fh		;lt magenta
+
+act_col_tbl	dw	1000, 1000, 1000	;white
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black 
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black  
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black    
+		dw	   0,    0,    0	;black      
+		dw	   0,    0,    0	;black       
+		dw	   0,    0,    0	;black     
+		dw	   0,    0,    0	;black        
+		dw	   0,    0,    0	;balck     
+		dw	   0,    0,    0	;black
+
+req_col_tbl	dw	1000, 1000, 1000	;white
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black 
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black  
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black
+		dw	   0,    0,    0	;black    
+		dw	   0,    0,    0	;black      
+		dw	   0,    0,    0	;black       
+		dw	   0,    0,    0	;black     
+		dw	   0,    0,    0	;black        
+		dw	   0,    0,    0	;balck     
+		dw	   0,    0,    0	;black
+
+initial_color_table	db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00110110b		;pel val = 3 yellow
+			db	00001001b		;pel val = 4 blue
+			db	00101101b		;pel val = 5 magenta
+			db	00011011b		;pel val = 6 cyan
+			db	00000000b		;pel val = 7 black
+			db	00111111b		;pel val = 0 white
+			db	00100100b		;pel val = 1 red
+			db	00010010b		;pel val = 2 green
+			db	00110110b		;pel val = 3 yellow
+			db	00001001b		;pel val = 4 blue
+			db	00101101b		;pel val = 5 magenta
+			db	00011011b		;pel val = 6 cyan
+			db	00000000b		;pel val = 7 black
+			db	0			;overscan = 0
+endif
+
+CONTRL		rw	CONTRL_SIZE
+INTIN		rw	INTIN_SIZE
+PTSOUT		rw	PTSOUT_SIZE
+

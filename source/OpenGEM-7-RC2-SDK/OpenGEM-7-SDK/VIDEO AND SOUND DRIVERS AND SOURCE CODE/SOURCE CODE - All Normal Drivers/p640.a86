@@ -1,0 +1,86 @@
+;------	VEGA HiRes (640x480) Data:
+
+Vega_Seg	equ	0C000h		;VEGA ROM Segment
+mul8_addr	equ	028h		;Address of emulation routine
+
+		Cseg
+
+		Public	Set_Hires
+
+;	Alt. Mode 10: 640 x 480 16-color graphics (>64k ram):
+
+HiRes_Params	db	80, 36, 14
+		dw	0B400h
+		db	001h, 00Fh, 000h, 006h
+		db	0ABh
+		db	064h, 04Fh, 053h, 021h, 053h, 000h
+		db	0F0h, 01Fh, 000h, 000h, 000h, 000h
+		db	000h, 000h, 000h, 000h, 0E0h, 02Ch
+		db	0DFh, 028h, 00Fh, 0E1h, 00Ch, 0E3h
+		db	0FFh
+		db	000h, 001h, 002h, 003h, 004h, 005h
+		db	014h, 007h, 038h, 039h, 03Ah, 03Bh
+		db	03Ch, 03Dh, 03Eh, 03Fh, 001h, 000h
+		db	00Fh, 000h
+		db	000h, 000h, 000h, 000h, 000h, 000h
+		db	005h, 00Fh, 0FFh
+
+Emulate		rd	0		;Far pointer to Emulate routine
+EmulOff		dw	0
+EmulSeg		dw	0
+
+
+;	Set VEGA HiRes (640x480) mode
+
+Set_Hires:
+	push	es			;Save registers
+	push	bp
+	push	di
+	push	si
+	push	dx
+	push	bx
+	push	ax
+
+	mov	bx, Vega_Seg		;Setup to get Vega Segment
+	mov	es, bx
+
+	mov	bx, es:.Mul8_addr	;Get offset of emulation routine
+	mov	cs:EmulOff, bx		;Save offset
+	mov	cs:EmulSeg, es		;and segment
+
+	push	cs			;Copy code segment
+	pop	es			;into ES
+	lea	di, HiRes_Params 	;Get address of HiRes parameters
+	mov	dx, 3D4h 		;Get CRT port address
+	mov	ax, 9			;Get special mode
+	callf	cs:Emulate		;Set EGA registers from param table
+
+	mov	ax, 040H		;Get the bios data segment
+	mov	es, ax
+	mov	es: word ptr .4AH, 80	;Set the number of columns
+	mov	es: byte ptr .84H, 33	;Set the number of rows
+
+	call	Pal_On			;Turn the palette on
+
+	pop	ax			;Restore registers
+	pop	bx
+	pop	dx
+	pop	si
+	pop	di
+	pop	bp
+	pop	es
+	ret				;Return
+
+;
+;	Turn Palette On
+;
+
+Pal_On:
+	mov	dx, 3DAh		;Get status port address (Color)...
+	in	al, dx			;Set attribute flip-flop
+	mov	dx, 3C0h
+	mov	al, 20h
+	out	dx, al			;Enable palette
+	ret
+	end
+

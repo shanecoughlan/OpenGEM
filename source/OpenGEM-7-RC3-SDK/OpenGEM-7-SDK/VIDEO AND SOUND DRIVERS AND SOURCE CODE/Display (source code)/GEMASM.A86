@@ -1,0 +1,21 @@
+;/*	GEMASM.A86	05/03/84 -  01/05/85	Lee Lorenzen		*/
+;
+	cseg
+;
+GEMENTRY 	equ	0efh
+;
+	PUBLIC	gem
+gem:
+	push	bp
+	mov	bp,sp
+	mov	cx,200
+	mov	dx,0
+	mov	bx,4[bp]
+	mov	ax,6[bp]
+	mov	es,ax
+	int	GEMENTRY
+	pop	bp
+	ret
+;
+	end
+

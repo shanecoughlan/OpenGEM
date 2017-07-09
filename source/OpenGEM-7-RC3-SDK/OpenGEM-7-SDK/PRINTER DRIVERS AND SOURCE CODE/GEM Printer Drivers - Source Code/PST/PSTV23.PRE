@@ -1,0 +1,274 @@
+%%BeginExitServer: 0000000000
+0000000000 version (23.0) ne{stop}if statusdict /Patch1Installed known{stop}if
+serverdict begin exitserver
+%%EndExitServer
+
+statusdict /Patch1Installed true put
+currentfile eexec
+c3c703843e75cc772962e3a7fadee742bb1258167ac7020cbc1cdfd379c35f53
+da38afaed75c86541fde979ff594180fe542991f2199c8614247e4a1e3e5ecff
+8bc3844d36e2d091e9f649518473592b44be262c7a2929ac4a9acd626bd3c441
+e2aae320e60b2c21e02bc9c4f3cde0d5eca674f5b0bbff3ee860a7cd2e4e9f7b
+9eed9b1286e5a9b9b0fdf8e73951152837a16a6913e477cc8a4f3cebbf2e78e8
+fe5b0f92d45a274e75df31e5182cd81dce61bc53bdb8685f0a7ce24c0b8440f7
+67b7fd750bb998fc775415b1c7b8502ea7c744ccb807635f7244d3fdd6ebd01f
+634c9f3241fddc1a95d62bfb710a9ea6831ec6e1792f60503f077868e860dc3a
+518d8ac29dc625ec65157889cd1f943a37eb55ef0e44c3a4776a481f1dd10cda
+79b3db9907295c0ab9e3142df3ef0840b07f29d67c4f8aba333c9cc6e9f57d3f
+47083e0bd9e85151ef158308a7d991b02ddcf47bffe6fed2f8e342dd7d2f81ca
+80bb689bd0cb5af2a471b5577a4f8dbdfd2b0fcd0267bfa4dc6038bc235d3d8b
+35469a680b41dc95e6a1d48ba543d291575d72475ef512492547629c4db741b8
+68705f01282c230e1570cea8daea989707e99dce1d11d561256bd24608a66945
+2042384aadfcc25cb0167b5896b1a13092d0a7c4ce1343e30834de5d5df345b9
+ccb742acf36f7d3a9b43361cf5a9e0121fec84ba8b6c06312a71600ab9783ddc
+59b8cb4da03019e82690df5cb2aefd9026aed30efb24b19e5405410685eb35b3
+b25cf8ba535156ee600749abf2e3c572313c62dcd9492ca3abcfe7ee8fd40410
+902f417c82908b412c9a826206f4292ab5196013a5f3615661cf81fc60b36a84
+f457c2adb1a0c1c19f089d170de47d6933ce247d44865035caa1a6d4a2f6986f
+9856de5f3d05a5a1020bce9768df8e8aab928b90029dfc2bbb715e19b5e7bc3e
+11f05c1dad24849f8aadb7867f9d92f4400a432cdd6587057c582dc25fbeadde
+f75121202e2a90dc6a4491ae9ee2b39c5fab5071a2f415d4a3cf8357fff771d8
+790cc5788d506086c5a07ddbc2997f3abe28972cd40275c0117c77f479fd0b74
+53a0bfcd82f30d1eb3c35fc914657d6f484bf3be81c54238267ccc2a19ec42a3
+1336014c6446b12e3fe7746b658f829c52173a78e456ad78c2d65a3209949a5a
+735d3795579151ee0102773c204134e8563b011a90c7cf0622058081c60b4d5d
+6a146eb610c92e2e9c05f7ca40a1375e7c397def7f0d6a4c65e22728ae30adc2
+b1b088339a7e7ab8f2dc6a3b5abd1318663cc5d3c37edd57f8ace64a565d1775
+6e5a1268986105c918547306e0bf12d128220771e074323746ac15c52ef16e95
+c0e62a0746b7c202a2e2aba2060cd64d5f656dbeb1fa837734d4a23093ddb312
+537c0a6f8e224e5aa6cd22f1740e3611550b85d1a447c58ca8
+%%EOF
+
+% Copyright (C) Digital Research, Inc. 1986, 1987. All rights reserved.
+systemdict /setpacking known {/svp currentpacking def true setpacking}if
+/gemdict 250 dict def
+gemdict begin
+
+/bd{bind def}bind def
+/ed{exch def}bind def
+
+% User defined Start of Page procedure:  this operator will be
+% executed at the beginning of each page output by GEM
+% and is provided to allow user-defined page initialization.
+/UserSoP{}bd
+
+/GEM_INISUB{pop pop pop pop}bd
+/GEM_INIDOC{/#copies ed settray
+	statusdict /setpageparams known
+	{statusdict begin 0 1 setpageparams end}{pop pop}ifelse}bd
+/geminit{np 1 setlinejoin /mpf true def
+	/encstr 80 string def gs}bd
+/matinit{/landscape ed /p3 ed /p2 ed /p1 ed
+	gr 72 300 div exch div dup scale clippath pathbbox exch /prx ed
+	exch dup /ply ed sub 1 add p3 sub 2 div ply add /ty ed
+	dup prx exch sub 1 add p2 sub 2 div add
+	landscape{p1 add}if ty translate
+	landscape{90 rotate p2 /p1 ed p3 /p2 ed p1 /p3 ed}if
+	gs}bd
+/gr /grestore load def
+/np /newpath load def
+/cp /currentpoint load def
+/gi /getinterval load def
+/lto /lineto load def
+/mto /moveto load def
+/clw /currentlinewidth load def
+/gs /gsave load def 
+/greset{gr gs}bd
+/settray{dup 0 lt mf dup 0 ge{tray}{pop}ifelse}bd
+/mf{statusdict /manualfeed known
+	{statusdict begin /manualfeed ed end}{pop}ifelse}bd
+/tray{statusdict begin true
+	product(QMS-PS 1200)eq{not exch dup 1 gt{pop 0}if
+		defaultpapertray exch 0 ne{3 exch sub}if setpapertray}if
+	product dup(PrintServer 40)eq exch(QMS-PS 2400)eq or{
+		not exch dup 2 gt{pop 0}if
+		dup 0 eq{pop defaultpapertray}
+		{dup defaultpapertray ge{1 add}if}ifelse setpapertray}if
+	{statusdict /defaultpapertray known statusdict /setpapertray known and
+		{defaultpapertray exch 0 ne{1 exch sub}if setpapertray}
+		{pop}ifelse}if end}bd
+/reencsmalldict 12 dict def
+/ReEncodeSmall{reencsmalldict begin
+	/newcodesandnames ed /newfontname ed
+	/basefontname ed /basefontdict basefontname findfont def
+	/newfont basefontdict maxlength dict def basefontdict
+	{exch dup /FID ne
+		{dup /Encoding eq
+			{exch dup length array copy newfont 3 1 roll put}
+			{exch newfont 3 1 roll put}ifelse}
+		{pop pop}ifelse}forall
+	newfont /FontName newfontname put newcodesandnames aload pop
+	newcodesandnames length 2 idiv
+	{newfont /Encoding get 3 1 roll put}repeat
+	newfontname newfont definefont pop end}bd
+/gemenvec[8#200 /Ccedilla 8#201 /udieresis 8#202 /eacute 8#203 /acircumflex
+	8#204 /adieresis 8#205 /agrave 8#206 /aring 8#207 /ccedilla
+	8#210 /ecircumflex 8#211 /edieresis 8#212 /egrave 8#213 /idieresis
+	8#214 /icircumflex  8#215 /igrave 8#216 /Adieresis 8#217 /Aring
+	8#220 /Eacute 8#221 /ae 8#222 /AE 8#223 /ocircumflex 8#224 /odieresis
+	8#225 /ograve 8#226 /ucircumflex 8#227 /ugrave 8#230 /ydieresis
+	8#231 /Odieresis 8#232 /Udieresis 8#233 /oslash 8#234 /sterling
+	8#235 /Oslash 8#236 /currency 8#237 /florin 8#240 /aacute 8#241 /iacute
+	8#242 /oacute 8#243 /uacute 8#244 /ntilde 8#245 /Ntilde
+	8#246 /ordfeminine 8#247 /ordmasculine 8#250 /questiondown
+	8#251 /quotedblleft 8#252 /quotedblright 8#253 /guilsinglleft
+	8#254 /guilsinglright 8#255 /exclamdown 8#256 /guillemotleft
+	8#257 /guillemotright 8#260 /atilde 8#261 /otilde 8#262 /yen
+	8#263 /cent 8#264 /oe 8#265 /OE 8#266 /Agrave 8#267 /Atilde
+	8#270 /Otilde 8#271 /section 8#272 /daggerdbl 8#273 /dagger
+	8#274 /paragraph
+	8#300 /quotedblbase 8#301 /ellipsis 8#302 /perthousand 8#303 /bullet
+	8#304 /endash 8#305 /emdash 8#306 /ring 8#307 /Aacute
+	8#310 /Acircumflex 8#311 /Egrave 8#312 /Ecircumflex 8#313 /Edieresis
+	8#314 /Igrave 8#315 /Iacute 8#316 /Icircumflex 8#317 /Idieresis
+	8#320 /Ograve 8#321 /Oacute 8#322 /Ocircumflex 8#323 /Scaron
+	8#324 /scaron 8#325 /Ugrave 8#326 /Uacute 8#327 /Ucircumflex
+	8#330 /Ydieresis 8#331 /germandbls 8#341 /germandbls
+	8#351 /grave 8#352 /acute 8#353 /circumflex 8#354 /tilde 8#355 /macron
+	8#356 /breve 8#357 /dotaccent 8#360 /dieresis 8#361 /ring
+	8#362 /cedilla 8#363 /caron
+	version(23.0)eq{8#275 /space 8#276 /space 8#277 /space}
+	{8#275 /copyright 8#276 /registered 8#277 /trademark}ifelse]def
+/addfont{fonts exch fpt exch put /fpt fpt 1 add def}bd
+/encfont{fonts exch get dup encstr cvs length 1 sub encstr exch 1 exch
+	getinterval cvn exch gemenvec ReEncodeSmall}bd
+/path{np mto{lto}repeat}bd
+/circle{np 0 0 1 0 360 arc}bd
+/rend{gs 1 setlinecap np mto cp 0.1 add lto stroke gr}bd
+/vl{dup /st ed dup apath exch get tx sub dup mul
+	exch 1 add apath exch get ty sub dup mul add sqrt}bd
+/doarrow{/rot ed /ty ed /tx ed 6 array currentmatrix
+	tx ty translate clw 4 lt{4}{clw}ifelse dup scale rot rotate np
+	0 0 mto -3 1.5 lto -3 -1.5 lto fill setmatrix}bd
+/arpath{np apath 0 get apath 1 get mto 2 2 points 1 sub
+	{dup apath exch get exch 1 add apath exch get lto}for}bd
+/arrowline{/apath ed /lend ed /lbeg ed /len clw 3 mul def
+	/points apath length def lbeg
+	{apath 0 get dup /tx ed /x1 ed apath 1 get dup
+		/ty ed /y1 ed true 2 2 points 1 sub
+		{vl len ge{pop false exit}if}for
+		{/lbeg false def /lend false def}
+		{apath 2 apath st points st sub gi putinterval /r1 y1
+			apath 3 get sub x1 apath 2 get sub atan def apath 0
+			x1 r1 cos len mul sub put apath 1 y1 r1 sin len mul
+			sub put /points points st 2 sub sub def}ifelse}if
+	lend{apath points 2 sub get dup /tx ed /x2 ed
+		apath points 1 sub get dup /ty ed /y2 ed
+		true points 4 sub -2 0
+		{vl len ge{pop false exit}if}for
+		{/lbeg false def /lend false def}
+		{/r2 y2 apath st 1 add get sub x2 apath st get sub
+			atan def /st st 2 add def apath st x2 r2 cos len mul
+			sub put apath st 1 add y2 r2 sin len mul sub put
+			/points st 2 add def}ifelse}if
+	lbeg{x1 y1 r1 doarrow}if lend{x2 y2 r2 doarrow}if arpath}bd
+/ac{6 array currentmatrix xt yt translate xs ys scale}bd
+/shorten{dup mul exch dup mul add sqrt clw 150 mul exch div}bd
+/xang{dup sin xs mul exch cos ys mul atan}bd
+/arrowarc{/eang ed /bang ed /ys ed /xs ed /yt ed
+	/xt ed /lend ed /lbeg ed ac np 0 0 1 bang xang
+	eang xang arc setmatrix cp /y2 ed /x2 ed ac np 0 0 1 bang
+	xang dup arc setmatrix cp /y1 ed /x1 ed lbeg
+	{/bang bang xs ys shorten add def}if
+	lend{/eang eang xs ys shorten sub def}if ac np 0 0 1 bang xang eang
+	xang arc setmatrix gs stroke gr
+	lend{x2 y2 cp y2 exch sub exch x2 exch sub atan doarrow}if
+	lbeg{ac np 0 0 1 bang xang dup arc setmatrix x1 y1 cp y1 exch sub
+		exch x1 exch sub atan doarrow}if}bd
+/rbox{/ury ed /urx ed /lly ed /llx ed urx llx sub
+	4 div dup 50 gt{pop 50}if /radius ed ury lly sub 4 div dup
+	radius gt{pop radius}if /radius ed np urx radius sub ury mto llx
+	ury llx lly radius arcto 4{pop}repeat llx lly urx lly radius arcto
+	4{pop}repeat urx lly urx ury radius arcto 4{pop}repeat urx ury llx ury
+	radius arcto 4{pop}repeat}bd
+/marker{1 sub mdef exch get /mproc ed 32 div /msize ed
+	{gs np translate msize dup scale 1 setlinewidth
+		mproc stroke gr}repeat}bd
+/mdef[{0 0 mto 1 0 lto 1 1 lto 0 1 lto closepath}bind
+	{-16 0 mto 16 0 lto 0 -16 mto 0 16 lto}bind
+	{0 -16 mto 0 16 lto 13.9 8 mto -13.9 -8 lto 13.9 -8 mto
+		-13.9 8 lto}bind
+	{16 16 mto -16 16 lto -16 -16 lto 16 -16 lto closepath}bind
+	{16 16 mto -16 -16 lto -16 16 mto 16 -16 lto}bind
+	{16 0 mto 0 16 lto -16 0 lto 0 -16 lto closepath}bind]def
+/bitison{/ybit ed /xbit ed bstring ybit bwidth mul xbit 8 idiv add get
+	1 7 xbit 8 mod sub bitshift and 0 ne}bd
+/setpattern{/freq ed /bwidth ed /bpside ed /bstring ed /onbits 0 def
+	/offbits 0 def freq 0 {/y ed /x ed /xindex x 1 add 2 div bpside mul
+	cvi def /yindex y 1 add 2 div bpside mul cvi def xindex yindex
+	bitison {/onbits onbits 1 add def 1} {/offbits offbits 1 add def 0}
+	ifelse}setscreen{}settransfer offbits dup onbits add div setgray}bd
+/ellpie{/pie ed /eang ed /bang ed /ys ed /xs ed
+	/yt ed /xt ed 6 array currentmatrix xt yt translate xs ys
+	scale np pie{0 0 mto}if 0 0 1 bang xang eang xang arc setmatrix}bd
+/roundarc{gs 1 setlinecap cp np mto cp lto stroke gr}bd
+/fstimg{{vrep 0.1 gt{/vrep vrep 1 sub def}{
+			{currentfile token pop 0 eq
+				{currentfile scan readhexstring pop pop exit}
+				{/vrep currentfile token pop def}ifelse
+			}loop}ifelse scan}image}bd
+/decode{/patstring patlen string def /bonestr 1 string def
+	{vrep 0.1 gt{/vrep vrep 1 sub def scan}
+		{/spos 0 def
+			{currentfile token pop currentfile token pop
+				exch imop exch get exec spos smax ge
+				{scan exit}if}loop}ifelse}image}bd
+/imop[{<ff> psc}bind
+	{<00> psc}bind
+	{currentfile patstring readhexstring pop psc}bind
+	{1 exch 1 exch
+		{pop currentfile bonestr readhexstring pop scan exch
+			spos exch 0 get put /spos spos 1 add def}for}bind
+	{1 sub /vrep ed}bind]def
+/psc{dup length /plen ed exch -1 1
+	{pop dup scan exch spos exch putinterval /spos spos plen add def}for
+	pop}bd
+/gtext{gs /msg ed /ty ed /tx ed tx ty translate trotate
+	rotate tcolor setgray 10 setflat horz halign get exec
+	vert valign get exec np tx ty mto msg show tunder
+	{cp cp extents pop pop 5 div dup neg setlinewidth 1.5 mul ty add
+		/ty ed [] 0 setdash pop np pop ty mto tx ty lto
+		stroke np mto}if
+	gr}bd
+/etext{gs translate trotate rotate tcolor setgray /tx 0 def /ty 0 def
+	{tx add dup /tx ed np ty mto show}repeat gr}bd
+/jtext{/msg ed /jtype ed /sps ed /dx ed /ty ed
+	/tx ed
+	gs tx ty translate trotate rotate tcolor setgray 10 setflat
+	jhorz halign get exec vert valign get exec jo gr}bd
+/fet{gs translate /tx 0 def /ty 0 def
+	{tx add dup /tx ed np ty mto show}repeat gr}bd
+/fjt{/msg ed /jtype ed /sps ed /dx ed /ty ed
+	gs ty translate 10 setflat /tx 0 def /ty 0 def jo gr}bd
+/sf{fonts tface get findfont txscale tyscale matrix scale makefont setfont}bd
+/tpos{np tx ty mto}bd
+/extra{dx msg stringwidth pop sub}bd
+/justify[{tpos msg show}bind
+	{sps 0 eq{tpos msg show}{extra sps div 0 32 tpos msg widthshow}ifelse}
+	bind{extra msg length div 0 tpos msg ashow}bind]def
+/jo{justify jtype get exec tunder
+	{cp cp extents pop pop 5 div dup neg setlinewidth 1.5 mul
+	ty add /ty ed [] 0 setdash
+	pop np pop ty mto tx ty lto stroke np mto}if}bd
+/horz[{/tx 0 def}bind
+	{msg stringwidth pop -2 div /tx ed}bind
+	{msg stringwidth pop neg /tx ed}bind]def
+/extents{(_)bbox pop pop msg stringwidth pop (])bbox 3{exch pop}repeat}bd
+/bbox{np 0 0 mto false charpath flattenpath pathbbox np}bd
+/vert[{/ty 0 def}bind
+	{extents -2 div /ty ed pop pop pop}bind
+	{extents neg /ty ed pop pop pop}bind
+	{extents pop pop neg /ty ed pop}bind]def
+/jhorz[{/tx 0 def}bind
+	{/tx dx -2 div def}bind
+	{/tx dx neg def}bind]def
+/symindex 12 def
+/CR{/ah 0 def}bd
+/LF{0 -50 translate}bd
+/atext{gs /msg ed tcolor setgray np ah av mto
+	msg show tunder{cp cp (_)bbox pop pop exch pop 5 div dup neg
+	setlinewidth 1.5 mul add dup ah exch [] 0 setdash np mto lto
+	stroke np mto}if cp pop /ah ed gr}bd
+end
+systemdict /setpacking known{svp setpacking}if
+%%EndProlog

@@ -1,0 +1,306 @@
+GEM Developers' Kit - DJGPP library, v1.0.2       John Elliott, 5 October 2002
+==============================================================================
+
+  This is based on the GEM PTK version 3.1 downloadable from
+<http://cpm.interfun.net>.
+
+  See the "Changes" section at the end for changes since the previous version.
+
+Installing
+==========
+
+  If you want to install the .H and .LIB files to your main LIB and INCLUDE
+directories, type "make install".
+  Otherwise, add "-I../contrib/gem/include" and "-L../contrib/gem/lib" to
+your C compiler flags.
+
+Overview of use
+===============
+
+  When writing your GEM application, add "-lgem" to your linker options.
+To use GEM functions, add the line
+
+#include "djgppgem.h"
+
+  - this will include the other necessary files. This #include should be
+after any files such as <stdio.h>.
+
+  Your program should use GEMAIN:
+
+WORD GEMAIN(WORD ARGC, BYTE *ARGV[])
+
+rather than main().
+
+  There are important differences between the DJGPP libraries and the original
+16-bit Lattice C libraries, principally related to the different memory model
+in DJGPP programs.
+
+  You can use DJGPP to write Desk Accessories, but the resulting DAs won't
+then work. I believe that GEM's DA support is not compatible with DJGPP.
+
+Far pointers, and other 32-bit considerations
+=============================================
+
+  DJGPP programs run in a 32-bit linear address space, while GEM runs
+in a 16-bit segmented address space. There are two different ways to
+communicate between the two:
+
+* The older method pretends DJGPP is a small-model 16-bit compiler, and
+ uses portability macros to access GEM's address space. This is described
+ in DJMACROS.TXT.
+* The newer method pretends GEM is a 32-bit program, and does most of the
+ conversion to 16-bit within the libraries. This is described in DJFARPTR.TXT.
+ A few portability macros will probably still be needed.
+
+  As for which to use: The new method is easier to write, but makes for
+slightly slower code. Since it is a newer method, it is slightly more likely
+to suffer from bugs.
+  The samples DEMO and DJDEMO allow you to compare the approaches. DEMO
+uses portability macros while DJDEMO uses the newer wrapper functions.
+
+Samples
+=======
+
+  The samples in the BIN directory are DJGPP ports of the supplied sample
+applications. PROP.APP is used to test the prop_*() functions; it should
+be used in conjunction with the GEM.CFG file in SRC/PROP.
+
+ViewMAX and FreeGEM
+===================
+
+  See the file FREEGEM.TXT for details of the FreeGEM support in this
+release of the bindings.
+
+USERDEF objects
+===============
+
+  See DJUDEF.TXT for a description of how to use USERDEF objects in DJGPP.
+
+Hooking the AES or VDI
+======================
+
+  It is possible to filter AES or VDI calls made by your program. To do this,
+make one or both of these calls:
+
+  AESFUNC divert_aes(AESFUNC new)
+  VDIFUNC divert_vdi(VDIFUNC new)
+
+  The divert_* functions return the address of the previous override function,
+or NULL if there was none. If the parameter passed is NULL, the default
+functions will be used.
+  Your new handlers must make their own INT 0xEF calls. They should not
+call the library AES or VDI functions, since the library is not reentrant.
+Your handler will be passed the linear address of the INT 0xEF parameter
+block; since this is in GEM's address space, all pointers within it will be in
+segment:offset form.
+
+
+Notes on particular functions
+=============================
+
+WORD gemcheck(VOID)
+
+    Returns 1 if the GEM VDI or AES are present, else 0.
+
+WORD aescheck(VOID)
+
+    Returns 1 if the GEM AES is present, else 0.
+
+WORD vdi_alloc_arrays(VOID)
+
+    This is called by v_opnwk(), v_opnvwk() and appl_init(). Until it is
+  called, the VDI cannot be used. If you need to call a VDI function before
+  one of the three above, call this first.
+                              
+WORD aes_alloc_arrays(VOID)
+
+    This is called by appl_init(). Until it is called, the AES cannot be used.
+
+AES functions
+-------------
+
+WORD appl_write  (WORD  rwid,    WORD length, WORD *pbuff);
+WORD appl_read   (WORD  rwid,    WORD length, WORD *pbuff);
+
+    The buffers used by appl_read() and appl_write() are in the program's
+  address space.
+
+WORD appl_find   (LPVOID  pname);
+WORD appl_tplay  (LPVOID  tbuffer, WORD  tlength, WORD tscale);
+WORD appl_trecord(LPVOID  tbuffer, WORD  tlength);
+
+    The buffers used by these functions are in GEM's address space.
+
+WORD  evnt_mesag(WORD buff[8]);
+WORD  evnt_multi(UWORD flags, UWORD bclk, UWORD bmsk, UWORD bst, 
+		 UWORD m1flags, UWORD m1x, UWORD m1y, UWORD m1w, UWORD m1h, 
+		 UWORD m2flags, UWORD m2x, UWORD m2y, UWORD m2w, UWORD m2h, 
+                 WORD mepbuff[8], UWORD tlc, UWORD thc, UWORD *pmx, UWORD *pmy,
+		 UWORD *pmb, UWORD *pks, UWORD *pkr, UWORD *pbr);
+
+    The message buffers used by these functions are in the program's address
+  space. Therefore it is unnecessary to use "ad_rmsg = ADDR(gl_rmsg)" to pass
+  the address of the buffer.
+
+WORD menu_bar(     LPTREE tree, WORD showit)
+
+    Object trees are in GEM's address space. See dj_menu_bar() if you want
+  the object tree to be in the program's address space.
+
+WORD form_alert(WORD defbut, LPBYTE astring);
+
+    The string passed to form_alert is in GEM's address space. Use
+  dj_form_alert() if the string should be in the program's address space.
+
+  Note: In ViewMAX and FreeGEM, the high byte of "defbut" can contain the
+  number of a second button, for which ESC is the shortcut.
+
+WORD graf_growbox  (WORD x1, WORD y1, WORD w1, WORD h1,
+                    WORD x2, WORD y2, WORD w2, WORD h2);
+WORD graf_shrinkbox(WORD x1, WORD y1, WORD w1, WORD h1,
+                    WORD x2, WORD y2, WORD w2, WORD h2);
+
+    These functions are no longer dummies; they now call GEM. If GROWBOX.ACC
+  is installed (or a recent FreeGEM is running) the expanding boxes will be
+  visible.
+
+WORD fsel_input(BYTE * pipath, BYTE * pisel, WORD *pbutton);
+WORD fsel_exinput(BYTE * pipath, BYTE * pisel, BYTE *title, WORD *pbutton);
+
+    The strings passed to the selector are in the program's address space.
+
+WORD  wind_set(    WORD w_handle, WORD w_field, WORD w2, WORD w3, 
+                                                WORD w4, WORD w5);
+
+    Use dj_wind_setl to pass pointers (such as string addresses) to this
+  function.
+
+WORD  rsrc_load(BYTE *rsname);
+
+    The filename is in the program's address space; the resource file will
+  load in GEM's address space.
+
+VDI functions
+-------------
+
+BOOLEAN vqt_attributes( WORD handle, WORD attributes[10] );
+
+    Returns FALSE if the VDI did not return the requested information. The
+  ViewMAX/2 VGA driver does not support this call. For this reason, HELLO.APP
+  does not work under ViewMAX/2 (and terminates gracefully if run under it).
+    If you replace the ViewMAX/2 VGA driver by the one from GEM/3, HELLO.APP
+  will then run, and the rest of ViewMAX will also work.
+
+VOID vro_cpyfm( WORD handle, WORD wr_mode, WORD xy[], MFDB *srcMFDB,
+                MFDB *desMFDB );
+VOID vr_trnfm(  WORD handle, MFDB *srcMFDB, MFDB *desMFDB );
+VOID vrt_cpyfm( WORD handle, WORD wr_mode, WORD xy[],
+                MFDB *srcMFDB, MFDB *desMFDB, WORD *index );
+
+  The MFDBs passed to these functions are in the program's address space,
+but the addresses within them are linear offsets in 16-bit memory. For
+support for 32-bit MFDBs, see DJFARPTR.DOC.
+
+DOS functions
+-------------
+
+  These dos_* functions bypass the DOS extender and directly call real-mode 
+DOS. If it is at all possible, use DJGPP's own libraries or _dos_* functions 
+instead.
+  DEMO uses these functions because it has to write out large memory areas
+in GEM's address space. It uses DJGPP's _dos_* functions to open the file,
+and dos_read() / dos_write() to do the reading and writing.
+  DJDEMO, on the other hand, keeps its buffers in the program's address
+space and uses the library _dos_read() and _dos_write().
+
+LONG dos_read(WORD handle, LONG cnt, LPVOID pbuffer);
+LONG dos_write(WORD handle, LONG cnt, LPVOID pbuffer);
+
+_____________________________________________________________________________
+
+Implementation details
+======================
+
+  The main() function in the library simply checks for the GEM AES
+before calling GEMAIN().
+  The original Gem PTK documentation states:
+
+     3 - To link a GEM application (not a GEM accessory), you may use
+     the startup program and library supplied by your compiler,  if you
+     know that your compiler generates code to free memory not used by
+     your program.
+
+  This is done by the DJGPP real-mode stub before the 32-bit code starts.
+
+______________________________________________________________________________
+
+Changes from the previous versions
+==================================
+
+v1.0.2
+======
+
+  Added bindings for the FreeGEM internal functions prop_gui_get() and
+prop_gui_set(), and appl_xbvset() / appl_xbvget( ) from GEM/4 and GEM/5 (to 
+support more than 16 disc drives).
+
+v0.9.1
+======
+  Bug fixes in trans_gimage().
+  New FreeGEM functions xshl_getshell() and xshl_setshell() [FREEGEM.DOC].
+  Some functions have been changed to take pointers in the program's
+address space rather than GEM's.
+  vqt_name() now returns a blank string under GEM/5 if GEM/5 did not
+provide a font name.
+  dj_form_alert() can now be used like printf() - it takes a format
+string and a list of arguments.
+
+v0.9
+====
+
+  Extra dj_*() functions added, so that objects can be manipulated in the
+program's address space. [DJFARPTR.DOC]
+  Three new FreeGEM parameters added for wind_get()/wind_set().
+  New colour categories added for FreeGEM. [FREEGEM.DOC]
+  Documentation reorganised into several files.
+
+v0.8
+====
+
+xapp_getinfo() support. [FREEGEM.TXT]
+
+v0.7
+====
+
+* Support for the prop_*() features of FreeGEM.
+
+* The additional GEM 3.1 libraries XFMLIB, OBLIB, and RCLIB have
+ been incorporated into the library. EMSLIB was not included, since it's
+ pointless in DJGPP programs.
+
+* The following extra bindings from the GEM 3.1 PTK are present:
+
+VOID v_ps_halftone(WORD handle, WORD index, WORD angle, WORD frequency);
+WORD shel_get(LPBYTE pbuffer, WORD len);
+WORD shel_put(LPBYTE pbuffer, WORD len);
+VOID v_setrgbi(WORD handle, WORD primtype, WORD r, WORD g, WORD b, WORD i);
+VOID v_topbot(WORD handle, WORD height, WORD FAR *char_width, 
+                 WORD FAR *char_height, WORD FAR *cell_width, 
+                 WORD FAR *cell_height);
+VOID vs_bkcolor(WORD handle, WORD color);
+VOID v_set_app_buff(LPVOID address, WORD nparagraphs);
+WORD v_bez_on(WORD handle);
+WORD v_bez_off(WORD handle);
+WORD v_bez_qual(WORD handle, WORD prcnt);
+VOID v_pat_rotate(WORD handle, WORD angle);
+VOID vs_grayoverride(WORD handle, WORD grayval);
+VOID v_bez(WORD handle, WORD count, LPWORD xyarr, LPVOID bezarr, WORD *
+minmax, LPWORD npts, LPWORD nmove);
+VOID v_bezfill(WORD handle, WORD count, LPWORD xyarr, LPVOID bezarr, WORD *
+minmax, LPWORD npts, LPWORD nmove);
+
+
+v0.5
+====
+
+  Support has been added for the extra features of ViewMAX/3 and FreeGEM.

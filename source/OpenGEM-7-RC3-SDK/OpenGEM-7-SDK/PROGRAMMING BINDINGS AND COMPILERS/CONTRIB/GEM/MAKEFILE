@@ -1,0 +1,45 @@
+
+
+all: 
+	cd src
+	make
+	cd ..
+
+clean:
+	cd src
+	make clean
+	cd ..
+	cd include
+	make clean
+	cd ..
+	cd bin
+	make clean
+	cd ..
+	cd doc
+	make clean
+	cd ..
+	erase *.bak
+
+
+tidy:
+	cd src
+	make tidy
+	cd ..
+	cd include
+	make tidy
+	cd ..
+	cd bin
+	make tidy
+	cd ..
+	cd doc
+	make clean
+	cd ..
+	erase *.bak
+
+install:	all
+	copy lib\libgem.a ..\..\lib
+	copy lib\accstub.acc ..\..\lib
+	copy include\*.h  ..\..\include
+
+install.lib:	
+	copy lib\libgem.a ..\..\lib

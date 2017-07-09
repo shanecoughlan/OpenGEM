@@ -1,0 +1,2355 @@
+--- 21b4tasm/source/ctmouse/asmlib/asm.mac	2002-06-04 00:00:00.000000000 +0200
++++ 21b4jwasm/source/ctmouse/asmlib/asm.mac	2008-05-31 17:37:00.000000000 +0200
+-saveFAR		macro	addr:req,segm:req,offs:rest
++saveFAR		macro	addr:req,segm:req,offs	; :rest
+-MOVSEG		macro	segreg:req,val:req,temp,segname:rest
++MOVSEG		macro	segreg:req,val:req,temp,segname ; :rest
+-POPSEG		macro	segreg:req,segname:rest
++POPSEG		macro	segreg:req,segname ; :rest
+-movadd		macro	dst:req,base,index:vararg
++movadd		macro	dst:req,base,index ; :vararg
+-movsub		macro	dst:req,base,index:vararg
++movsub		macro	dst:req,base,index ; :vararg
+-memcopy		macro	cnt:=<cx>,dstseg,dstsegname,dstoff,srcseg,srcsegname,srcoff:vararg
++memcopy		macro	cnt:=<cx>,dstseg,dstsegname,dstoff,srcseg,srcsegname,srcoff ; :vararg
+-movidx		macro	reg:req,index:req,base,oldindex:vararg
++movidx		macro	reg:req,index:req,base,oldindex ; :vararg
+-out_		macro	port:=<dx>,lo:=<al>,hi:vararg
++out_		macro	port:=<dx>,lo:=<al>,hi ; :vararg
+-outw		macro	port:=<dx>,val:vararg
++outw		macro	port:=<dx>,val ; :vararg
+-inb		macro	var,port:vararg
++inb		macro	var,port ; :vararg
+-inw		macro	var,port:vararg
++inw		macro	var,port ; :vararg
+--- 21b4tasm/source/ctmouse/asmlib/bios/area0.def	2003-03-01 00:00:00.000000000 +0100
++++ 21b4jwasm/source/ctmouse/asmlib/bios/area0.def	2008-06-01 18:59:40.000000000 +0200
+-ends
++VIDEOSAVETBL ends
+-ends		; sizeof(VIDEOPARAM) == 64
++VIDEOPARAM ends		; sizeof(VIDEOPARAM) == 64
+-CURSOR_pos	db 8 dup(?,?)	; 450: cursor column/row on each video page
++; CURSOR_pos	db 8 dup(?,?)	; 450: cursor column/row on each video page
++CURSOR_pos	db (8+8) dup (?)	; JWASM does not understand dup(?,?)
+--- 21b4tasm/source/ctmouse/asmlib/code.mac	2002-09-01 00:00:00.000000000 +0200
++++ 21b4jwasm/source/ctmouse/asmlib/code.mac	2008-05-31 17:36:50.000000000 +0200
+-CODE_		macro	op:req,name,def:vararg
++CODE_		macro	op:req,name,def ; :vararg
+-call_		macro	name:req,value:vararg
++call_		macro	name:req,value ; :vararg
+-jmp_		macro	name:req,value:vararg
++jmp_		macro	name:req,value ; :vararg
+-call_far	macro	name:vararg
++call_far	macro	name ; :vararg
+-jmp_far		macro	name:vararg
++jmp_far		macro	name ; :vararg
+-fixnear		macro	name:req,value:vararg
++fixnear		macro	name:req,value ; :vararg
+-fixcode		macro	offs:req,op,arg:vararg
++fixcode		macro	offs:req,op,arg ; :vararg
+--- 21b4tasm/source/ctmouse/asmlib/convert/count2x.mac	2002-06-04 00:00:00.000000000 +0200
++++ 21b4jwasm/source/ctmouse/asmlib/convert/count2x.mac	2008-06-01 19:16:34.000000000 +0200
+-_byte_hex_AX	macro	val:=<al>,case,shift:vararg
++_byte_hex_AX	macro	val:=<al>,case,shift ; :vararg
+-		xchg	ah,al
++;		xchg	ah,al
++	xchg al,ah	; TASM and JWASM use opposite encodings
+-_word_hex	macro	val:=<ax>,code:rest
++_word_hex	macro	val:=<ax>,code ; :rest
+--- 21b4tasm/source/ctmouse/asmlib/dos/io.mac	2002-06-02 00:00:00.000000000 +0200
++++ 21b4jwasm/source/ctmouse/asmlib/dos/io.mac	2008-05-31 17:37:09.000000000 +0200
+-DOSWriteC	macro	char:vararg
++DOSWriteC	macro	char ; :vararg
+-DOSWriteS	macro	strseg,strsegname,stroff:vararg
++DOSWriteS	macro	strseg,strsegname,stroff ; :vararg
+--- 21b4tasm/source/ctmouse/asmlib/dos/mem.mac	2002-06-02 00:00:00.000000000 +0200
++++ 21b4jwasm/source/ctmouse/asmlib/dos/mem.mac	2008-05-31 17:37:05.000000000 +0200
+-DOSGetIntr	macro	intrno:vararg
++DOSGetIntr	macro	intrno ; :vararg
+-DOSSetIntr	macro	intrno,hseg,hsegname,hoff:vararg
++DOSSetIntr	macro	intrno,hseg,hsegname,hoff ; :vararg
+-DOSAlloc	macro	size,message,errlabel:vararg
++DOSAlloc	macro	size,message,errlabel ; :vararg
+-DOSRealloc	macro	memseg,memsegname,size,message,errlabel:vararg
++DOSRealloc	macro	memseg,memsegname,size,message,errlabel ; :vararg
+-DOSFreeMem	macro	memseg,memsegname,message,errlabel:vararg
++DOSFreeMem	macro	memseg,memsegname,message,errlabel ; :vararg
+-DOSSetAlloc	macro	strategy:vararg
++DOSSetAlloc	macro	strategy ; :vararg
+-DOSSetUMBlink	macro	state:vararg
++DOSSetUMBlink	macro	state ; :vararg
+--- 21b4tasm/source/ctmouse/asmlib/dos/psp.def	2003-03-01 00:00:00.000000000 +0100
++++ 21b4jwasm/source/ctmouse/asmlib/dos/psp.def	2008-05-31 17:40:48.000000000 +0200
+-defaultDTA	label
++defaultDTA	label byte
+--- 21b4tasm/source/ctmouse/asmlib/macro.mac	2002-06-04 00:00:00.000000000 +0200
++++ 21b4jwasm/source/ctmouse/asmlib/macro.mac	2008-05-31 17:36:08.000000000 +0200
+-MOVREG_		macro	reg,val:vararg
++MOVREG_		macro	reg,val ; :vararg
+-MOVOFF_		macro	reg,offs:vararg
++MOVOFF_		macro	reg,offs ; :vararg
+-MOVSEG_		macro	segreg,val,temp,segname:vararg
++MOVSEG_		macro	segreg,val,temp,segname ; :vararg
+-		errifb <temp> "Temporary register should be present!"
++;		errifb <temp> "Temporary register should be present!"
+-MOVRR_		macro	r1,v1,r2,v2:vararg
++MOVRR_		macro	r1,v1,r2,v2 ; :vararg
+-MOVRO_		macro	r1,v,r2,off:vararg
++MOVRO_		macro	r1,v,r2,off ; :vararg
+-MOVOO_		macro	r1,off1,r2,off2:vararg
++MOVOO_		macro	r1,off1,r2,off2 ; :vararg
+-MOVRRR_		macro	r1,v1,r2,v2,r3,v3:vararg
++MOVRRR_		macro	r1,v1,r2,v2,r3,v3 ; :vararg
+-MOVRRO_		macro	r1,v1,r2,v2,r3,off:vararg
++MOVRRO_		macro	r1,v1,r2,v2,r3,off ; :vararg
+-MOVROO_		macro	r1,v1,r2,off2,r3,off3:vararg
++MOVROO_		macro	r1,v1,r2,off2,r3,off3 ; :vararg
+-MOVREG2		macro	r,rhi,rlo,hi,lo:vararg
++MOVREG2		macro	r,rhi,rlo,hi,lo ; :vararg
+-MOVREGax_	macro	r:req,rhi:req,rlo:req,val,ahi:=<ah>,alo:vararg
++MOVREGax_	macro	r:req,rhi:req,rlo:req,val,ahi:=<ah>,alo ; :vararg
+-MOVOFFax_	macro	r:req,rhi:req,rlo:req,off,ahi:=<ah>,alo:vararg
++MOVOFFax_	macro	r:req,rhi:req,rlo:req,off,ahi:=<ah>,alo ; :vararg
+-TESTREG_	macro	reg:vararg
++TESTREG_	macro	reg ; :vararg
+--- 21b4tasm/source/ctmouse/ctm-en.msg	2008-01-09 01:29:42.000000000 +0100
++++ 21b4jwasm/source/ctmouse/ctm-en.msg	2008-06-01 16:24:04.000000000 +0200
+-Syntax		label
++Syntax		label byte
+--- 21b4tasm/source/ctmouse/ctmouse.asm	2008-01-09 01:32:09.000000000 +0100
++++ 21b4jwasm/source/ctmouse/ctmouse.asm	2008-06-01 21:49:55.000000000 +0200
+-%pagesize 255
+-%noincl
++; %pagesize 255
++; %noincl
+-%nosyms
++; %nosyms
+-%linum 0
++; %linum 0
+-warn
+-locals
++; warn
++; locals
+-include asm.mac
+-include hll.mac
+-include code.def
+-include code.mac
+-include macro.mac
+-include BIOS/area0.def
+-include convert/digit.mac
+-include convert/count2x.mac
+-include DOS/MCB.def
+-include DOS/PSP.def
+-include DOS/file.mac
+-include DOS/mem.mac
+-include hard/PIC8259A.def
+-include hard/UART.def
++include asmlib/asm.mac
++; *** include asmlib/hll.mac	; if_ loop_ countloop_ etc - TASM specific
++include asmlib/code.def
++include asmlib/code.mac
++include asmlib/macro.mac
++include asmlib/BIOS/area0.def	; ** int11 flags and various 40:xx gfx info
++; HW_PS2	equ 4	; bit set in int 11h returned AX if PS/2 mouse present
++; VIDEO_control VIDEO_switches VIDEO_width VIDEO_pageoff VIDEO_mode
++; VIDEO_switches VIDSW_feature0 VIDSW_display VIDEO_ptrtable@
++; VPARAM_SEQC VIDEO_paramtbl@ VIDEO_lastrow VIDEO_pageno
++include asmlib/convert/digit.mac	; ** only count2x uses digits in ASCII
++include asmlib/convert/count2x.mac	; ** only used as _word_hex for I/O port
++include asmlib/DOS/MCB.def	; ** small, used to set ownerid and name
++include asmlib/DOS/PSP.def	; ** only DOS_exit env_seg cmdline_len PSP_TSR used
++; include asmlib/DOS/file.mac	; was only used once - DOSCloseFile
++include asmlib/DOS/mem.mac
++; include asmlib/hard/PIC8259A.def	; only PIC1_OCW2, PIC1_IMR const used:
++PIC1_OCW2	equ 20h
++PIC1_IMR	equ 21h
++include asmlib/hard/UART.def
+-PUSHALL		equ <push	ax cx dx bx bp si di>
+-POPALL		equ <pop	di si bp bx dx cx ax>
++PUSHALL		macro
++		push	ax
++		push	cx
++		push	dx
++		push	bx
++		push	bp
++		push	si
++		push	di
++endm
++POPALL		macro
++		pop	di
++		pop	si
++		pop	bp
++		pop	bx
++		pop	dx
++		pop	cx
++		pop	ax
++endm
+-ends
++POINT ends
+-PS2serv		macro	serv:req,errlabel:vararg
++PS2serv		macro	serv:req,errlabel ; :vararg
+-.model use16 tiny
++; .model use16 tiny
+-TSRstart	label
++TSRstart	label byte
+-TSRavail	label			; initialized data may come from here
++TSRavail	label byte			; initialized data may come from here
+-		evendata
++		even
+-		evendata
++		even
+-		evendata
++		even
+-		evendata
++		even
+-		evendata
++		even
+-ends
++BUTTLASTSTATE ends
+-		evendata
++		even
+-		evendata
++		even
+-ERRIF (szVRegsArea ne 64 or $-VRegsArea ne 2*64) "VRegs area contents corrupted!"
++; ERRIF (szVRegsArea ne 64 or $-VRegsArea ne 2*64) "VRegs area contents corrupted!"
+-		evendata
+-TSRdata		label
++		even
++TSRdata		label byte
+-ERRIF (TSRdata lt TSRavail) "TSR uninitialized data area too small!"
++; ERRIF (TSRdata lt TSRavail) "TSR uninitialized data area too small!"
+-		evendata
+-ERRIF ($-DefArea ne szDefArea) "Defaults area contents corrupted!"
++	db 0	; JWASM would use 0fch, "CLD" as pad byte??
++		even
++; ERRIF ($-DefArea ne szDefArea) "Defaults area contents corrupted!"
+-		evendata
++		even
+-ends
+-		evendata
++REGSET ends
++
++	db 0	; JWASM would use 0fch, "CLD" as pad byte??
++		even
+-vdata1end	label
++vdata1end	label word
+-vdata2end	label
++vdata2end	label byte
+-ends
++RGROUPDEF ends
+-		evendata
+-videoregs@	label
++		even
++videoregs@	label RGROUPDEF
+-		push	ds es
++		push ds
++		push es
+-	CODE_	MOV_CX	IOdone,<db ?,0>		; processed bytes counter
++;	CODE_	MOV_CX	IOdone,<db ?,0>		; processed bytes counter
++		OPCODE_MOV_CX
++IOdone		db ?,0
+-		out_	PIC1_OCW2,%OCW2<OCW2_EOI>
+-
+-	CODE_	MOV_DX	IO_address,<dw ?>	; UART IO address
++;		out_	PIC1_OCW2,%OCW2<OCW2_EOI>
++		mov	al,20h
++		out	PIC1_OCW2,al
++
++;	CODE_	MOV_DX	IO_address,<dw ?>	; UART IO address
++		OPCODE_MOV_DX
++IO_address	dw ?
+-	if_ nz					; if break/framing/overrun
++;	if_ nz					; if break/framing/overrun
++	jz @@irqhandlerz
+-	end_
++;	end_
++@@irqhandlerz:
+-	if_ carry				; process data if data ready
++;	if_ carry				; process data if data ready
++	jnc @@irqhandlernc
+-	end_
+-		jmp	@rethandler
++;	end_
++@@irqhandlernc:
++		jmp	rethandler
+-		push	ds es
++		push	ds
++		push es
+-PS2WHEELCODE	label	byte			; "j @@PS2WHEEL" if wheel
+-		j	@@PS2PLAIN
++PS2WHEELCODE	label	byte		; jump to wheel or plain: test 0/-1
++;		test	sp,0		; 2 byte opcode, sp always NZ here
++;		jnz	PS2WHEEL
++	j	@@PS2PLAIN
+-		sbb	ch,ch			; extend Y sign bit
++;		sbb	ch,ch			; extend Y sign bit
++	db 1ah, 0edh	; JWASM and TASM use opposite encoding
+-PS2WHEEL:	; handler based on public domain code from Konstantin Koll
++PS2WHEEL::	; handler based on public domain code from Konstantin Koll
+-		sbb	ch,ch			; extend Y sign bit
++;		sbb	ch,ch			; extend Y sign bit
++	db 1ah, 0edh	; JWASM and TASM use opposite encoding
+-		pop	es ds
++		pop	es
++		pop	ds
+-	CODE_	MOV_AX	IRQintnum,<db 0,25h>	; INT number of selected IRQ
++;	CODE_	MOV_AX	IRQintnum,<db 0,25h>	; INT number of selected IRQ
++		OPCODE_MOV_AX
++IRQintnum	db 0,25h
+-		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
+-		xchg	dx,si			; 1200 baud rate
+-		 outw	dx,96			; {3F8h},{3F9h} divisor latch
+-		xchg	dx,si
+-	CODE_	 MOV_AX
+-LCRset		 LCR	<0,,LCR_noparity,0,2>	; {3FBh} LCR: DLAB off, 7/8N1
+-		 MCR	<,,,1,1,1,1>		; {3FCh} MCR: DTR/RTS/OUTx on
++;		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
++;		mov al,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
++		mov 	al,80h
++		out	dx,al
++;		xchg	dx,si			; 1200 baud rate
++	xchg si,dx	; JWASM and TASM use opposite encoding
++		mov	ax,96
++;		 outw	dx,96			; {3F8h},{3F9h} divisor latch
++		out	dx,ax
++;		xchg	dx,si
++	xchg si,dx	; JWASM and TASM use opposite encoding
++;	CODE_	 MOV_AX
++		OPCODE_MOV_AX
++LCRset	db 00000010b	; LCR	<0,,LCR_noparity,0,2>	; {3FBh} LCR: DLAB off, 7/8N1
++	db 00001111b	; MCR	<,,,1,1,1,1>		; {3FCh} MCR: DTR/RTS/OUTx on
+-		 out_	dx,%IER{IER_DR=1},%FCR<>; {3F9h} IER: enable DR intr
++;		 out_	dx,%IER{IER_DR=1},%FCR<>; {3F9h} IER: enable DR intr
++;		mov	al,%IER{IER_DR=1}
++;		mov	ah,%FCR<>
++		mov ax,1
++		out	dx,ax
+-	CODE_	AND_AL	notPIC1state,<db ?>	; clear bit to enable interrupt
++;	CODE_	AND_AL	notPIC1state,<db ?>	; clear bit to enable interrupt
++		OPCODE_AND_AL
++notPIC1state	db ?
+-	CODE_	OR_AL	PIC1state,<db ?>	; set bit to disable interrupt
++;	CODE_	OR_AL	PIC1state,<db ?>	; set bit to disable interrupt
++		OPCODE_OR_AL
++PIC1state	db ?
+-		 out_	dx,%LCR<>,%MCR<,,,0,,1,1> ; {3FCh} MCR: DTR/RTS on, OUT2 off
++;		 out_	dx,%LCR<>,%MCR<,,,0,,1,1> ; {3FCh} MCR: DTR/RTS on, OUT2 off
++;		mov	al,%LCR<>
++;		mov	ah,%MCR<,,,0,,1,1>
++	mov ax,300h
++		out	dx,ax
+-	CODE_	MOV_DL	MSLTbuttons,<db ?>	; buttons state for MS3/LT/WM
++;	CODE_	MOV_DL	MSLTbuttons,<db ?>	; buttons state for MS3/LT/WM
++		OPCODE_MOV_DL
++MSLTbuttons	db ?
+-	if_ nz					; if first byte
++;	if_ nz					; if first byte
++	jz @@msltz
+-	end_
++;	end_
++@@msltz:
+-	if_ ncxz				; skip nonfirst byte at start
++;	if_ ncxz				; skip nonfirst byte at start
++	jcxz @@msltcxz
+-	end_
++;	end_
++@@msltcxz:
+-	CODE_	MOV_BX	MSLT_1,<db ?,0>		; mouse packet first byte
++;	CODE_	MOV_BX	MSLT_1,<db ?,0>		; mouse packet first byte
++		OPCODE_MOV_BX
++MSLT_1		db ?,0
+-		xchg	cl,bh			; bits 1-0: X movement HI
++;		xchg	cl,bh			; bits 1-0: X movement HI
++		xchg	bh,cl	; TASM and JWASM use opposite encoding
+-	CODE_	OR_AL	MSLT_X,<db ?>
++;	CODE_	OR_AL	MSLT_X,<db ?>
++		OPCODE_OR_AL
++MSLT_X		db ?
+-	if_ zero
++;	if_ zero
++	jnz @@msmnz
+-	 if_ odd				; if buttons not same
++;	 if_ odd				; if buttons not same
++	jpe @@msmeven
+-	 end_
++;	 end_
++@@msmeven:
+-	end_
++;	end_
++@@msmnz:
+-	CODE_	ADD_AX	MSM_Y,<dw ?>
+-	CODE_	MOV_BX	MSM_X,<dw ?>
++;	CODE_	ADD_AX	MSM_Y,<dw ?>
++		OPCODE_ADD_AX
++MSM_Y		dw ?
++;	CODE_	MOV_BX	MSM_X,<dw ?>
++		OPCODE_MOV_BX
++MSM_X		dw ?
+-	CODE_	MOV_AL	MSM_buttons,<db ?>
++;	CODE_	MOV_AL	MSM_buttons,<db ?>
++		OPCODE_MOV_AL
++MSM_buttons	db ?
+-	if_ odd					; if buttons not same
+-	CODE_	XOR_AL	swapmask,<db 00000011b>	; 0 if (PS2 xor LEFTHAND)
+-	end_
++;	if_ odd					; if buttons not same
++	jpe @@swapeven
++;	CODE_	XOR_AL	swapmask,<db 00000011b>	; 0 if (PS2 xor LEFTHAND)
++		OPCODE_XOR_AL
++swapmask	db 00000011b
++;	end_
++@@swapeven:
+-	CODE_	AND_AX
++;	CODE_	AND_AX
++		OPCODE_AND_AX
+-		MOVREG_	bx,<offset X>
++;		MOVREG_	bx,<offset X>
++	xor bx,bx	; MOVREG optimizes mov bx,offset POINT.X into this
+-		MOVREG_	bl,<offset Y>		; OPTIMIZE: BL instead BX
++;		MOVREG_	bl,<offset Y>		; OPTIMIZE: BL instead BX
++	mov bl,offset POINT.Y
+-	if_ nz					; if wheel moved
++;	if_ nz					; if wheel moved
++	jz @@wheelz
+-		add	[si].counter,ax		; wheel counter
++		add	[si + offset BUTTLASTSTATE.counter],ax	; wheel counter
+-	end_
++;	end_
++@@wheelz:
+-	if_ nz
++;	if_ nz
++	jz @@btnfastz
+-	end_
++;	end_
++@@btnfastz:
+-	if_ zero				; if user proc not running
++;	if_ zero				; if user proc not running
++	jnz @@uirnz
+-	 if_ nz					; if there is a user events
+-	CODE_	MOV_BX	buttstatus,<db 0,0>	; buttons status
++;	 if_ nz					; if there is a user events
++	jz @@maskz
++;	CODE_	MOV_BX	buttstatus,<db 0,0>	; buttons status
++		OPCODE_MOV_BX
++buttstatus	db 0,0
+-	 end_
++;	 end_
++@@maskz:
+-	end_
++;	end_
++@@uirnz:
+-	if_ sign
++;	if_ sign
++	jns @@upns
+-	end_
++;	end_
++@@upns:
+-		cmp	ax,4
+-	if_ be
++;		cmp	ax,4	; JWASM uses "signed byte" variant
++	db 03dh, 4, 0	; "cmp ax, word 4"
++;	if_ be
++	ja @@upa
+-	else_
+-		cmp	ax,12
+-	 if_ ae
++;	else_
++	jmp short @@upbe
++@@upa:
++;		cmp	ax,12	; JWASM uses "signed byte" variant
++	db 03dh, 12, 0	; "cmp ax, word 12"
++;	 if_ ae
++	jb @@up2b
+-	 else_
++;	 else_
++	jmp short @@up2ae
++@@up2b:
+-	 end_
++;	 end_
++@@up2ae:
++	jb @@up2ae
+-	 end_
++;	 end_
++@@up2ae:
+-	end_
++;	end_
++@@upbe:
+-		adc	ax,0		; add carry from previous adding
++;		adc	ax,0		; add carry from previous adding
++	db 15h, 0, 0	; JWASM uses signed byte variant, same length
+-@savecutpos:	mov	dx,word ptr rangemax[bx]
++@savecutpos::	mov	dx,word ptr rangemax[bx]
+-	if_ le
++;	if_ le
++	jg @@cpg
+-	end_
++;	end_
++@@cpg:
+-	if_ carry				; if button changed
++;	if_ carry				; if button changed
++	jnc @@ubnc
+-	 if_ ns					; if button not pressed
++;	 if_ ns					; if button not pressed
++	js @@ubs
+-	 end_
+-		inc	[si+bx].counter
+-@lastpos:	or	cl,al
++;	 end_
++@@ubs:
++		inc	word ptr [si + bx + offset BUTTLASTSTATE.counter]
++@lastpos::	or	cl,al
+-		mov	[si+bx].lastrow,ax
++		mov	[si + bx + offset BUTTLASTSTATE.lastrow],ax
+-		mov	[si+bx].lastcol,ax
+-	end_
++		mov	[si + bx + offset BUTTLASTSTATE.lastcol],ax
++;	end_
++@@ubnc:
+-		evendata
++		even
+-		push	ds es
++		push	ds
++		push	es
+-@@exitINT10:	jmp	@rethandler
++@@exitINT10:	jmp	rethandler
+-	if_ below				; if not single register
++;	if_ below				; if not single register
++	jae @@rilf0ae
+-	end_
++;	end_
++@@rilf0ae:
+-	if_ below				; if not single register
++;	if_ below				; if not single register
++	jae @@rilwae
+-	end_
++;	end_
++@@rilwae:
+-	if_ ne					; if not ATTR controller
++;	if_ ne					; if not ATTR controller
++	jz @@rilgwz
+-	end_
++;	end_
++@@rilgwz:
+-	countloop_
++;	countloop_
++@@rilf3loop:
+-	end_
++;	end_
++		loop @@rilf3loop
+-	countloop_
++;	countloop_
++@@rilf4loop:
+-	end_
++;	end_
++		loop @@rilf4loop
+-	countloop_
++;	countloop_
++@@rilf5loop:
+-	end_
++;	end_
++		loop @@rilf5loop
+-	if_ eq					; exit if position not changed
++;	if_ eq					; exit if position not changed
++	jnz @@drnz
+-	end_
++;	end_
++@@drnz:
+-	if_ nz
++;	if_ nz
++	jz @@drz
+-		out_	dx,0Fh,al		; cursor position lo
++;		out_	dx,0Fh,al		; cursor position lo
++		mov	ah,al
++		mov	al,0fh
++		out	dx,ax
+-		out_	dx,0Eh,ah		; cursor position hi
++;		out_	dx,0Eh,ah		; cursor position hi
++		mov	al,0eh
++		out	dx,ax
+-	end_
++;	end_
++@@drz:
+-	if_ nz					; if cursor drawn
++;	if_ nz					; if cursor drawn
++	jz @@rsz
+-	 if_ zero
++;	 if_ zero
++	jnz @@rsnz
+-	 end_
++;	 end_
++@@rsnz:
+-	 if_ eq					; if screen not changed
++;	 if_ eq					; if screen not changed
++	jnz @@rsnz2
+-	 end_
+-	end_
+-@drawret:	ret
++;	 end_
++@@rsnz2:
++;	end_
++@@rsz:
++@drawret::	ret
+-	if_ lt
++;	if_ lt
++	jge @@gcge
+-	end_
++;	end_
++@@gcge:
+-	if_ ge
++;	if_ ge
++	jl @@gclt
+-	end_
++;	end_
++@@gclt:
+-	if_ nz					; if cursor drawn
+-	CODE_	CMP_DI	cursorpos,<dw ?>
+-	 if_ eq
++;	if_ nz					; if cursor drawn
++	jz @@cpz
++;	CODE_	CMP_DI	cursorpos,<dw ?>
++		OPCODE_CMP_DI
++cursorpos	dw ?
++;	 if_ eq
++	jnz @@cpnz2
+-	 andif_ eq				; exit if position not changed
++;	 andif_ eq				; exit if position not changed
++	jnz @@cpnz2
+-	 end_
+-		push	bx dx di
++;	 end_
++@@cpnz2:
++		push	bx
++		push	dx
++		push	di
+-		pop	di dx
+-	else_
++		pop	di
++		pop	dx
++;	else_
++	jmp short @@cpnz
++@@cpz:
+-	end_
++;	end_
++@@cpnz:
+-	if_ ae
++;	if_ ae
++	jb @@pspb
+-	end_
++;	end_
++@@pspb:
+-	if_ lt					; if left sprite offset>0
++;	if_ lt					; if left sprite offset>0
++	jge @@pspge
+-	end_
++;	end_
++@@pspge:
+-	CODE_	MOV_BX	spritetop,<dw ?>
+-		pop	cx ax			; CL/CH=sprite shift
++;	CODE_	MOV_BX	spritetop,<dw ?>
++		OPCODE_MOV_BX
++spritetop	dw ?
++		pop	cx
++		pop	ax			; CL/CH=sprite shift
+-	countloop_ ,ax
+-		push	ax cx bx si di
++;	countloop_ ,ax
++@@spriteloop:
++		push	ax
++		push	cx
++		push	bx
++		push	si
++		push	di
+-		pop	di si bx cx ax
++		pop	di
++		pop	si
++		pop	bx
++		pop	cx
++		pop	ax
+-	end_
++;	end_
++	dec ax
++	jnz @@spriteloop
+-@writevregs:	mov	ah,0F5h			; write register set
++@writevregs::	mov	ah,0F5h			; write register set
+-@registerset:	; if planar videomode [0Dh-12h] then "push es" else "ret"
++@registerset::	; if planar videomode [0Dh-12h] then "push es" else "ret"
+-	CODE_	MOV_AX	nextrow,<dw ?>		; ax = next row offset
+-	CODE_	MOV_BX	spriteheight,<dw ?>	; bx = sprite height in lines
++;	CODE_	MOV_AX	nextrow,<dw ?>		; ax = next row offset
++		OPCODE_MOV_AX
++nextrow		dw ?
++;	CODE_	MOV_BX	spriteheight,<dw ?>	; bx = sprite height in lines
++		OPCODE_MOV_BX
++spriteheight	dw ?
+-	if_ eq
+-		push	ds es
+-		pop	ds es			; DS:SI=screen
+-		xchg	si,di			; ES:DI=buffer
+-	end_
+-
+-	countloop_ ,bx
+-	CODE_	MOV_CX	spritewidth,<dw ?>	; seen part of sprite in bytes
++;	if_ eq
++	jnz @@blitnz
++		push	ds
++		push	es
++		pop	ds
++		pop	es			; DS:SI=screen
++;		xchg	si,di			; ES:DI=buffer
++		xchg	di,si	; JWASM and TASM use opposite encoding
++;	end_
++@@blitnz:
++
++;	countloop_ ,bx
++@@spritewloop:
++;	CODE_	MOV_CX	spritewidth,<dw ?>	; seen part of sprite in bytes
++		OPCODE_MOV_CX
++spritewidth	dw ?
+-	CODE_	XOR_AX	nextxor,<dw ?>		; for interlace modes?
+-	end_	; of outer countloop_
++;	CODE_	XOR_AX	nextxor,<dw ?>		; for interlace modes?
++		OPCODE_XOR_AX
++nextxor		dw ?
++;	end_	; of outer countloop_
++	dec bx
++	jnz @@spritewloop
+-	if_ eq
++;	if_ eq
++	jnz @@mrnz
+-	 countloop_ ,si				; loop over x pixels
++;	 countloop_ ,si				; loop over x pixels
++@@pixloop:
+-		sbb	al,al			; ...then AL=0
++;		sbb	al,al			; ...then AL=0
++	db 1ah, 0c0h	; JWASM and TASM use opposite encoding
+-	  if_ carry				; if most sign bit nonzero
++;	  if_ carry				; if most sign bit nonzero
++	jnc @@mrnc
+-	  end_
++;	  end_
++@@mrnc:
+-	 end_ countloop
++;	 end_ countloop
++		dec si
++		jnz @@pixloop
+-	end_ if
++;	end_ if
++@@mrnz:
+-	loop_					; shift masks left until ch++ is 0
++;	loop_					; shift masks left until ch++ is 0
++@@m13zloop:
+-	until_ zero
+-		xchg	dh,bl			; al:bl:dl - ah:bh:dh
++;	until_ zero
++	jnz @@m13zloop
++;		xchg	dh,bl			; al:bl:dl - ah:bh:dh
++		xchg	bl,dh	; JWASM and TASM use opposite encoding
+-	countloop_ ,si
++;	countloop_ ,si
++@@m13loop:
+-	 if_ ne					; if not planar mode 0Dh-12h
++;	 if_ ne					; if not planar mode 0Dh-12h
++	jz @@m13z
+-	 else_
++;	 else_
++	jmp short @@m13nz
++@@m13z:
+-		out_	3CEh,5,0		; set write mode 0: "color: reg2 mask: reg8"
+-		out_	,3,8h			; data ANDed with latched data
++;		out_	3CEh,5,0		; set write mode 0: "color: reg2 mask: reg8"
++		mov	dx,3ceh
++		mov	ax,5
++		out	dx,ax
++;		out_	,3,8h			; data ANDed with latched data
++		mov	ax,803h
++		out	dx,ax
+-		out_	,3,18h			; data XORed with latched data
++;		out_	,3,18h			; data XORed with latched data
++		mov	ax,1803h
++		out	dx,ax
+-	 end_
++;	 end_
++@@m13nz:
+-	end_ countloop
++;	end_ countloop
++	dec si
++	jnz @@m13loop
+-restore3ce:	push	dx
++restore3ce::	push	dx
+-backup3ce:	push	dx
++backup3ce::	push	dx
+-@getoffsret:	imul	dx			; AX=row*screen width
++@getoffsret::	imul	dx			; AX=row*screen width
+-	CODE_	MOV_CL	bitmapshift,<db ?>	; mode 13h=1, 0Dh=4, other=3
+-	CODE_	MOV_DX	cursorwidth,<dw ?>	; cursor width in bytes
++;	CODE_	MOV_CL	bitmapshift,<db ?>	; mode 13h=1, 0Dh=4, other=3
++		OPCODE_MOV_CL
++bitmapshift	db ?
++;	CODE_	MOV_DX	cursorwidth,<dw ?>	; cursor width in bytes
++		OPCODE_MOV_DX
++cursorwidth	dw ?
+-ERRIF (szClearArea2 mod 2 ne 0) "szClearArea2 must be even!"
++; ERRIF (szClearArea2 mod 2 ne 0) "szClearArea2 must be even!"
+-ERRIF (szClearArea3 mod 2 ne 0) "szClearArea3 must be even!"
++; ERRIF (szClearArea3 mod 2 ne 0) "szClearArea3 must be even!"
+-@setvideo:	push	si
++@setvideo::	push	si
+-	block_
++;	block_
+-	 breakif_ ae
++;	 breakif_ ae
++	jae @@blend
+-	 if_ ae
+-		testflag [VIDEO_control],mask VCTRL_RAM_64K
+-	  breakif_ zero				; break if only 64K of VRAM
++;	 if_ ae
++	jb @@blb
++;		testflag [VIDEO_control],mask VCTRL_RAM_64K
++		test [VIDEO_control],60h	; mask VCTRL_RAM_64K
++		; value ?nn????? where n+1 = 64kBy blocks of RAM installed
++;	  breakif_ zero				; break if only 64K of VRAM
++	jz @@blend
+-	 else_
++;	 else_
++	jmp short @@blend
++@@blb:
+-	 andif_ below
++;	 andif_ below
++	jnb @@blend
+-		maskflag al,mask VIDSW_feature0+mask VIDSW_display
++;		maskflag al,mask VIDSW_feature0+mask VIDSW_display
++		and al,mask VIDSW_feature0+mask VIDSW_display
+-	  if_ eq
++;	  if_ eq
++	jnz @@blnz
+-	  end_
++;	  end_
++@@blnz:
+-	 end_ if
+-	end_ block
++;	 end_ if
++;	end_ block
++@@blend:
+-ERRIF (DefVRegsArea ne VRegsArea+64) "VRegs area contents corrupted!"
++; ERRIF (DefVRegsArea ne VRegsArea+64) "VRegs area contents corrupted!"
+-	countloop_
++;	countloop_
++@@setvloop:
+-	end_
++;	end_
++	loop @@setvloop
+-	if_ ae
++;	if_ ae
++	jb @@stb
+-	andif_ ae
++;	andif_ ae
++	jb @@stb
+-	end_
++;	end_
++@@stb:
+-	if_ nz					; zero on old machines
++;	if_ nz					; zero on old machines
++	jz @@stz
+-	end_
++;	end_
++@@stz:
+-@setpos:	nop	;cli			; -X-
++@setpos::	nop	;cli			; -X-
+-		xchg	cx,si
++;		xchg	cx,si
++		xchg	si,cx	; JWASM and TASM use opposite encoding
+-		MOVREG_	bx,<offset Y>
++;		MOVREG_	bx,<offset Y>
++		mov	bx,offset POINT.Y
+-		MOVREG_	bl,<offset X>		; OPTIMIZE: BL instead BX
++;		MOVREG_	bl,<offset X>		; OPTIMIZE: BL instead BX
++		mov	bl,offset POINT.X
+-	if_ zero				; if driver not disabled
++;	if_ zero				; if driver not disabled
++	jnz @@ddrvnz
+-		;mov	ah,35h
++		; DOSGetIntr 10h
++		; mov	ah,35h
+-		;DOSGetIntr 10h
+-	end_ if
++;	end_ if
++@@ddrvnz:
+-	if_ ncxz
++;	if_ ncxz
++	jcxz @@edcxz
+-		DOSSetIntr ,,,@TSRcode:int10handler
++;		DOSSetIntr ,,,@TSRcode:int10handler
++		mov	dx,@TSRcode:int10handler
++		mov	ah,25h
++		int	21h
+-	end_
++;	end_
++@@edcxz:
+-@retbuttstat:	mov	ah,byte ptr [wheel.counter]
++@retbuttstat::	mov	ah,byte ptr [wheel.counter]
+-	if_ be
+-ERRIF (6 ne size BUTTLASTSTATE) "BUTTLASTSTATE structure size changed!"
++;	if_ be
++	ja @@rlpa
++; ERRIF (6 ne size BUTTLASTSTATE) "BUTTLASTSTATE structure size changed!"
+-@@retlastpos:	xchg	[si+bx.counter],ax
+-		mov	cx,[si+bx.lastcol]
+-		mov	dx,[si+bx.lastrow]
+-	end_ if
+-@retBCDX:	mov	[_ARG_DX_],dx
+-@retBCX:	mov	[_ARG_CX_],cx
+-@retBX:		mov	[_ARG_BX_],ax
++@@retlastpos:	xchg	[si + bx + offset BUTTLASTSTATE.counter],ax
++		mov	cx,[si+bx + offset BUTTLASTSTATE.lastcol]
++		mov	dx,[si+bx + offset BUTTLASTSTATE.lastrow]
++;	end_ if
++@@rlpa:
++@retBCDX::	mov	[_ARG_DX_],dx
++@retBCX::	mov	[_ARG_CX_],cx
++@retBX::	mov	[_ARG_BX_],ax
+-	CODE_	MOV_CX	wheelflags,<db 0,0>
++;	CODE_	MOV_CX	wheelflags,<db 0,0>
++		OPCODE_MOV_CX
++wheelflags	db 0,0
+-		MOVREG_	bx,<offset X>
++;		MOVREG_	bx,<offset X>
++		xor bx,bx	; MOVREG optimizes mov bx,offset POINT.X ...
+-		MOVREG_	bx,<offset Y>
++;		MOVREG_	bx,<offset Y>
++		mov	bx,offset POINT.Y
+-@setnewrange:	xchg	ax,cx			; OPTIMIZE: instead MOV AX,CX
++@setnewrange::	xchg	ax,cx			; OPTIMIZE: instead MOV AX,CX
+-	if_ ge
++;	if_ ge
++	jl @@snrl
+-	end_
++;	end_
++@@snrl:
+-@setnewrange:	mov	word ptr rangemin[bx],cx
++@setnewrange::	mov	word ptr rangemin[bx],cx
+-ERRIF (szClearArea1 mod 2 ne 0) "szClearArea1 must be even!"
++; ERRIF (szClearArea1 mod 2 ne 0) "szClearArea1 must be even!"
+-	loop_
++;	loop_
++@@rcloop:
+-	until_ nz				; loop until queue empty
++;	until_ nz				; loop until queue empty
++	jz @@rcloop
+-@showret:	ret
++@showret::	ret
+-	if_ eq
++;	if_ eq
++	jnz @@gc9nz
+-	andif_ eq
++;	andif_ eq
++	jnz @@gc9nz
+-	end_
++;	end_
++@@gc9nz:
+-		push	ds ds es
+-		pop	ds es
++		push	ds
++		push	ds
++		push	es
++		pop	ds
++		pop	es
+-		memcopy	2*(16+16),,,,,,dx
++;		memcopy	2*(16+16),,,,,,dx
++		mov si,dx
++		mov cx, 16+16
++		rep	movsw
+-hidecursor:	mov	[newcursor],1		; force cursor redraw
++hidecursor::	mov	[newcursor],1		; force cursor redraw
+-		xchg	cx,bx
+-	if_ ncxz				; if hardware cursor
++;		xchg	cx,bx
++		xchg	bx,cx	; TASM and JWASM use opposite encodings
++;	if_ ncxz				; if hardware cursor
++	jcxz @@tcacxz
+-	end_
++;	end_
++@@tcacxz:
+-	if_ eq
++;	if_ eq
++	jnz @@tcanz
+-	andif_ eq
++;	andif_ eq
++	jnz @@tcanz
+-	end_
++;	end_
++@@tcanz:
+-	if_ ge
++;	if_ ge
++	jl @@ur10l
+-	end_
++;	end_
++@@ur10l:
+-	if_ ge
++;	if_ ge
++	jl @@ur10l2
+-	end_
++;	end_
++@@ur10l2:
+-		memcopy	szSaveArea,,,dx,,,@TSRdata:SaveArea
++;		memcopy	szSaveArea,,,dx,,,@TSRdata:SaveArea
++		mov di,dx
++		mov si,@TSRdata:SaveArea
++		mov cx,szSaveArea/2	; happens to be even
++		rep movsw
+-		push	es dx
++		push	es
++		push	dx
+-		pop	si ds
++		pop	si
++		pop	ds
+-	if_ nz					; ignore wrong ratio
+-	andif_ ncxz				; ignore wrong ratio
++;	if_ nz					; ignore wrong ratio
++	jz @@sensfp
++;	andif_ ncxz				; ignore wrong ratio
++	jcxz @@sensfp
+-	end_
++;	end_
++@@sensfp:
+-		MOVREG_	bx,<offset X>
++;		MOVREG_	bx,<offset X>
++	xor bx,bx	; MOVREG optimizes	mov bx,offset POINT.X
+-		MOVREG_	bl,<offset Y>		; OPTIMIZE: BL instead BX
++;		MOVREG_	bl,<offset Y>		; OPTIMIZE: BL instead BX
++	mov bl,offset POINT.Y
+-		cmp	ax,100			; ignore original values
+-	if_ below				;  outside [1..100]
++;		cmp	ax,100			; ignore original values
++	db 3dh, 100, 0	; "cmp ax, word 100"
++		; JWASM encodes this in the "byte 100" syntax, same size
++;	if_ below				;  outside [1..100]
++	jnc @@scnc
+-		xchg	dl,al
+-		xchg	dl,ah			; DX:AX=(V^2+1200)*256
++;		xchg	dl,al
++		xchg	al,dl	; JWASM and TASM use opposite encoding
++;		xchg	dl,ah			; DX:AX=(V^2+1200)*256
++		xchg	ah,dl	; JWASM and TASM use opposite encoding
+-	end_
++;	end_
++@@scnc:
+-		evendata
++		even
+-	if_ zero
++;	if_ zero
++	jnz @@h33nz
+-@rethandler:	POPALL
+-		pop	es ds
+-	end_
++rethandler::	POPALL
++		pop	es
++		pop	ds
++;	end_
++@@h33nz:
+-	if_ eq
++;	if_ eq
++	jnz @@v24nz
+-	CODE_	MOV_CX	mouseinfo,<db ?,4>
+-	end_
++;	CODE_	MOV_CX	mouseinfo,<db ?,4>
++		OPCODE_MOV_CX
++mouseinfo	db ?,4
++;	end_
++@@v24nz:
+-	if_ eq
++;	if_ eq
++	jnz @@m26nz
+-	CODE_	MOV_BX	scanline,<dw ?>
+-	CODE_	MOV_DX	screenheight,<dw ?>
++;	CODE_	MOV_BX	scanline,<dw ?>
++		OPCODE_MOV_BX
++scanline	dw ?
++;	CODE_	MOV_DX	screenheight,<dw ?>
++		OPCODE_MOV_DX
++screenheight	dw ?
+-	CODE_	MOV_BX	disabled?,<db 1,0>	; 1=driver disabled
+-	end_
++;	CODE_	MOV_BX	disabled?,<db 1,0>	; 1=driver disabled
++		OPCODE_MOV_BX
++disabled?	db 1,0
++;	end_
++@@m26nz:
+-	if_ eq
++;	if_ eq
++	jnz @@c27nz
+-	end_
++;	end_
++@@c27nz:
+-	if_ eq
++;	if_ eq
++	jnz @@c31nz
+-	end_
++;	end_
++@@c31nz:
+-	if_ eq
++;	if_ eq
++	jnz @@a32nz
+-	end_
++;	end_
++@@a32nz:
+-	if_ eq
++;	if_ eq
++	jnz @@c4dnz
+-	end_
++;	end_
++@@c4dnz:
+-	if_ eq
++;	if_ eq
++	jnz @@v6dnz
+-	end_
++;	end_
++@@v6dnz:
+-	if_ eq
++;	if_ eq
++	jnz @@v28nz
+-	 if_ zero
++;	 if_ zero
++	jnz @@v28nz2
+-	 end_
++;	 end_
++@@v28nz2:
+-	end_
++;	end_
++@@v28nz:
+-	if_ eq
++;	if_ eq
++	jnz @@h2anz
+-	CODE_	MOV_DX	mouseinfo1,<db 4,0>
+-	end_
++;	CODE_	MOV_DX	mouseinfo1,<db 4,0>
++		OPCODE_MOV_DX
++mouseinfo1	db 4,0
++;	end_
++@@h2anz:
+-RILversion	label
++RILversion	label byte
+-TSRend		label
++TSRend		label byte
++
+-say		macro	stroff:vararg
+-		MOVOFF_	di,<stroff>
++say		macro	stroff ; :vararg
++;		MOVOFF_	di,<stroff>
++	mov di,offset stroff
+-		testflag ax,OPT_PS2+OPT_serial
+-	if_ zero				; if no /S and /P then
+-		setflag	ax,OPT_PS2+OPT_serial	;  both PS2 and serial assumed
+-	end_
++;		testflag ax,OPT_PS2+OPT_serial
++		test	al, OPT_PS2+OPT_serial	; value is 3, TASM optimizes
++;	if_ zero				; if no /S and /P then
++	jnz @@sonz
++;		setflag	ax,OPT_PS2+OPT_serial	;  both PS2 and serial assumed
++		or al, OPT_PS2+OPT_serial	; value is 3, TASM optimizes
++;	end_
++@@sonz:
+-		testflag ax,OPT_PS2after
+-	if_ nz
++;		testflag ax,OPT_PS2after
++		test al, OPT_PS2after		; 8, TASM optimizes this
++;	if_ nz
++	jz @@paz
+-	end_
++;	end_
++@@paz:
+-		testflag ax,OPT_PS2+OPT_PS2after
+-	if_ nz
++;		testflag ax,OPT_PS2+OPT_PS2after
++		test al, OPT_PS2+OPT_PS2after	; 9, TASM optimizes this
++;	if_ nz
++	jz @@p2z
+-	andif_ nc
++;	andif_ nc
++	jc @@p2z
+-	end_
++;	end_
++@@p2z:
+-		testflag ax,OPT_PS2after
+-	if_ zero
+-		testflag ax,OPT_serial+OPT_MSYS	; 2008: better than +nomsys?
+-	andif_ nz
++;		testflag ax,OPT_PS2after
++ 		test al, OPT_PS2after	; 8, TASM optimizes this
++;	if_ zero
++	jnz @@panz
++;		testflag ax,OPT_serial+OPT_MSYS	; 2008: better than +nomsys?
++		test al, OPT_serial+OPT_MSYS	; 22h, TASM optimizes this
++;	andif_ nz
++	jz @@panz
+-	end_
++;	end_
++@@panz:
+-		testflag ax,OPT_newTSR
++;		testflag ax,OPT_newTSR
++		test ah, OPT_newTSR shr 8	; ax,100h, TASM optimizes
+-	if_ ne
++;	if_ ne
++	jz @@mfz
+-	end_ if
++;	end_ if
++@@mfz:
+-		say	di
++;		say	di
++		call    sayASCIIZ
+-	if_ carry				; if wheel (=8xh)
++;	if_ carry				; if wheel (=8xh)
++	jnc @@mfnc
+-	end_
++;	end_
++@@mfnc:
+-	if_ ae					; if not PS/2 mode (=0)
+-	 if_ eq					; if Mouse Systems (=1)
++;	if_ ae					; if not PS/2 mode (=0)
++	jb @@mfb
++;	 if_ eq					; if Mouse Systems (=1)
++	 jnz @@mfnz
+-	 end_
++;	 end_
++@@mfnz:
+-	end_
++;	end_
++@@mfb:
+-		say	bx
++;		say	bx
++		mov	di,bx
++		call    sayASCIIZ
+-	loop_
+-		DOSCloseFile
++;	loop_
++@@mfns:
++;		DOSCloseFile
++		mov	ah,3eh
++		int	21h
+-	until_ sign
++;	until_ sign
++	jns @@mfns
+-		pop	ax dx			; AH=31h (TSR) or 4Ch (EXIT)
++		pop	ax			; AH=31h (TSR) or 4Ch (EXIT)
++		pop	dx
+-	if_ eq
++;	if_ eq
++	jnz @@sdnz
+-	andif_ be					; if monochrome or color VGA
++;	andif_ be					; if monochrome or color VGA
++	ja @@sdnz
+-	end_
++;	end_
++@@sdnz:
+-	CODE_	MOV_CX	mousetype,<db ?,0>	; 0=PS/2,1=MSys,2=LT,3=MS,
++;	CODE_	MOV_CX	mousetype,<db ?,0>	; 0=PS/2,1=MSys,2=LT,3=MS,
++		OPCODE_MOV_CX
++mousetype	db ?,0
+-	if_ nz					; if not PS/2 mode (=x0h)
++;	if_ nz					; if not PS/2 mode (=x0h)
++	jz @@mtz
+-	end_
+-		testflag [options],OPT_lefthand
+-	if_ nz
++;	end_
++@@mtz:
++;		testflag [options],OPT_lefthand
++		test byte ptr [options], OPT_lefthand	; 40h, TASM optimizes
++;	if_ nz
++	jz @@mtz2
+-	end_
++;	end_
++@@mtz2:
+-		testflag [options],OPT_3button
+-	if_ zero
++;		testflag [options],OPT_3button
++		test byte ptr [options], OPT_3button	; 10h, TASM optimizes
++;	if_ zero
++	jnz @@mtnz
+-	andif_ eq				; if MS mode (=3)
++;	andif_ eq				; if MS mode (=3)
++	jnz @@mtnz
+-	end_
++;	end_
++@@mtnz:
+-	if_ ae
++;	if_ ae
++	jb @@mtb
+-	end_
++;	end_
++@@mtb:
+-	block_
++;	block_
+-	 breakif_ zero				; break if PS/2 mode (=x0h)
++;	 breakif_ zero				; break if PS/2 mode (=x0h)
++	jz @@mtblock
+-	 breakif_ zero				; break if Mouse Systems mode (=1)
++;	 breakif_ zero				; break if Mouse Systems mode (=1)
++	jz @@mtblock
+-	 breakif_ zero				; break if Logitech mode (=2)
++;	 breakif_ zero				; break if Logitech mode (=2)
++	jz @@mtblock
+-	 if_ ne					; if not MS2
++;	 if_ ne					; if not MS2
++	jz @@mtbz
+-	 end_
++;	 end_
++@@mtbz:
+-	end_ block
++;	end_ block
++@@mtblock:
+-@@setother:	push	es ds es ds
+-		pop	es ds			; get back [oldint10]...
++@@setother:	push	es
++		push	ds
++		push	es
++		push	ds
++		pop	es
++		pop	ds			; get back [oldint10]...
+-		push	cs ax			;  Windows driver workaround
++		push	cs
++		push	ax			;  Windows driver workaround
+-		push	es ax
++		push	es
++		push	ax
+-		testflag [options],OPT_MSYS
++;		testflag [options],OPT_MSYS
++		test byte ptr [options], OPT_MSYS	; 20h, TASM optimizes
+-		mov	[LCRset],LCR<0,,LCR_noparity,0,3>
++;		mov	[LCRset],LCR<0,,LCR_noparity,0,3>
++		mov	[LCRset],3
+-		testflag [options],OPT_COMforced
++;		testflag [options],OPT_COMforced
++		test byte ptr [options], OPT_COMforced	; 4, TASM optimizes
+-	loop_
++;	loop_
++@@ccns:
+-	until_ sign
++;	until_ sign
++	jns @@ccns
+-@searchret:	ret
++@searchret::	ret
+-		testflag al,mask MCR_reserved+mask MCR_AFE
++;		testflag al,mask MCR_reserved+mask MCR_AFE
++		test al, mask MCR_reserved+mask MCR_AFE
+-		movidx	dx,LCR_index,si,LSR_index
++		movidx	dx,LCR_index,si,LSR_index	; "dec dx dec dx"
+-		out_	dx,%LCR<1,0,-1,-1,3>	; {3FBh} LCR: DLAB on, 8S2
++;		out_	dx,%LCR<1,0,-1,-1,3>	; {3FBh} LCR: DLAB on, 8S2
++;		mov	al,%LCR<1,0,-1,-1,3>
++		mov	al,10111111b
++		out	dx,al
+-		out_	dx,%LCR<0,0,0,0,2>	; {3FBh} LCR: DLAB off, 7N1
++;		out_	dx,%LCR<0,0,0,0,2>	; {3FBh} LCR: DLAB off, 7N1
++;		mov	al,%LCR<0,0,0,0,2>
++		mov	al,00000010b
++		out	dx,al
+-		sub	ax,(LCR<1,0,-1,-1,3> shl 8)+LCR<0,0,0,0,2>
++;		sub	ax,(LCR<1,0,-1,-1,3> shl 8)+LCR<0,0,0,0,2>
++		sub	ax, (10111111b shl 8) + 00000010b
+-	if_ zero				; zero if LCR conforms
++;	if_ zero				; zero if LCR conforms
++	jnz @@lcrnz
+-	end_ if
++;	end_ if
++@@lcrnz:
+-		 out_	dx,%LCR<>,%MCR<>	; {3FCh} MCR: DTR/RTS/OUT2 off
++;		 out_	dx,%LCR<>,%MCR<>	; {3FCh} MCR: DTR/RTS/OUT2 off
++;		mov	al,0	; %LCR<>
++;		mov	ah,0	; %MCR<>
++	xor ax,ax	; the out_ macro optimizes this
++		out	dx,ax
+-		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
+-		xchg	dx,si
++;		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
++;		mov	al,%LCR{LCR_DLAB=1} 
++		mov	al,80h
++		out	dx,al
++;		xchg	dx,si
++		xchg	si,dx	; TASM and JWASM use opposite encodings
+-		 out_	dx,96,ah		; {3F8h},{3F9h} divisor latch
+-		xchg	dx,si
+-		 out_	dx,[LCRset]		; {3FBh} LCR: DLAB off, 7/8N1
++;		 out_	dx,96,ah		; {3F8h},{3F9h} divisor latch
++		mov	al,96
++		out	dx,ax
++;		xchg	dx,si
++		xchg	si,dx	; TASM and JWASM use opposite encodings
++;		 out_	dx,[LCRset]		; {3FBh} LCR: DLAB off, 7/8N1
++		mov	al,[LCRset]
++		out	dx,al
+-	loop_
++;	loop_
++@@tmrnz:
+-	 loop_
++;	 loop_
++@@tmrz:
+-	 until_ ne				; loop until next timer tick
++;	 until_ ne				; loop until next timer tick
++	jz @@tmrz
+-	until_ zero				; loop until end of 2nd tick
++;	until_ zero				; loop until end of 2nd tick
++	jnz @@tmrnz
+-		 out_	dx,%MCR<,,,0,,1,1>	; {3FCh} MCR: DTR/RTS on, OUT2 off
++;		 out_	dx,%MCR<,,,0,,1,1>	; {3FCh} MCR: DTR/RTS on, OUT2 off
++;		mov	al,%MCR<,,,0,,1,1>
++		mov al,00000011b
++		out	dx,al
+-	countloop_ 4,cl				; scan 4 first bytes
+-	 countloop_ 2+1,ch			; length of silence in ticks
++;	countloop_ 4,cl				; scan 4 first bytes
++	mov cl,4
++@@clloop:
++;	 countloop_ 2+1,ch			; length of silence in ticks
++	mov ch,2+1
++@@chloop:
+-	  loop_
++;	  loop_
++@@zloop:
+-		testflag al,mask LSR_RBF
++;		testflag al,mask LSR_RBF
++		test al, mask LSR_RBF
+-	  until_ ne				; loop until next timer tick
+-	 end_ countloop				; loop until end of 2nd tick
+-	 break_					; break if no more data
++;	  until_ ne				; loop until next timer tick
++	jz @@zloop
++;	 end_ countloop				; loop until end of 2nd tick
++	dec ch
++	jnz @@chloop
++; 	 break_					; break if no more data
++	jmp short @@clloopend
+-	 breakif_ eq				; break if PnP data starts
++;	 breakif_ eq				; break if PnP data starts
++	jz @@clloopend
+-	 if_ eq
++;	 if_ eq
++	jnz @@prsnz
+-	 end_
++;	 end_
++@@prsnz:
+-	 if_ eq
+-; Only for PS2, wheel detection is a risk, so never disable COM wheel check
+-;		testflag [options],OPT_Wheel
+-;	if_ nz
++;	 if_ eq
++	jnz @@prsnz2
++; * Only for PS2, wheel detection is a risk, so never disable COM wheel check
++; *		testflag [options],OPT_Wheel
++; *	if_ nz
+-;	end_	; else leave bx = 103 (from above) = MS without wheel
+-	 end_
++; *	end_	; else leave bx = 103 (from above) = MS without wheel
++;	 end_
++@@prsnz2:
+-	 if_ eq
++;	 if_ eq
++	jnz @@prsnz3
+-	 end_
+-	end_ countloop
++;	 end_
++@@prsnz3:
++;	end_ countloop
++	dec cl
++	jnz @@clloop
++@@clloopend:
+-		testflag al,mask HW_PS2
++;		testflag al,mask HW_PS2
++		test al, mask HW_PS2
+-		testflag [options],OPT_Wheel	; dare to try PS2 wheel?
+-	if_ nz
++;		testflag [options],OPT_Wheel	; dare to try PS2 wheel?
++		test byte ptr [options+1], OPT_Wheel shr 8	; TASM optimizes
++;	if_ nz
++	jz @@ps2wz
+-	end_
++;	end_
++@@ps2wz:
+-	if_ eq
+-		testflag [options],OPT_Wheel
+-	if_ nz		; patch a jump short from to PS2PLAIN into to PS2WHEEL:
+-		mov	PS2WHEELCODE[1],PS2WHEEL-PS2WHEELCODE-2
++;	if_ eq
++	jnz @@ps2w2
++;		testflag [options],OPT_Wheel
++		test byte ptr [options+1], OPT_Wheel shr 8 ; TASM optimizes
++;	if_ nz		; patch a jump short from to PS2PLAIN into to PS2WHEEL:
++	jz @@ps2w2
++;		mov	PS2WHEELCODE[1], PS2WHEEL - PS2WHEELCODE - 2
++; ...		push	bx
++; ...		mov	bx,offset PS2WHEELCODE + 2	; enable wheel
++; ...		mov	word ptr cs:[bx], -1	; make test return NZ
++; ...		pop	bx
++		mov	byte ptr [PS2WHEELCODE+1],PS2WHEEL-PS2WHEELCODE-2
+-	end_
+-	end_
++;	end_
++;	end_
++@@ps2w2:
+-		push	ax di
++		push	ax
++		push	di
+-		pop	di ax
++		pop	di
++		pop	ax
+-	if_ eq
++;	if_ eq
++	jnz @@gcmnz
+-	end_
++;	end_
++@@gcmnz:
+-	if_ ncxz
++;	if_ ncxz
++	jcxz @@mdcxz
+-	end_
++;	end_
++@@mdcxz:
+-	if_ nc					; '/Sc' -> set COM port
+-		setflag	[options],OPT_COMforced
++;	if_ nc					; '/Sc' -> set COM port
++	jc @@soc
++;		setflag	[options],OPT_COMforced
++		or byte ptr [options], OPT_COMforced	; TASM optimizes
+-	end_
++;	end_
++@@soc:
+-	if_ nc
++;	if_ nc
++	jc @@resc
+-	end_
++;	end_
++@@resc:
+-		mov	bx,offset X+(DefArea-SaveArea)
++		mov	bx,offset POINT.X+(DefArea-SaveArea)
+-		mov	bx,offset Y+(DefArea-SaveArea)
++		mov	bx,offset POINT.Y+(DefArea-SaveArea)
+-	if_ be
++;	if_ be
++	ja @@pda
+-	end_
++;	end_
++@@pda:
+-@ret:		ret
++@ret::		ret
+-OPTION		struc
++cmOPTION	struc	; OPTION is a reserved word in some MASM / TASM
+-ends
++cmOPTION ends
+-OPTABLE		OPTION <'P',OPT_PS2,			@ret>
+-		OPTION <'O',OPT_Wheel,			@ret>
+-		OPTION <'S',OPT_serial,			_serialopt>
+-		OPTION <'V',OPT_PS2after,		@ret>
+-		OPTION <'3' and not 20h,OPT_3button,	@ret>
+-		OPTION <'R',,				_resolution>
+-		OPTION <'L',OPT_lefthand,		@ret>
+-		OPTION <'B',,				_checkdriver>
+-		OPTION <'N',OPT_newTSR,			@ret>
+-		OPTION <'W',OPT_noUMB,			@ret>
+-		OPTION <'U',,				unloadTSR>
+-		OPTION <'?' and not 20h,,		EXITMSG>
++OPTABLE		cmOPTION <'P',OPT_PS2,			@ret>
++		cmOPTION <'O',OPT_Wheel,			@ret>
++		cmOPTION <'S',OPT_serial,			_serialopt>
++		cmOPTION <'V',OPT_PS2after,		@ret>
++		cmOPTION <'3' and not 20h,OPT_3button,	@ret>
++		cmOPTION <'R',,				_resolution>
++		cmOPTION <'L',OPT_lefthand,		@ret>
++		cmOPTION <'B',,				_checkdriver>
++		cmOPTION <'N',OPT_newTSR,			@ret>
++		cmOPTION <'W',OPT_noUMB,			@ret>
++		cmOPTION <'U',,				unloadTSR>
++		cmOPTION <'?' and not 20h,,		EXITMSG>
+-		OPTION <'Y',,				@ret>
++		cmOPTION <'Y',,				@ret>
+-		OPTION <'M',OPT_MSYS,			@ret>
+-OPTABLEend	label
++		cmOPTION <'M',OPT_MSYS,			@ret>
++OPTABLEend	label byte
+-	loop_
++;	loop_
++@@clloop:
+-	until_ above				; skips spaces and controls
++;	until_ above				; skips spaces and controls
++	jbe @@clloop
+-	if_ eq
++;	if_ eq
++	jnz @@clnz
+-	 loop_
+-		cmp	al,[bx].optchar
+-	  if_ eq
+-		mov	ax,[bx].optmask
++;	 loop_
++@@cloloop:
++		cmp	al,[bx + offset cmOPTION.optchar]
++;	  if_ eq
++	jnz @@clonz
++		mov	ax,[bx + offset cmOPTION.optmask]
+-		call	[bx].optproc@
++		call	[bx + offset cmOPTION.optproc@]
+-	  end_
+-		add	bx,size OPTION
++;	  end_
++@@clonz:
++		add	bx,size cmOPTION
+-	 until_ ae
+-	end_ if
++;	 until_ ae
++	jb @@cloloop
++;	end_ if
++@@clnz:
+-BADOPTION:	say	@data:E_error		; 'Error: Invalid '
+-		say	cx			; 'option'/'argument'
++BADOPTION::	say	@data:E_error		; 'Error: Invalid '
++;		say	cx			; 'option'/'argument'
++		mov	di,cx
++		call	sayASCIIZ
+-EXITMSG:	mov	bl,[di]
++EXITMSG::	mov	bl,[di]
+-		say	di
++;		say	di
++		call	sayASCIIZ
+-	loop_
++;	loop_
++@@sazloop:
+-sayASCIIZ:	mov	dl,[di]
++sayASCIIZ::	mov	dl,[di]
+-	until_ zero
++;	until_ zero
++	jnz @@sazloop
+-	if_ eq
++;	if_ eq
++	jnz @@unlnz
+-		DOSSetIntr 33h,cx,,bx		; restore old int33 handler
++;		DOSSetIntr 33h,cx,,bx		; restore old int33 handler
++		mov	dx,bx
++		mov	ax,2533h
++		mov	ds,cx
++		int	21h
+-	end_
++;	end_
++@@unlnz:
+-EXITENABLE:	mov	al,20h			; enable old/current driver
++EXITENABLE::	mov	al,20h			; enable old/current driver
+-	if_ ncxz				; suggested by Matthias Paul
++;	if_ ncxz				; suggested by Matthias Paul
++	jcxz @@prepcxz
+-	end_
++;	end_
++@@prepcxz:
+-	if_ ne					; if TSR not "in place"
++;	if_ ne					; if TSR not "in place"
++	jz @@prepz
+-	end_ if
++;	end_ if
++@@prepz:
+-		mov	es:[PSP:DOS_exit],cx	; memory shouldn't be
++;		mov	es:[PSP:DOS_exit],cx	; memory shouldn't be
++		mov	es:[0],cx	; JWASM complains about es:PSP:...
+-	if_ ncxz				; if INT 2F initialized
++;	if_ ncxz				; if INT 2F initialized
++	jcxz @@gxacxz
+-	andif_ eq				; if XMS service present
++;	andif_ eq				; if XMS service present
++	jnz @@gxacxz
+-	end_
++;	end_
++@@gxacxz:
+-	CODE_	MOV_BX	SaveMemStrat,<dw ?>
++;	CODE_	MOV_BX	SaveMemStrat,<dw ?>
++		OPCODE_MOV_BX
++SaveMemStrat	dw ?
+-	CODE_	MOV_BX	SaveUMBLink,<db ?,0>
++;	CODE_	MOV_BX	SaveUMBLink,<db ?,0>
++		OPCODE_MOV_BX
++SaveUMBLink	db ?,0
+-		testflag [options],OPT_noUMB
++;		testflag [options],OPT_noUMB
++		test byte ptr [options], OPT_noUMB	; 80h, TASM optimizes
+-	if_ carry
++;	if_ carry
++	jnc @@nhilo
+-	end_
++;	end_
++@@nhilo:
+-	if_ nc
++;	if_ nc
++	jc @@allc
+-	end_
++;	end_
++@@allc:
+-	if_ nc
++;	if_ nc
++	jc @@xmsc
+-	andif_ zero
++;	andif_ zero
++	jnz @@xmsc
+-	end_
++;	end_
++@@xmsc:
+-	if_ nc
++;	if_ nc
++	jc @@fmc
+-	end_
++;	end_
++@@fmc:
+--- 21b4tasm/source/ctmouse/ctmouse.msg	2008-01-09 01:29:42.000000000 +0100
++++ 21b4jwasm/source/ctmouse/ctmouse.msg	2008-06-01 16:24:04.000000000 +0200
+-Syntax		label
++Syntax		label byte
+--- 21b4tasm/source/ctmouse/makefile	2007-04-28 02:59:00.000000000 +0200
++++ 21b4jwasm/source/ctmouse/makefile	2008-06-01 21:51:29.000000000 +0200
+-AS=tasm -m @asmlib.cfg
++# AS=tasm -m @asmlib.cfg
++# the following requires that you run jasmlib.bat first:
++# AS=jwasmd -mt @asmlib ... so we just hardcode the asmlib/ for includes
++AS=jwasmd -mt 
+-LINKCOM=tlink /x /t
++# using tlink /x /t would create COM but fails on jwasm made OBJ:
++# it says that there would be data defined below initial CS:IP...
++# *** LINKCOM=tlink /x /t
+-.obj.com:
+-	$(LINKCOM) $*
+-	$(LINKCOM) $*,$*.exe
+-	com2exe -s512 $*.exe $*.exe
++	$(LINKEXE) $*,$*.exe
++	exe2bin $*.exe $*.bin
++	com2exe -s512 $*.bin $*.exe
++	-$(RM) ctmouse.bin
++# -$(RM) ctmouse.com
++
+--- 21b4tasm/source/ctmouse/utility/comtest.asm	2003-03-01 02:06:00.000000000 +0100
++++ 21b4jwasm/source/ctmouse/utility/comtest.asm	2008-06-01 21:52:52.000000000 +0200
+-%pagesize 255
+-%noincl
++; %pagesize 255
++; %noincl
+-%nosyms
++; %nosyms
+-%linum 0
+-%pcnt 0
++; %linum 0
++; %pcnt 0
+-warn
+-locals
++; warn
++; locals
+-.model use16 tiny
++; .model use16 tiny --- use jwasm option -mt instead
+-include asm.mac
+-include hll.mac
+-include macro.mac
+-include BIOS/area0.def
+-include convert/digit.mac
+-include convert/count2x.mac
+-include DOS/io.mac
+-include DOS/mem.mac
+-include hard/PIC8259A.def
+-include hard/UART.def
++include ../asmlib/asm.mac
++; include ../asmlib/hll.mac
++include ../asmlib/macro.mac
++include ../asmlib/BIOS/area0.def
++include ../asmlib/convert/digit.mac
++include ../asmlib/convert/count2x.mac
++include ../asmlib/DOS/io.mac
++include ../asmlib/DOS/mem.mac
++include ../asmlib/hard/PIC8259A.def
++include ../asmlib/hard/UART.def
+-.startup
++; .startup      -- in jwasm this does "ds=dx=cs+0" (cs+0 is a reloc)
++        org 100h
++		assume ds:DGROUP
++start::
+-	loop_
++;	loop_
++@@portloop:
+-	until_ above
++;	until_ above
++	jna @@portloop
+-		push	ax bx es
++		push	ax
++		push	bx
++		push	es
+-		pop	es bx ax
+-	if_ nz
++		pop	es
++		pop	bx
++		pop	ax
++;	if_ nz
++	jz @@i33z
+-	end_
++;	end_
++@@i33z:
+-	if_ nc
++;	if_ nc
++	jc @@skipuartcfg
+-	andif_ ncxz				; if IRQ detected
++;	andif_ ncxz				; if IRQ detected
++	jcxz @@skipuartcfg
+-	 if_ nz					; if more than one IRQ
++;	 if_ nz					; if more than one IRQ
++	jz @@fixedirqno
+-	 end_
++;	 end_
++@@fixedirqno:
+-	 loop_					; count lowest nonzero bit pos
++;	 loop_					; count lowest nonzero bit pos
++@@bitcnt:
+-	 until_ zero
++;	 until_ zero
++	jnz @@bitcnt
+-	 if_ above
++;	 if_ above
++	jna @@na9
+-	 end_
+-	end_ if
++;	 end_
++@@na9:
++;	end_ if
++@@skipuartcfg:
+-	if_ ne
++;	if_ ne
++	jz @@noshowdev
+-	 if_ nc
++;	 if_ nc
++	jc @@nomousehere
+-	 end_
++;	 end_
++@@nomousehere:
+-	 if_ nc
++;	 if_ nc
++	jc @@noshowdev
+-	 end_
+-	end_ if
++;	 end_
++;	end_ if
++@@noshowdev:
+-		testflag al,mask MCR_reserved+mask MCR_AFE
++;		testflag al,mask MCR_reserved+mask MCR_AFE
++	test al, mask MCR_reserved+mask MCR_AFE
+-		out_	dx,%LCR<1,0,-1,-1,3>	; {3FBh} LCR: DLAB on, 8S2
++;		out_	dx,%LCR<1,0,-1,-1,3>	; {3FBh} LCR: DLAB on, 8S2
++	mov	al,10111111b
++	out	dx,al
+-		out_	dx,%LCR<0,0,0,0,2>	; {3FBh} LCR: DLAB off, 7N1
++;		out_	dx,%LCR<0,0,0,0,2>	; {3FBh} LCR: DLAB off, 7N1
++	mov	al,00000010b
++	out	dx,al
+-		cmp	ax,(LCR<1,0,-1,-1,3> shl 8)+LCR<0,0,0,0,2>
++;		cmp	ax,(LCR<1,0,-1,-1,3> shl 8)+LCR<0,0,0,0,2>
++	cmp	ax,(10111111b shl 8)+00000010b
+-	if_ eq					; equal if LCR conforms
++;	if_ eq					; equal if LCR conforms
++	jnz @@nonconflcr
+-	end_ if
++;	end_ if
++@@nonconflcr:
+-		movidx	dx,MCR_index,si,IER_index
+-		 out_	dx,%MCR<,,1>		; {3FCh} MCR: enable loopback
++		movidx	dx,MCR_index,si,IER_index	; MCR: nnabcdef
++;		 out_	dx,%MCR<,,1>		; {3FCh} MCR: enable loopback
++	mov	al,00010000b
++	out	dx,al
+-		 out_ 	dx,%MCR<,,1,1,1,1,1>	; {3FCh} MCR: enable loopback
++;		 out_ 	dx,%MCR<,,1,1,1,1,1>	; {3FCh} MCR: enable loopback
++	mov	al,00011111b
++	out	dx,al
+-		testflag ax,(MSR<1,1,1,1> shl 8)+MSR<1,1,1,1>
++;		testflag ax,(MSR<1,1,1,1> shl 8)+MSR<1,1,1,1>
++;		test ax,(MSR<1,1,1,1> shl 8)+MSR<1,1,1,1>
++		test ax,(11110000b shl 8) + 11110000b	; high part: loopback
+-		out_	dx,055h			; {3FFh} SCR (scratch reg)
++;		out_	dx,055h			; {3FFh} SCR (scratch reg)
++	mov	al,55h
++	out	dx,al
+-		out_	dx,0AAh			; {3FFh} SCR (scratch reg)
++;		out_	dx,0AAh			; {3FFh} SCR (scratch reg)
++	mov	al,0aah
++	out	dx,al
+-		 sbb	ax,ax			; UART=8250 (no SCR)
++;		 sbb	ax,ax			; UART=8250 (no SCR)
++	; JWASM and TASM use opposite encodings here
++	db 1bh, 0c0h	; sbb ax,ax
+-		 out_	dx,%FCR<-1,,,1,1,1>	; {3FAh} FCR: enable FIFO
++;		 out_	dx,%FCR<-1,,,1,1,1>	; {3FAh} FCR: enable FIFO
++	mov	al,11000111b	; aabbcdef
++	out	dx,al
+-		testflag al,IIR{IIR_FIFO=10b}
+-	if_ nz
++;		testflag al,IIR{IIR_FIFO=10b}
++;	test al,IIR{IIR_FIFO=10b}	; aabbcccd
++	test al,10000000b
++;	if_ nz
++	jz @@noiir
+-		testflag al,IIR{IIR_FIFO=01b}
+-	andif_ nz
++;		testflag al,IIR{IIR_FIFO=01b}
++;	test al,IIR{IIR_FIFO=01b}	; aabbcccd
++	test al,01000000b
++;	andif_ nz
++	jz @@noiir
+-	end_
++;	end_
++@@noiir:
+-		out_	dx,%FCR{FCR_enable=0}	; {3FAh} FCR: disable FIFO
++;		out_	dx,%FCR{FCR_enable=0}	; {3FAh} FCR: disable FIFO
++	mov	al,0
++	out	dx,al
+-		mov	al,OCW3<,,,OCW3_IRR>
++;		mov	al,OCW3<,,,OCW3_IRR>
++	mov al,00001010b	; aabbcdd, bb should be 01
+-		 out_	dx,%LCR<0,,,,3>,%MCR<,,0,1,1,0,0>
++;		 out_	dx,%LCR<0,,,,3>,%MCR<,,0,1,1,0,0>
++	mov	ax,(00001100b shl 8) + 00000011b ; lcr: abcccdee mcr: aabcdefg
++	out	dx,ax
+-		 out_	dx,%FCR<>		; {3FAh} FCR: disable FIFO
++;		 out_	dx,%FCR<>		; {3FAh} FCR: disable FIFO
++	mov	al,0
++	out	dx,al
+-		out_	dx,%IER{IER_THRE=1}	; {3F9h} IER: enable THRE intr
++;		out_	dx,%IER{IER_THRE=1}	; {3F9h} IER: enable THRE intr
++	mov	al,00000010b
++	out	dx,al
+-@@waitIRQon:	inb	ah,PIC2_IRR		; {0A0h} get IRR
++@@waitIRQon:
++		inb	ah,PIC2_IRR		; {0A0h} get IRR
+-		out_	dx,%IER<>		; {3F9h} IER: interrupts off
++;		out_	dx,%IER<>		; {3F9h} IER: interrupts off
++	mov	al,0
++	out	dx,al
+-@@waitIRQoff:	inb	ah,PIC2_IRR		; {0A0h} get IRR
++@@waitIRQoff:
++		inb	ah,PIC2_IRR		; {0A0h} get IRR
+-	if_ nz					; if IRQ8-15 detected then
+-		 maskflag ax,not (1 shl 2)	; exclude IRQ2 (PIC2 attach point)
+-	end_
++;	if_ nz					; if IRQ8-15 detected then
++	jz @@nohiirq
++;		 maskflag ax,not (1 shl 2)	; exclude IRQ2 (PIC2 attach point)
++;	and	ax, not (1 shl 2)
++	and	al, not (1 shl 2)	; maskflag also does optimization!
++;	end_
++@@nohiirq:
+-		 out_	dx,%LCR<>,%MCR<>	; {3FCh} MCR: DTR/RTS/OUT2 off
++;		 out_	dx,%LCR<>,%MCR<>	; {3FCh} MCR: DTR/RTS/OUT2 off
++	xor ax,ax
++	out dx,ax
+-		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
+-		xchg	dx,si
++;		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
++	mov	al,80h
++	out	dx,al
++		xchg	si,dx	; JWASM and TASM use opposite styles
+-		xchg	dx,si
+-		 out_	dx,%LCR<0,,0,0,2>	; {3FBh} LCR: DLAB off, 7N1
++		xchg	si,dx	; JWASM and TASM use opposite styles
++;		 out_	dx,%LCR<0,,0,0,2>	; {3FBh} LCR: DLAB off, 7N1
++	mov	al,00000010b	;	abcccdee
++	out	dx,al
+-		 out_	dx,%MCR<,,,0,,1,1>	; {3FCh} MCR: DTR/RTS on, OUT2 off
++;		 out_	dx,%MCR<,,,0,,1,1>	; {3FCh} MCR: DTR/RTS on, OUT2 off
++	mov	al,00000011b	; aabcdefg
++	out	dx,al
+-	countloop_ 4,cl				; scan 4 first bytes
+-	 countloop_ 2+1,ch			; length of silence in ticks
++;	countloop_ 4,cl				; scan 4 first bytes
++	mov cl,4
++@@myclloop:
++;	 countloop_ 2+1,ch			; length of silence in ticks
++	mov ch,2+1
++@@mychloop:
+-	  loop_
++;	  loop_
++@@myzloop:
+-		testflag al,mask LSR_RBF
++;		testflag al,mask LSR_RBF
++	test al,mask LSR_RBF
+-	  until_ ne				; loop until next timer tick
+-	 end_ countloop				; loop until end of 2nd tick
+-	 break_					; break if no more data
++;	  until_ ne				; loop until next timer tick
++	jz @@myzloop
++;	 end_ countloop				; loop until end of 2nd tick
++	dec ch
++	jnz @@mychloop
++;	 break_					; break if no more data
++	j @@myclend
+-	 breakif_ eq				; break if PnP data starts
++;	 breakif_ eq				; break if PnP data starts
++	jz @@myclend
+-	 if_ eq
++;	 if_ eq
++	jnz @@mynotm
+-	 end_
++;	 end_
++@@mynotm:
+-	 if_ eq
++;	 if_ eq
++	jnz @@mynotz
+-	 end_
++;	 end_
++@@mynotz:
+-	 if_ eq
++;	 if_ eq
++	jnz @@mynot3
+-	 end_
+-	end_ countloop
++;	 end_
++@@mynot3:
++;	end_ countloop
++	dec cl
++	jnz @@myclloop
++@@myclend:
+-		 out_	dx,%LCR<>,%MCR<,,,,,1,1> ; {3FCh} MCR: DTR/RTS on
++;		 out_	dx,%LCR<>,%MCR<,,,,,1,1> ; {3FCh} MCR: DTR/RTS on
++	mov	ax,(00000011b shl 8) + 00000000b
++	out	dx,ax
+-	loop_
++;	loop_
++@@delaynz:
+-	 loop_
++;	 loop_
++@@delayz:
+-	 until_ ne				; loop until next timer tick
++;	 until_ ne				; loop until next timer tick
++	jz @@delayz
+-	until_ zero				; loop until end of 2nd tick
++;	until_ zero				; loop until end of 2nd tick
++	jnz @@delaynz
+-end
++end	start
+--- 21b4tasm/source/ctmouse/utility/makefile	2007-06-06 22:40:49.000000000 +0200
++++ 21b4jwasm/source/ctmouse/utility/makefile	2008-06-01 21:51:51.000000000 +0200
+-AS=tasm -m @..\asmlib.cfg
++# AS=tasm -m @..\asmlib.cfg
++# AS=jwasmd -mt @asmlib ... so we just hardcode the asmlib/ for includes  
++AS=jwasmd -mt 
+-# .obj.exe:
+-# 	$(LINKEXE) $*
++.obj.exe:
++	$(LINKEXE) $*
+-all: comtest.com protocol.com mousetst.exe
++all: comtest.com protocol.com mousetst.com
++# com does not link...
++# com does not link...
+-mousetst.exe:	mousetst.c
+-		tcc -N -w -a- -f- -f87- -ms -r- \
+-		-IC:\TC\INCLUDE -LC:\TC\LIB mousetst
++# *** mousetst.exe:	mousetst.c
++# *** 		tcc -N -w -a- -f- -f87- -ms -r- \
++# *** 		-IC:\TC\INCLUDE -LC:\TC\LIB mousetst
++mousetst.com: mousetst.asm display.asm
++	nasm -o mousetst.com mousetst.asm
+-comtest.obj: comtest.asm ..\asmlib\*.* ..\asmlib\bios\area0.def \
++comtest.obj: comtest.asm ..\asmlib\asm.mac ..\asmlib\bios\area0.def \
++		..\asmlib\macro.mac \
+-protocol.obj: protocol.asm ..\asmlib\*.* ..\asmlib\bios\area0.def \
++protocol.obj: protocol.asm ..\asmlib\asm.mac ..\asmlib\bios\area0.def \
++		..\asmlib\macro.mac ..\asmlib\code.def ..\asmlib\code.mac \
++
++
+--- 21b4tasm/source/ctmouse/utility/protocol.asm	2003-03-01 01:06:00.000000000 +0100
++++ 21b4jwasm/source/ctmouse/utility/protocol.asm	2008-06-01 21:53:27.000000000 +0200
+-%pagesize 255
+-%noincl
++; %pagesize 255
++; %noincl
+-%nosyms
++; %nosyms
+-%linum 0
+-%pcnt 0
++; %linum 0
++; %pcnt 0
+-warn
+-locals
++; warn
++; locals
+-.model use16 tiny
++; .model use16 tiny --- use jwasm -mt option instead
+-include asm.mac
+-include hll.mac
+-include code.def
+-include code.mac
+-include macro.mac
+-include BIOS/area0.def
+-include convert/digit.mac
+-include convert/count2x.mac
+-include DOS/io.mac
+-include DOS/mem.mac
+-include hard/PIC8259A.def
+-include hard/UART.def
++include ../asmlib/asm.mac
++; *** include ../asmlib/hll.mac
++include ../asmlib/code.def
++include ../asmlib/code.mac
++include ../asmlib/macro.mac
++include ../asmlib/BIOS/area0.def
++include ../asmlib/convert/digit.mac
++include ../asmlib/convert/count2x.mac
++include ../asmlib/DOS/io.mac
++include ../asmlib/DOS/mem.mac
++include ../asmlib/hard/PIC8259A.def
++include ../asmlib/hard/UART.def
+-PnP_hdend	label
++PnP_hdend	label byte
+-.data?
++; .data?	; BSS
+-programend segment virtual	; place at the end of current segment
+-
++; programend segment virtual	; place at the end of current segment
++; *** actually this was wrong in 2.0 - even TASM put queue at offset 0 :-p
++	even
+-PNPdata		label		; buffer for PnP data
++PNPdata		label byte	; buffer for PnP data
+-queue_end	label
++queue_end	label byte
+-programend ends
++; programend ends
+-.startup
++; .startup	-- in jwasm this does "ds=dx=cs+0" (cs+0 is a reloc)
++	org 100h
++                assume ds:DGROUP
++start::
+-	if_ ae					; JB mean CF=1
++;	if_ ae					; JB mean CF=1
++	jb @@skipb
+-	end_
++;	end_
++@@skipb:
+-		DOSGetIntr
++;		DOSGetIntr
++	mov ah,35h
++	int 21h
+-		DOSSetIntr ,,,@code:IRQhandler
++;		DOSSetIntr ,,,@code:IRQhandler
++	mov dx,offset @code:IRQhandler
++	mov ah,25h
++	int 21h
+-	loop_
++;	loop_
+-	while_ zero
++;	while_ zero
++	jnz @@emainloop	; at least this is what the HLL/TASM version had!
+-	 if_ ae
++;	 if_ ae
++	jb @@mainb
+-	 end_
++;	 end_
++@@mainb:
+-	 countloop_ 8				; 8 bits
++;	 countloop_ 8				; 8 bits
++	mov cx,8
++@@cl8:
+-	 end_
++;	 end_
++	loop @@cl8
+-	CODE_	MOV_AL	IOdone,<db 0>		; processed bytes counter
++;	CODE_	MOV_AL	IOdone,<db 0>		; processed bytes counter
++	OPCODE_MOV_AL
++IOdone	db 0
+-	CODE_	CMP_AL	limit,<db 3>
+-	 if_ ae
++;	CODE_	CMP_AL	limit,<db 3>
++	OPCODE_CMP_AL
++limit	db 3
++;	 if_ ae
++	jb @@limitb
+-	 end_
++;	 end_
++@@limitb:
+-	end_ loop
++;	end_ loop
++	j @@mainloop
++@@emainloop:
+-	CODE_	MOV_AX	IRQintnum,<db ?,25h>	; INT number of selected IRQ
++;	CODE_	MOV_AX	IRQintnum,<db ?,25h>	; INT number of selected IRQ
++	OPCODE_MOV_AX
++IRQintnum	db ?, 25h
+-		push	ax bx es
++		push	ax
++		push	bx
++		push	es
+-		pop	es bx ax
+-	if_ nz
++		pop	es
++		pop	bx
++		pop	ax
++;	if_ nz
++	jz @@drvnoi33
+-	end_
++;	end_
++@@drvnoi33:
+-	if_ ncxz
++;	if_ ncxz
++	jcxz @@setccxz
+-	end_ if
++;	end_ if
++@@setccxz:
+-	CODE_	OR_AL	PIC1state,<db ?>		; set bit to disable interrupt
++;	CODE_	OR_AL	PIC1state,<db ?>		; set bit to disable interrupt
++	OPCODE_OR_AL
++PIC1state	db ?
+-		 out_	dx,%LCR<>,%MCR<>	; {3FCh} MCR: DTR/RTS/OUT2 off
++;		 out_	dx,%LCR<>,%MCR<>	; {3FCh} MCR: DTR/RTS/OUT2 off
++	xor ax,ax
++	out dx,ax
+-		 out_	dx,%MCR<,,,1,1,1,1>	; {3FCh} MCR: DTR/RTS/OUTx on
++;		 out_	dx,%MCR<,,,1,1,1,1>	; {3FCh} MCR: DTR/RTS/OUTx on
++	mov al,00001111b	; aabcdefg
++	out dx,al
+-		 out_	dx,%IER{IER_DR=1}	; {3F9h} IER: enable DR intr
++;		 out_	dx,%IER{IER_DR=1}	; {3F9h} IER: enable DR intr
++	mov al,00000001b	; aaaabcde
++	out dx,al
+-	CODE_	AND_AL	notPIC1state,<db ?>	; clear bit to enable interrupt
++;	CODE_	AND_AL	notPIC1state,<db ?>	; clear bit to enable interrupt
++	OPCODE_AND_AL
++notPIC1state	db ?
+-		maskflag al,mask LCR_stop+mask LCR_wordlen
++;		maskflag al,mask LCR_stop+mask LCR_wordlen
++	and	al,mask LCR_stop+mask LCR_wordlen
+-		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
+-		xchg	dx,si			; 1200 baud rate
++;		 out_	dx,%LCR{LCR_DLAB=1}	; {3FBh} LCR: DLAB on
++	mov al,80h
++	out dx,al
++;		xchg	dx,si			; 1200 baud rate
++	xchg si,dx	; TASM and JWASM use opposite encodings
+-		xchg	dx,si
+-	CODE_	 MOV_AL	LCRset,<LCR <0,,LCR_noparity,0,2>>
++;		xchg	dx,si
++	xchg si,dx	; TASM and JWASM use opposite encodings
++;	CODE_	 MOV_AL	LCRset,<LCR <0,,LCR_noparity,0,2>>
++	OPCODE_MOV_AL
++LCRset	db 00000010b	; abcccdee
+-	loop_
++;	loop_
++@@tmrnz:
+-	 loop_
++;	 loop_
++@@tmrz:
+-	 until_ ne				; loop until next timer tick
++;	 until_ ne				; loop until next timer tick
++	jz @@tmrz
+-	until_ zero				; loop until end of 2nd tick
++;	until_ zero				; loop until end of 2nd tick
++	jnz @@tmrnz
+-		 out_	dx,%MCR<,,,0,,1,1>	; {3FCh} MCR: DTR/RTS on, OUT2 off
++;		 out_	dx,%MCR<,,,0,,1,1>	; {3FCh} MCR: DTR/RTS on, OUT2 off
++	mov al,00000011b	; aabcdefg
++	out dx,al
+-	loop_
+-	 countloop_ 2+1				; length of silence in ticks
++;	loop_
++@@nokeyyet:
++;	 countloop_ 2+1				; length of silence in ticks
++	mov cx,2+1
++@@tmr3loop:
+-	  loop_
++;	  loop_
++@@tmrzloop:
+-		testflag al,mask LSR_RBF
++;		testflag al,mask LSR_RBF
++	test al, mask LSR_RBF
+-	  until_ ne				; loop until next timer tick
+-	 end_ countloop				; loop until end of 2nd tick
++;	  until_ ne				; loop until next timer tick
++	jz @@tmrzloop
++;	 end_ countloop				; loop until end of 2nd tick
++	loop @@tmr3loop
+-	 if_ zero
++;	 if_ zero
++	jnz @@nbnz
+-	 end_
++;	 end_
++@@nbnz:
+-	 if_ nz
++;	 if_ nz
++	jz @@nbz2
+-	 end_
++;	 end_
++@@nbz2:
+-	until_ nz				; loop until keystroke
++;	until_ nz				; loop until keystroke
++	jz @@nokeyyet
+-	loop_					; find PnP data start '('
++;	loop_					; find PnP data start '('
++@@pnpnz:
+-	until_ eq
++;	until_ eq
++	jnz @@pnpnz
+-	loop_
++;	loop_
++@@pnpnz2:
+-	until_ eq
++;	until_ eq
++	jnz @@pnpnz2
+-	countloop_ 3
++;	countloop_ 3
++	mov cx,3
++@@write3:
+-	end_
++;	end_
++	loop @@write3
+-	loop_
++	; BEGIN TOTALLY CONFUSING SECTION
++;	loop_
++@@untilaeloop:
+-		say	cx
++;		say	cx
++	mov dx,cx
++	call saystr
+-	 loop_
++;	 loop_
++@@someloop:
+-	 while_ below
++;	 while_ below
++	jnb @@nosomeloop
++@@whilebelowloop:
+-	  breakif_ eq
++;	  breakif_ eq
++	jz @@nosomeloop
+-	 end_ loop
++;	 end_ loop
++	j @@someloop
++@@nosomeloop:
+-	until_ ae
++;	until_ ae
++	jb @@untilaeloop
++@@untilae:
++	; END TOTALLY CONFUSING SECTION
+-		_byte_hex_AX ,,cl
++		_byte_hex_AX al,0,cl
+-		push	ax dx bx
+-	CODE_	MOV_DX	IO_address,<dw ?>	; UART IO address
++		push	ax
++		push	dx
++		push	bx
++;	CODE_	MOV_DX	IO_address,<dw ?>	; UART IO address
++	OPCODE_MOV_DX
++IO_address	dw ?
+-	if_ carry				; process data if data ready
+-	CODE_	MOV_BX	queue@,<dw dataref:queue>
++;	if_ carry				; process data if data ready
++	jnc @@qnc
++;	CODE_	MOV_BX	queue@,<dw dataref:queue>
++	OPCODE_MOV_BX
++queue@	dw dataref:queue
+-	 if_ ae
++;	 if_ ae
++	jb @@qb
+-	 end_
++;	 end_
++@@qb:
+-	end_
+-		out_	PIC1_OCW2,%OCW2<OCW2_EOI> ; {20h} end of interrupt
+-		pop	bx dx ax
++;	end_
++@@qnc:
++;		out_	PIC1_OCW2,%OCW2<OCW2_EOI> ; {20h} end of interrupt
++	mov al,00100000b	; aaabbccc - nonspecific EOF
++	out PIC1_OCW2,al
++		pop	bx
++		pop	dx
++		pop	ax
+-end
++end start

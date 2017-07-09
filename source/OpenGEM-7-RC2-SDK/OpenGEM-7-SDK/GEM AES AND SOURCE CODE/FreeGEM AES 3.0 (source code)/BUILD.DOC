@@ -1,0 +1,8 @@
+Building the AES with Pacific C
+===============================
+
+  The project PPDAES.PRJ is used to generate the AES. To compile it, you
+will need LDIV.OBJ and LMUL.OBJ; these files are part of the C runtime
+library. To extract them, edit GETLDIV.BAT so that LIBDIR is set to
+the name of your Pacific C library directory (eg: C:\PACIFIC\LIB). Then
+run GETLDIV.BAT to extract the object files.

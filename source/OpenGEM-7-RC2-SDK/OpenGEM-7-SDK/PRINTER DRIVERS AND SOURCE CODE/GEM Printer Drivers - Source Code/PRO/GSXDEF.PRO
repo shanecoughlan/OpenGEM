@@ -1,0 +1,90 @@
+/************************************************************************
+ *    Device dependent constants for Epson HiRes/Proprinter drivers	*
+ ************************************************************************/
+#define cdo_text	FALSE		/* device text support */
+#define cdo_rule	FALSE		/* device ruled-lines support */
+#define no_tintrule	FALSE
+#define autocopy	FALSE		/* automatic multicopy support */
+
+#define MIN_L_WIDTH	1
+#define MAX_L_WIDTH	150
+#define MAX_COLOR	2
+#define MAX_LINE_STYLE	7
+#define MAX_MARK_INDEX	6
+#define MX_FIL_STYLE	4
+#define MX_FIL_INDEX	24
+#define MAX_WRITE_MODE	3
+#define MAX_ARC_CT	120
+
+/********************************************************
+ *  Epson HiRes/IBM Proprinter Printers:		*
+ *  NOTE:  X must be an even multiple of 8		*
+ *	   Y must be EXACT here, and will be translated	*
+ *	    to an even multiple of G_SL_HGT (-1) at	*
+ *	    v_opnwk() time.				*
+ *	Letter size paper - 8.5 x 11 inches		*
+ *	    print area - 8 x 11 inches			*
+ *		120 dpi -> 960 horizontal dots		*
+ *		144 dpi -> 1584 vertical dots		*
+ *	Half size paper - 8.5 x 5.5 inches		*
+ *	    print area - 8 x 5.5 inches			*
+ *		120 dpi -> 960 horizontal dots		*
+ *		144 dpi -> 792 vertical dots 		*
+ *	B5 size paper - 17.6 x 25 cm. (6.93" x 9.84")   *
+ *	    print area - 6.43 x 9.84 inches		*
+ *		120 dpi -> 771.6 horizontal dots**	*
+ *				**(8 x 96 = 768)	*
+ *		144 dpi -> 1416.96 vertical dots	*
+ *	A4 size paper - 21 x 29.7 cm. (8.27" x 11.69")  *
+ *	    print area - 7.77 x 11.69 inches		*
+ *		120 dpi -> 932.4 horizontal dots**	*
+ *				**(8 x 116 = 928)	*
+ *		144 dpi -> 1683.36 vertical dots	*
+  *	Legal size paper - 8.5 x 14 inches		*
+ *	    print area - 8 x 14 inches			*
+ *		120 dpi -> 960 horizontal dots		*
+ *		144 dpi -> 2016 vertical dots		*
+ *	Double size paper - 11 x 17 inches		*
+ *	    print area - 11 x 17 inches			*
+ *		120 dpi -> 1320 horizontal dots		*
+ *		144 dpi	-> 2448 vertical dots		*
+ *	Broad sheet paper - 18 x 24 inches		*
+ *	    print area - 13.5 x 24 inches		*
+ *		120 dpi -> 1620 horizontal dots **	*
+ *			     ** (8 x 202) = 1616	*
+ *		144 dpi	-> 3456 vertical dots		*
+ ********************************************************/
+/* These constants are one less than the number of pixels because they	*/
+/*    are used to reference array values (i.e. 0 -> 959 = 960) 		*/
+#define	X_LETTER	959			
+#define	Y_LETTER	1584
+#define	X_HALF		959
+#define	Y_HALF		792
+#define	X_B5		767			
+#define	Y_B5		1417
+#define	X_A4		927			
+#define	Y_A4		1683
+#define	X_LEGAL		959			
+#define	Y_LEGAL		2016
+#define	X_DOUBLE	1319			
+#define	Y_DOUBLE	2448
+#define	X_BROAD		1615			
+#define	Y_BROAD		3456
+
+#define TOP_MARGIN	0
+#define BOT_MARGIN	0
+#define LEFT_MARGIN	30	/* quarter inch */
+#define RIGHT_MARGIN	30	/* quarter inch */
+
+/* Duplicates of assembly constants for C code - used in v_opnwk() */
+#define	C_GSLHGT	16		/* G_SL_HGT */
+#define C_ASLHGT	24		/* A_SL_HGT */
+#define C_RESXMX	1615		/* RES_XMX */
+#define C_RESYMX	32751		/* RES_YMX */
+#define	C_XDPI		120		/* XDPI */
+#define	C_YDPI		144		/* YDPI */
+#define X_ASPECT        212		/* XSIZE */
+#define Y_ASPECT        176		/* YSIZE */
+
+/* Used in alphtext.c to build alpha map table file name */
+#define DEVICE_ABBREVIATION "pro"

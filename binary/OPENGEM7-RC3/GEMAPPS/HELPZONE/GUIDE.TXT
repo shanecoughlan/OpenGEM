@@ -1,0 +1,827 @@
+---------------------------------------------------------------------------
+ OpenGEM User Guide                        Release 7 RC 3 -- 9th July 2017
+---------------------------------------------------------------------------
+
+This is a user's guide for OpenGEM.
+
+It is currently maintained by Opendawn.com <shane@opendawn.com> 
+and any comments, suggestions or error reports are welcome.
+
+CREDITS: The OpenGEM User Guide is based on the PC GEM FAQ, which was 
+created by Rory Beaton for the FreeGEM community.  Thanks to Liam Proven
+and Owen Rudge for their proof-reading and comments.  
+
+DISCLAIMER: Information presented here is believed to be accurate but no 
+liability for errors or damage caused by use or misuse of such information 
+will be accepted by the author(s) or any quoted contributor(s). Digital 
+Research products (including GEM and DR-DOS) are the copyright of Caldera 
+Systems, Inc. <http://www.caldera.com>. All other trademarks are the 
+property of their respective owners, etc.
+
+---------------------------------------------------------------------------
+TABLE OF CONTENTS
+---------------------------------------------------------------------------
+
+1. GENERAL QUESTIONS
+    1.1  What is GEM?
+    1.2  What is FreeGEM?
+    1.3  What is OpenGEM?
+    1.4  Why is OpenGEM free?
+    1.5  Where can I get OpenGEM?
+    1.6  Where can I discuss or get help with OpenGEM?
+
+2. INSTALLATION QUESTIONS
+    2.1  Will OpenGEM work with my version of DOS?
+      2.1.1  Does OpenGEM run on FreeDOS?
+      2.1.2  Does OpenGEM run on Windows 9x/NT/2000?
+      2.1.3  Does OpenGEM run on Linux with DOSEMU?
+    2.2  Which version of OpenGEM should I install?
+    2.3  How do I install OpenGEM?
+    2.4  Can I run OpenGEM without a mouse?
+    2.5  Where can I download drivers?
+      2.5.1  Is there a printer driver for my <insert model> printer?
+      2.5.2  Is there a screen driver for my <insert model> display adapter?
+    
+3. OPERATIONAL QUESTIONS
+    3.1  Where can I get an OpenGEM User's Guide?
+    3.2  What applications does GEM run?
+      3.2.1  Are there any commercial applications for GEM?
+      3.2.2  Are there any new free applications for GEM?
+    3.3  What additional Desktop Accessories are available?
+    3.4  Can any Atari GEM Applications be run on OpenGEM?
+
+4. TECHNICAL QUESTIONS
+    4.1  What is the VDI?
+    4.2  What is the AES?
+    4.3  What are the major GEM file formats?
+      4.3.1  What is the .GEM file format?
+      4.3.2  What is the .IMG file format?
+    
+5. DEVELOPMENT QUESTIONS
+    5.1  Where can I find the GEM source code?
+    5.2  What tools do I need for compiling the source code?
+      5.2.1  How do I compile the source code?
+    5.3  What languages can I use for writing GEM applications?
+      5.3.1  What are "bindings"?
+      5.3.2  What bindings exist?
+
+6. GEM RESOURCES
+    6.1  Where to find GEM resources on the Internet
+    6.2  Mailing lists and discussion groups for GEM
+
+
+---------------------------------------------------------------------------
+1. GENERAL QUESTIONS
+---------------------------------------------------------------------------
+
+***************************************************************************
+1.1   What is GEM?
+***************************************************************************
+
+  GEM is an acronym for Graphical Environment Manager and, as you might 
+  expect, PC-GEM is a DOS-based GUI for IBM PC and 100% compatible 
+  microcomputers. It was first released in 1985 and initially looked
+  similar to the GUI used by the Apple Lisa and Macintosh. This lead 
+  Apple to begin legal proceedings against Digital Research until DRI 
+  relented and changed some crucial elements of the desktop - such as 
+  the Trashcan icon, moveable, overlapping windows etc.
+
+  GEM was particularly successful on the Amstrad (Schneider) and Tandy
+  range of PC compatibles and a Motorola 68000 implementation was 
+  adopted as the GUI for the Atari ST.  
+
+
+***************************************************************************
+1.2   What is FreeGEM?
+***************************************************************************
+  
+  FreeGEM is the umbrella term for all the modified and improved 
+  components of the GEM desktop which have resulted as part of the 
+  GPL GEM development effort. There are several "distributions" of GEM 
+  using FreeGEM code, including OpenGEM and Owen Rudge's FreeGEM 1.2 
+  <http://www.owenrudge.net/GEM/>.
+
+***************************************************************************
+1.3   What is OpenGEM?
+***************************************************************************
+  
+  OpenGEM is a FreeGEM distribution.  It contains a collection of DR GEM
+  and FreeGEM code, is released under the GPL license.  It is actively 
+  developed by Shane Coughlan.
+
+  OpenGEM is the main FreeGEM distribution.  It is designed to be easy to
+  install and use, and is tested to work with virtually all versions of 
+  DOS.  
+
+  OpenGEM can be compared to DR's ViewMax file manager for DR-DOS 6 and 7 
+  - see: <http://en.wikipedia.org/wiki/ViewMAX>.  However, unlike ViewMax, 
+  OpenGEM is a full GEM desktop that is capable of running applications
+  through its simple packaging system.
+
+  The OpenGEM homepage is <http://gem.opendawn.com/>
+  You can get more information by emailing <shane@opendawn.com>
+
+
+***************************************************************************
+1.4   Why is OpenGEM free?
+***************************************************************************
+
+  When Caldera purchased DR-DOS (Novell DOS) from Novell, they also 
+  inherited the legacy Digital Research products which included CP/M
+  and GEM. While CP/M was released under the more restrictive CP/M
+  license, GEM was released, along with the existing source code, 
+  under the Free Software Foundation's General Public License, also
+  known as the GNU GPL.
+
+  All use, distribution and future development based on the original
+  GEM source code is restricted (albeit lightly) by the terms 
+  expressed in that license. You can read the license at the FSF's
+  web site <http://www.fsf.org/licenses/gpl.html>
+
+
+***************************************************************************
+1.5   Where can I get OpenGEM?
+***************************************************************************
+
+  The current main FreeGEM is distribution is OpenGEM, which includes
+  most major FreeGEM code and original GEM applications.  It is available
+  for free download from <http://gem.opendawn.com/>
+
+  GEM source code, executables and some applications can be found in the
+  OpenGEM SDK <http://gem.opendawn.com/>
+  
+              
+***************************************************************************
+1.6   Where can I discuss or get help with OpenGEM?
+***************************************************************************
+
+  There are several sites dedicated to the discussion of PC-GEM as well as
+  an active mailing list discussing the ongoing development of GEM.
+  
+  Further details are available in Section 6 of this FAQ, in "Where to find
+  GEM resources on the Internet" and "Mailing lists and discussion groups
+  for GEM".
+
+
+---------------------------------------------------------------------------
+2. INSTALLATION QUESTIONS
+---------------------------------------------------------------------------
+
+***************************************************************************
+2.1   Will OpenGEM work with my version of DOS?
+***************************************************************************
+
+  PC-GEM has been proven to run effectively on the 8086-based IBM PC and
+  has minimal hardware requirements. Early versions of PC-GEM can be run
+  from floppy disk and do not require a hard drive installation. According
+  to an article in "BYTE", Vol. 10, No. 6, p455, June 1985:
+  
+    "...the DR team demonstrated GEM running on a variety of IBM
+    machines including a PC AT, a PC XT and an IBM PC with two 
+    floppy-disk drives and 256K bytes of memory."
+
+  And, even more impressive:
+  
+    "On 8086 machines, it will work with MS-DOS and PC-DOS without
+    modification, as well as with any of DR's newer operating 
+    systems functioning in DOS mode...GEM and MS-DOS together take
+    up a little under 128K bytes of RAM."
+
+                            ("BYTE", Vol. 10, No. 3, p355, March 1985)
+
+  GEM supports MS-DOS from version 1 upwards so, if your machine is running
+  under PC-/MS-DOS 3.0 or higher you should have no problems. Certain
+  functions or utilities of later PC-GEM versions or ViewMAX may require
+  Digital Research's DR-DOS.
+
+
+***************************************************************************
+2.1.1  Does OpenGEM run on FreeDOS?
+***************************************************************************
+
+  Yes.
+
+  To ensure OpenGEM will work smoothly on FreeDOS you are advised to 
+  download the latest version of the FreeDOS software.  It can be found 
+  at <http://www.freedos.org/>.
+
+  OpenGEM will also work on other version of DOS, such as DR-DOS.
+  You can download DR-DOS 7 from <http://www.drdos.net/>
+
+***************************************************************************
+2.1.2  Does OpenGEM run on Windows 3.x/9x/ME/NT/2000/XP?
+***************************************************************************
+
+  GEM has no problems running in a Windows 9x DOS session in full screen
+  mode.
+  
+  At present, the state of play is as follows:
+  
+          Windows 3.1/3.11  --  YES  (Win 3.1 can also be launched from GEM!)
+          Windows 95/98     --  YES  (in full-screen DOS session) 
+          Windows NT 4.0    --  YES  (in full-screen DOS session) 
+          Windows ME        --  YES  (in full-screen DOS session) 
+          Windows 2000      --  YES *
+	  Windows XP        --  YES ** ***
+
+  * There have been several reports of DR GEM and FreeGEM code crashing
+  when used on Windows 2000 machines.  
+
+  ** "There is a caveat; the High C compiler really doesn't like XP.  The 
+  MAKEDESK.BAT file that compiles the Desktop will run a few files through 
+  High C, then suddenly die without an error or anything. Running High C 
+  from the command line is no better; a few files and then *bang*, it 
+  disappears. My solution was to do a START /W HC <filename> instead of 
+  HC <filename> in MAKEDESK.BAT; this will be implemented in the next 
+  Desktop source release."
+  - Ben Jemmett
+
+  *** GEM RCS fails to run correctly under Windows XP.  It will crash when
+  attempting to save RSC files.  GEM Write also fails to save files when
+  used under Windows XP.
+
+
+***************************************************************************
+2.1.3  Will OpenGEM run on Linux under DOSEMU?
+***************************************************************************
+
+  Yes. This has been tested using DOSEMU 1.01 using the DR-DOS 7.03 hard
+  disk image available from <http://www.drdos.net/> and there is no reason
+  to assume that this will not be the same using MS-DOS. Please see above
+  2.1.1 for specific information regarding FreeDOS.
+  
+  Alistair MacDonald wrote a Mini-HOWTO for running GEM on older (ie 
+  development) versions of DOSEMU and this can be found at: 
+  <http://www.tux.org/hypermail/linux-msdos/2000-Feb/0065.html>
+    
+  Further information about DOSEMU, including downloads of the latest
+  stable binaries/source can be found at <http://www.dosemu.org/>
+
+
+***************************************************************************
+2.2   Which version of OpenGEM should I install?
+***************************************************************************
+
+  It is recommended that you install OpenGEM 6 or above.
+
+
+***************************************************************************
+2.3   How do I install OpenGEM?
+***************************************************************************
+
+  Full instructions are included with each specific distribution.
+
+
+***************************************************************************
+2.4  Can I run OpenGEM without a mouse?
+***************************************************************************
+
+  Yes, although GEM is best experienced with a mouse, graphics tablet or
+  some kind of pointing device, it is sometimes necessary to run it without
+  such assistance; older laptops being one example.
+  
+  To allow the cursor to be moved using the cursor (arrow) keys, first
+  press [CTRL] + [SHIFT]. This should return a beep on the PC speaker.
+  Mouse operations can now be emulated as follows:
+  
+            Click:          Press [HOME] key
+            Doubleclick:    Press [HOME] key twice
+            Drag:           Press & release [END] key
+                            Use arrow keys to move
+                            Press [HOME] key to finish
+            
+            Shift-Click:    Use arrow keys to select first icon
+                            Press & release [HOME] key
+                            Use arrow keys to select next icon
+                            Press [SHIFT] & [HOME] to select
+                            Repeat as required...
+  
+***************************************************************************
+2.5  Where can I download drivers?
+***************************************************************************
+
+  The first place to look is the official OpenGEM site
+  <http://gem.opendawn.com/>
+
+  Some drivers are still available from OEM websites and you can find links
+  to other sites with drivers from <http://www.deltasoft.com/>.
+  
+  Source code to the original DRI printer and screen drivers can be found 
+  at <http://www.deltasoft.com> and Heinz Rath's VESA screen driver source
+  is available at <http://www.geocities.com/heinz_rath/>.
+
+***************************************************************************
+2.5.1  Is there a printer driver for my <insert model> printer?
+***************************************************************************
+
+  No new printer drivers have been developed since GEM became open source
+  and I don't recall hearing of anyone successfully compiling the original
+  driver source. This means that unless your printer is compatible with one
+  of the supported printers, you may have to resort to capturing output to
+  a PostScript file.
+  
+  Known Printer Drivers:
+
+  File Name   Description                Comments
+  ----------------------------------------------------------------
+              AST Turbolaser (300dpi)    Uses Ricoh Laser engine. 
+                                         Use HPLJ or Epson FX emulation
+                                         See printer documentation for 
+                                         details. Utils available from 
+                                         www.ari-service.com
+
+              Calcomp Plotmaster, 
+              Colourmaster
+
+              Canon LBP-8 II (300dpi)
+
+              Canon LBP-8 III (300dpi)
+
+              Epson EX, FX, JX, LX Colour 
+              [also Star LC10C]
+  
+              Epson LQ/SQ Colour 
+              [also NEC 24-pin colour]
+
+              HP DeskJet (300dpi)        Driver available (GEM/3 r3.1)
+
+              HPGL & DM/PL-Compatible 
+              Plotters                   *** Drivers available ***
+ 
+              HP LaserJet II
+              Bitmap (300dpi)            Driver available (GEM/3 r3.0)
+
+              HP LaserJet Plus 
+              Bitmap (150dpi)            Driver available (GEM/3 r3.0)
+
+              HP PaintJet Colour (180dpi)Driver available (GEM/3 r3.1)
+
+              HP ThinkJet 
+              [also HP QuietJet]
+
+              IBM JetPrinter Colour
+
+              IBM Proprinter X24/X24L
+
+              IBM Quickwriter
+
+              IBM QuietWriter II/III
+    
+              NEC 24-pin printer inc. 
+              P5, P6, P7 (180dpi)         *** Drivers available ***
+ 
+              Quadram Quadjet Colour
+
+              Ricoh PC Laser 6000 (300dpi) No longer supported by Ricoh. 
+                                           If you have one of the emulation 
+                                           cards, use the HP LaserJet, Epson
+                                           FX-80 or IBM Proprinter driver 
+                                           as req'd.
+
+              Tall Tree JLaser (300dpi)    *** Missing in action ***
+
+              Toshiba P351C Colour (180dpi)
+
+              Xerox 4020 Colour (180dpi)   Driver available (GEM/3 r3.0)
+
+              Xerox 4045 (300dpi)
+
+
+
+***************************************************************************
+2.5.2  Is there a screen driver for my <insert model> display adapter?
+***************************************************************************
+
+  The following is an attempt at a canonical list of all known 
+  screen drivers for GEM. Where possible, I have only listed the latest 
+  version and included VDI version information taken either from the 
+  documentation or from the binaries themselves.
+  
+  Many of these that are not already bundled with GEM may still be 
+  available from the manufacturer's web site if you can spare the time to
+  hunt them down. Many of the drivers used to be accessable through the
+  FreeGEM screen driver archive at 
+  <http://www.freegem.org.uk/archives/drivers/screen/>, but since the site
+  shut I'm not sure where you might find them.  A good starting point is
+  <http://www.deltasoft.com>, which is the main FreeGEM website.
+  
+  File names don't tend to mean a lot and some drivers seem to be simply
+  renamed copies of the standard IBM drivers; some have not been included
+  in this list for this very reason. If you are stuck, it may be worthwhile
+  trying the standard EGA/VGA drivers. The SDPSC9.VGA driver should provide
+  a basic 640 x 480 display on most modern systems.
+  
+  I've still not been able to find a copy of the Trident 768 x 1024 driver
+  for portrait displays so this should probably still be considered "lost".
+  
+  The RealTek virtual 1024 x 1024 driver used to be downloadable at 
+  <http://www.freegem.org.uk/archives/drivers/screen/realtek.zip>, 
+  but since the site closed I'm not sure where it might be found.
+
+  
+ File Name    Description                            Resolution    VDI
+ ======================================================================
+ SDATT9.EGA   AT&T 6300 Mono                         640 x 400     3.1
+ SDDEB8.EGA   AT&T 6300 Color                        640 x 400     2.0
+ GEM51.SYS    ATI EGA Wonder Card/Multisync Monitor  640 x 480     2.2
+ GEM52.SYS    ATI EGA Wonder Card/Multisync Monitor  752 x 410     2.2
+ GEM53.SYS    ATI EGA Wonder Card/Multisync Monitor  800 x 560     2.2
+ SDELF9.CGA   Amstrad 1512 with PC-CD Display        640 x 200     3.1
+ SDELF9.CGA   Amstrad 1640 with PC-CD Display        640 x 200     3.1
+ SDEHF9.EGA   Amstrad PC1640 ECD 16 Colour Display   640 x 350     3.1
+ SDEH19.EGA   Amstrad PC1640 MD Monochrome Display   640 x 350     3.1
+ SDPSC9.VGA   Amstrad PC2000 Series VGA              640 x 480     3.1
+ SDA600.VGA   Cirrus Logic VGA 16 color              800 x 600     3.1
+ SDA768.VGA   Cirrus Logic VGA 16 color              1024 x 768    3.1
+ SDSP10.EGA   Cornerstone SinglePage Display         (unknown)     3.1
+ SD233352.EGA EverGraphics Deluxe EV233              1024 x 352    1.0
+ SD233704.EGA EverGraphics Deluxe EV233              1024 x 704    1.0
+ SD23520.EGA  Everex Ultragraphics EV235 20pt        1664 x 1200   1.0
+ SD23510.EGA  Everex Ultragraphics EV235 10pt        1664 x 1200   1.0
+ SD235SCN.EGA Everex Ultragraphics EV235 10pt        1280 x 1200   1.0
+  * DRI *     Genoa EGA with Multi-Sync Monitor      800 x 600     3.1(?)
+ SDHRC9.EGA   Hercules Card / Monochrome PC Display  720 x 348     3.1
+ SDCGA9.CGA   IBM CGA / Color Display - Mono Mode    640 x 200     3.1
+ SDEHF9.EGA   IBM EGA Colour with Colour Display     640 x 200     3.1
+ SDEHF9.EGA   IBM Enhanced Card & 16-Color Display   640 x 350     3.1
+ SDEH19.EGA   IBM EGA / Monochrome Display           640 x 350     3.1
+ SDPSM9.VGA   IBM Monochrome MCGA/VGA                640 x 480     3.1
+ SDPSC9.VGA   IBM 16-Color VGA for PS/2 or Compat.   640 x 480     3.1
+ SDPSM9.VGA   IBM VGA Monochrome for PS/2 or Compat. 640 x 480     3.1
+ SDGEN9.VGA   MDS THE GENIUS Monitor/Card            728 x 1008    3.1
+ SDMX6448.EGA MaxLogic MaxEGA/VGA adapter 16 color   640 x 480     1(?)
+ SDMX7542.EGA MaxLogic MaxEGA/VGA adapter 16 color   752 x 420     1(?)
+ SDMX8051.EGA MaxLogic MaxEGA/VGA adapter 16 color   800 x 512     1(?)
+ SDMX8060.EGA MaxLogic MaxEGA/VGA adapter 16 color   800 x 600     1(?)
+ SDG647.SYS   MaxLogic MX-656 EGA/Multisync 16 cols  640 x 480     2.2
+ SDG867.SYS   MaxLogic MX-656 EGA/Multisync 16 cols  800 x 600     2.2
+ SDDEB8.EGA   Olivetti EGC with Colour Display       640 x 400     2.0
+ SDATT9.EGA   Olivetti Monochrome                    640 x 400     3.1
+  * DRI *     Quad Prosync with Multi-Sync Monitor   752 x 410     3.1(?)
+ SDP649.VGA   Quadram Prosync 16-Color Display       640 x 480     3.1
+ SD800.VGA    RealTek VGA (ZyMOS SuperVGA) 16 Color  800 x 600     3.1
+ SD4C.VGA     RealTek VGA (ZyVGA) 4 Color            1024 x 768    3.1
+ SD1KV.VGA    RealTek ZyVGA Virtual 1024 16 Color    1024 x 1024   3.1
+ SDGEMVP.VGA  S3 Carrera (86C911) 16 color           (unknown)     3.1
+ SDFSIS86.VGA SiS (SiS86C201) VGA adapter Mono       800 x 600     3.1 
+ SDFSIS1K.VGA Sis (SiS86C201) VGA adapter Mono       1024 x 768    3.1 
+ SDTSH9.EGA   Toshiba T1000, T1200 or T3100 Mono     640 x 400     3.1
+ SD803.VGA    Trident TVGA 16 color                  800 x 600     3.1
+ SD803.VGA    Trident TVGA 16 color                  1024 x 768    3.1
+ SD7X6.VGA    Trident TVGA portrait display          768 x 1024    3.1(?)
+ SDP649.VGA   Video 7 Vega Deluxe/Multi-Sync Monitor 640 x 480     3.1
+ SDFVGA86.VGA Western Digital 1Page Display System   800 x 600     3.1
+ SD_800_M.VGA WD PVGA 1B VGA-0032B Mono              800 x 600     3.1
+ SD_1K_M.VGA  WD PVGA 1B VGA-0032B Mono              1024 x 768    3.1
+ SD_800_C.VGA WD PVGA 1B VGA-0032B 16 color          800 x 600     3.1
+ SD_1K_C.VGA  WD PVGA 1B VGA-0032B 16 color          1024 x 768    3.1
+ SDWYS9.VGA   Wyse/Amdek Monochrome Graphics Display 1280 x 800    3.1
+
+ [ * DRI * denotes GEM/3 drivers only available for purchase direct from 
+  Digital Research and not included with the retail/bundled version. If
+  you have any of these, or any updates to other drivers listed, please 
+  let me know. ]
+
+ If none of the above suit your modern graphics adapter, try Heinz Rath's
+ VESA Screen driver, an 800 x 600, 16 color screen driver that should work
+ with all VESA compatible cards. Known bugs include wrong colours on ATI
+ Rage Pro; BASIC 2.0 doesn't run, BASIC 2+ does. Driver and source is
+ available at Heinz's homepage: <http://www.geocities.com/heinz_rath/>.
+ The ATI Xpert@Home also has errors with GEM.  GEM starts without 
+ displaying anything.
+
+ If you are running GEM on a reverse LCD display, try the LCD driver by 
+ Jaroslaw Binczarowski, available from various locations.
+
+The following was also contributed by John Elliott:
+
+ File Name    Description                            Resolution    VDI
+ ======================================================================
+ UDUNI9.VGA   ViewMAX/2 "Universal" driver           640 x 480     3.1*  
+                                                 and 640 x 350
+                                          maybe even 640 x 200
+ UDHRC9.EGA   ViewMAX/2 Hercules driver              720 x 348     3.1*
+ UDCGA9.CGA   ViewMAX/1 CGA driver                   640 x 200     3.1
+ UDEGA9.EGA   ViewMAX/1 EGA driver                   640 x 350     3.1
+ UDHRC9.EGA   ViewMAX/1 Hercules driver              720 x 348     3.1
+ UDPSC9.VGA   ViewMAX/1 VGA driver                   640 x 480     3.1
+ UDCAT9.EGA   ViewMAX/1 and 2 AT&T 6300 driver       640 x 200     3.1
+ AMSTRAD.SYS  Amstrad PC1512 16-colour CGA           640 x 200     2.0       
+                                                                    
+ [*] ViewMAX/2 drivers say GEMVDI 3.1, but don't all actually implement 
+ the complete VDI. In particular, a lot of the font support has gone.
+
+And the following by Owen Rudge:
+
+ File Name    Description                   Resolution      VDI
+ ======================================================================
+ SDGEM5.VGA   GEM/5 paletted VGA            640x480x16   GEM 3.x driver
+
+ [This was written by Ben Jemmett, based on Chris Barnes' VGA driver and 
+  using John Elliott's notes on the GEM/5 colour palette.]
+
+---------------------------------------------------------------------------
+3. OPERATIONAL QUESTIONS
+---------------------------------------------------------------------------
+
+***************************************************************************
+3.1  Where can I get an OpenGEM User's Guide?
+***************************************************************************
+
+  You're reading it right now.
+
+  There is also an OpenGEM FAQ document that can be download from 
+  <http://gem.opendawn.com/>.
+
+
+***************************************************************************
+3.2   What applications does GEM run?
+***************************************************************************
+
+  GEM will happily act as a shell for launching all DOS applications 
+  that do not have excessive memory or environment requirements.
+  
+  Besides that, GEM is also host to a range of native applications ranging 
+  from word-processing and desktop publishing to drawing and charting
+  utilities.
+  
+  The following list includes some of the applications currently 
+  available from GEMWORLD:
+ 
+        WordPlus  --  Word-processing package
+        Graph     --  Spreadsheet/graphing utility
+        Publisher --  Desktop publishing package
+        Draw      --  Drawing utility
+        Artline   --  High-end graphics package
+
+***************************************************************************
+3.2.1  Are there any commercial applications for GEM?
+***************************************************************************
+
+  Many of the third-party applications originally developed for PC-GEM have
+  never been released to the FreeGEM community and some may still be
+  available commercially. Ken Mauro's GEM Notes provide a good starting
+  point at <http://www.deltasoft.com/gemnotes.htm>.
+
+  Artline, a high-end graphics package for GEM/3, is now available for free. 
+  English and German language versions are available.
+
+ 
+***************************************************************************
+3.2.2  Are there any new free applications for GEM?
+***************************************************************************
+
+  There are several new applications for GEM.  For example, GEMP3 is a 
+  new music player and SCGEM is a new spreadsheet application.  You can 
+  find these applications in the OpenGEM Complete distribution of GEM.
+
+
+***************************************************************************
+3.3  What additional Desktop Accessories are available?
+***************************************************************************
+
+  GROWBOX.ACC - Restores the zoom rectangles in DR GEM 
+  MONITOR.ACC - Switch a Compaq laptop between its external and internal displays
+  PALETTE.ACC - Change the VGA palette
+
+    
+***************************************************************************
+3.4  Can any Atari GEM Applications be run on OpenGEM?
+***************************************************************************
+
+  No. Some applications were written for both the Atari ST and the PC but 
+  the binaries are very distinct and will not run on the other platform.
+  
+  There are several ST emulators which can run Atari ST GEM applications
+  and while these could feasibly be launched from PC GEM, there is curently
+  no GEM-based ST emulator.
+  
+  Some examples of ST emulators include ARAnyM 
+  <http://aranym.sourceforge.net/> and MAGIC/PC 
+  <http://www.application-systems.de/magicpc/>
+
+  
+---------------------------------------------------------------------------
+4. TECHNICAL QUESTIONS
+---------------------------------------------------------------------------
+
+***************************************************************************
+4.1   What is the VDI?
+***************************************************************************
+
+  The VDI is the Virtual Device Interface, which deals with turning drawing 
+  requests into commands to the device drivers.  Also included in this part 
+  of the functionality of the VDI are pointer handling (the mouse driver 
+  in GEM is incorporated into the individual displayed drivers) and the 
+  underlying esoteria such as workstations and virtual workstations, which 
+  an application uses to communicate with a certain device driver.  The 
+  VDI also looks after fonts and starting the GEM system by loading the 
+  AES into memory.
+
+  You might also see the VDI referred to as the GDOS (Graphics Device
+  Operating System); I've mainly seen this in the source code, but I believe
+  it refers to GEMVDI.EXE specifically -- that is, the part of the VDI that
+  remains the same across all device configurations.  The VDI is made up of
+  the GDOS and a set of device drivers, in this case.
+  
+
+***************************************************************************
+4.2   What is the AES?
+***************************************************************************
+
+  AES stands for Application Environment Services; the AES is the program
+  responsible for providing the GEM user interface to applications.
+  Applications use the AES to create and display windows, dialog boxes, alert
+  boxes, menu bars, and objects such as buttons or text fields, amongst other
+  things.  The AES also provides support for desk accessories (small programs
+  that are in memory whenever GEM is running, and typically show up on the
+  Desk menu), and the event system that makes GEM tick.  The AES also handles
+  other odd bits and pieces like the Item Selector, the clipboard (when
+  applications use the clipboard), and running multiple processes (this is
+  more noticeable on GEM/XM, although vanilla GEM implements desk accessories
+  as separate processes too).
+ 
+  To put it another way, the AES is responsible for the GEM environment
+  itself.
+
+
+***************************************************************************
+4.3  What are the major GEM file formats?
+***************************************************************************
+
+  GEM has two main file formats, ignoring application-specific data.  These
+  are the .GEM metafiles and the .IMG bitmaps.  Both of these file formats can
+  be viewed, printed, plotted or exposed (I guess that's the correct term for
+  output to a camera device!) with the GEM Output program.
+
+  See also <http://www.seasip.info/Gem/filefmt.html>
+
+
+***************************************************************************
+4.3.1   What is the .GEM file format?
+***************************************************************************
+
+  The .GEM file format is a metafile -- a series of commands to a device
+  driver that will reproduce a document when played back.  They are produced
+  through the GEM Metafile device driver, which on GEM/2 was METAFIL6.SYS.
+
+  Various applications produce .GEM files; GEM Draw, GEM Wordchart and GEM
+  Graph are three from the original series of GEM applications.
+
+
+***************************************************************************
+4.3.2   What is the .IMG file format?
+***************************************************************************
+  
+  The .IMG file format is a bitmap -- an image file representing each pixel in
+  the original image with a colour value.  These turn up in various formats
+  depending on the device and platform for which they created -- a CGA IBM PC
+  would produce a monochrome .IMG file in Intel byte ordering, while an Atari
+  might produce a 16-colour image in Motorola byte order.
+
+  .IMG files are often accompanied by a .GEM file, which contains the command
+  'draw this image file'.  This file pairing is produced by GEM Paint to
+  facilitate later processing by GEM Output, which likes to deal with .GEM
+  files.
+
+  .IMG files are produced by GEM Paint and the Snapshot desk accessory.
+
+
+---------------------------------------------------------------------------
+5. DEVELOPMENT QUESTIONS
+---------------------------------------------------------------------------
+
+***************************************************************************
+5.1    Where can I find the GEM source code?
+***************************************************************************
+
+  The starting point for any GEM development should be the OpenGEM SDK,
+  which contains all the known PC GEM source code, binary, documentation
+  and resources.  You can download the OpenGEM SDK from the OpenGEM site 
+  <http://gem.opendawn.com/>
+
+
+***************************************************************************
+5.2    What tools do I need for compiling the source code?
+***************************************************************************
+
+  Different components of the system require different compilers and
+  assemblers.  John Elliott's AES is compiled with the Pacific C compiler; 
+  the DRI source code is compiled with a hodge-podge of compilers and 
+  assemblers. The build tools for the original code can be found in the 
+  OpenGEM SDK <http://gem.opendawn.com/> or through the FreeGEM website
+  <http://www.deltasoft.com/downloads.htm>.
+
+
+***************************************************************************
+5.2.1  How do I compile the source code?
+***************************************************************************
+
+  The OpenGEM SDK provides the bindings with which to compile much of
+  the existing DR GEM and FreeGEM code.  In addition to this, it includes
+  some compilers to help with the process.  You can download the OpenGEM
+  SDK from <http://gem.opendawn.com/>
+
+
+***************************************************************************
+5.3    Which languages can I use for writing GEM applications?
+***************************************************************************
+
+  You can write GEM applications in any compiled language you choose... 
+  provided the compiler can produce binaries that will run on DOS. The 
+  down side is that currently there are only limited sets of bindings 
+  available and these are for C, Pascal and Fortran.
+
+  The only interpreted language that currently runs on GEM is BASIC2 and 
+  BASIC2+ which are distributed free under a binary-only license.
+  
+  GDScript for FreeGEM is based on the original INSTALL.APP and provides 
+  a limited scripting language for GEM.
+
+
+***************************************************************************
+5.3.1  What are "bindings"?
+***************************************************************************
+
+  The bindings provide the interface between a development system and the GEM
+  environment; they are essentially the libraries used by an application
+  programmer to access GEM functions.  Typically, a language's binding will
+  consist of the set of declarations in the language, and a library of short
+  stubs of code that translate the compiler's calls into calls into the GEM
+  API on interrupt 0xEF.
+
+  For instance, the DRI C bindings consist of a set of header files and a set
+  of libraries the developers links their object files against.  The binding
+  installation procedure gives the option of having one, a few, or many
+  library files; these correspond to the whole set of GEM calls, GEM calls in
+  various categories, and every individual call.  This is done so older
+  linkers don't need to include the whole set of bindings when only a few are
+  used.
+
+
+***************************************************************************
+5.3.2  What bindings currently exist?
+***************************************************************************
+
+  There are original bindings for Borland Turbo C, Microsoft C, Lattice
+  C, Metaware High C, Borland Turbo Pascal, DRI Pascal MT+, IBM PROFORT
+  Fortran 77.
+
+  John Elliott has updated the DRI C bindings to provide support for
+  the 32-bit DJGPP compiler <http://www.delorie.com/> and also the 16-bit
+  Pacific C compiler <http://www.hitech.com.au/products/pacific.html>.
+  These can be found at <http://www.seasip.info/Gem/gengem.html>
+
+  Rob Mitchelmore has produced the TurboGEM bindings, a set of bindings
+  for Turbo Pascal.
+
+  Owen Rudge has written sound driver bindings for Heinz Rath's sound
+  driver. These support Turbo C 1.01, Borland C 4.51, Pacific C and
+  Watcom C/C++ 10.6 as well as MS QuickBASIC 4.5.  You can get more
+  information on those from <http://www.owenrudge.net/GEM/>
+
+  The bindings for GEM can be found in the OpenGEM SDK
+  <http://gem.opendawn.com/>
+
+
+---------------------------------------------------------------------------
+6. GEM RESOURCES
+---------------------------------------------------------------------------
+
+***************************************************************************
+6.1  Where to find OpenGEM resources on the Internet
+***************************************************************************
+
+  The main starting point for OpenGEM resources or help is the official
+  OpenGEM site
+  <http://gem.opendawn.com/>
+
+  You can also find information and tools at:
+
+  John Elliott's GEM pages
+  <http://www.seasip.info/Gem/> 
+
+  The FreeGEM GEM pages
+  <http://www.deltasoft.com/>
+
+  Owen Rudge's GEM pages
+  <http://www.owenrudge.net/GEM/>
+
+  Heinz Rath's GEM pages
+  <http://www.geocities.com/heinz_rath/>
+
+
+***************************************************************************
+6.2  Mailing lists and discussion groups for GEM
+***************************************************************************
+
+  There are two mailing lists for discussion of GEM and FreeGEM:
+
+    GEM-DEV is for general discussion of GEM development topics as well
+    as announcement of new projects and updates to existing GEM code.
+    To subscribe to the GEM-DEV list visit the FreeGEM site 
+    <http://www.deltasoft.com/>
+
+    GEM-ANNOUNCE is for GEM and FreeGEM new software and update 
+    announcements.  You can find it at 
+    <http://groups.yahoo.com/group/gem-announce> 

@@ -1,0 +1,315 @@
+;Project file: D:\TOOLS\C\PPDGEM\PPDGEM-S.PRJ for Pacific C MS-DOS V7.51
+
+List: Object Files	Abs Auto
+Endlist:
+
+List: CPP Include Paths	Abs Auto
+Entry: $(INC)
+Endlist:
+
+List: CPP Pre-defined Symbols	Abs Auto
+Entry: -DDOS
+Entry: -D_HOSTED
+Entry: -Di8086
+Entry: -D__PACIFIC__
+Entry: -DHI_TECH_C
+Entry: -DSMALL_CODE
+Entry: -SP2,2,2,2,2,2,2
+Entry: -S1,2,2,4,4,8
+Entry: -DSMALL_DATA
+Entry: -DSMALL_MODEL
+Endlist:
+
+List: Source Files	Abs Auto
+Entry: PPDHOOK.C
+Entry: PPDFDRAW.C
+Entry: PPDLDRAW.AS
+Entry: PPDGEM.C
+Entry: PPDG000.C
+Entry: PPDG001.C
+Entry: PPDG002.C
+Entry: PPDG003.C
+Entry: PPDG004.C
+Entry: PPDG005.C
+Entry: PPDG006.C
+Entry: PPDG007.C
+Entry: PPDG008.C
+Entry: PPDG009.C
+Entry: PPDG010.C
+Entry: PPDG011.C
+Entry: PPDG012.C
+Entry: PPDG013.C
+Entry: PPDG014.C
+Entry: PPDG015.C
+Entry: PPDG016.C
+Entry: PPDG017.C
+Entry: PPDG018.C
+Entry: PPDG019.C
+Entry: PPDG020.C
+Entry: PPDG021.C
+Entry: PPDG022.C
+Entry: PPDG023.C
+Entry: PPDG024.C
+Entry: PPDG025.C
+Entry: PPDG026.C
+Entry: PPDG027.C
+Entry: PPDG028.C
+Entry: PPDG029.C
+Entry: PPDG030.C
+Entry: PPDG031.C
+Entry: PPDG032.C
+Entry: PPDG033.C
+Entry: PPDG034.C
+Entry: PPDG035.C
+Entry: PPDG036.C
+Entry: PPDG037.C
+Entry: PPDG038.C
+Entry: PPDG039.C
+Entry: PPDG040.C
+Entry: PPDG041.C
+Entry: PPDG042.C
+Entry: PPDG043.C
+Entry: PPDG044.C
+Entry: PPDG045.C
+Entry: PPDG046.C
+Entry: PPDG047.C
+Entry: PPDG048.C
+Entry: PPDG049.C
+Entry: PPDG050.C
+Entry: PPDG051.C
+Entry: PPDG052.C
+Entry: PPDG053.C
+Entry: PPDG054.C
+Entry: PPDG055.C
+Entry: PPDG056.C
+Entry: PPDG057.C
+Entry: PPDG058.C
+Entry: PPDG059.C
+Entry: PPDG060.C
+Entry: PPDG061.C
+Entry: PPDG062.C
+Entry: PPDG063.C
+Entry: PPDG064.C
+Entry: PPDG065.C
+Entry: PPDG066.C
+Entry: PPDG067.C
+Entry: PPDG068.C
+Entry: PPDG069.C
+Entry: PPDG070.C
+Entry: PPDG071.C
+Entry: PPDG072.C
+Entry: PPDG073.C
+Entry: PPDG074.C
+Entry: PPDG075.C
+Entry: PPDG076.C
+Entry: PPDV000.C
+Entry: PPDV001.C
+Entry: PPDV002.C
+Entry: PPDV003.C
+Entry: PPDV004.C
+Entry: PPDV005.C
+Entry: PPDV006.C
+Entry: PPDV007.C
+Entry: PPDV008.C
+Entry: PPDV009.C
+Entry: PPDV010.C
+Entry: PPDV011.C
+Entry: PPDV012.C
+Entry: PPDV013.C
+Entry: PPDV014.C
+Entry: PPDV015.C
+Entry: PPDV016.C
+Entry: PPDV017.C
+Entry: PPDV018.C
+Entry: PPDV019.C
+Entry: PPDV020.C
+Entry: PPDV021.C
+Entry: PPDV022.C
+Entry: PPDV023.C
+Entry: PPDV024.C
+Entry: PPDV025.C
+Entry: PPDV026.C
+Entry: PPDV027.C
+Entry: PPDV028.C
+Entry: PPDV029.C
+Entry: PPDV030.C
+Entry: PPDV031.C
+Entry: PPDV032.C
+Entry: PPDV033.C
+Entry: PPDV034.C
+Entry: PPDV035.C
+Entry: PPDV036.C
+Entry: PPDV037.C
+Entry: PPDV038.C
+Entry: PPDV039.C
+Entry: PPDV040.C
+Entry: PPDV041.C
+Entry: PPDV042.C
+Entry: PPDV043.C
+Entry: PPDV044.C
+Entry: PPDV045.C
+Entry: PPDV046.C
+Entry: PPDV047.C
+Entry: PPDV048.C
+Entry: PPDV049.C
+Entry: PPDV050.C
+Entry: PPDV051.C
+Entry: PPDV052.C
+Entry: PPDV053.C
+Entry: PPDV054.C
+Entry: PPDV055.C
+Entry: PPDV056.C
+Entry: PPDV057.C
+Entry: PPDV058.C
+Entry: PPDV059.C
+Entry: PPDV060.C
+Entry: PPDV061.C
+Entry: PPDV062.C
+Entry: PPDV063.C
+Entry: PPDV064.C
+Entry: PPDV065.C
+Entry: PPDV066.C
+Entry: PPDV067.C
+Entry: PPDV068.C
+Entry: PPDV069.C
+Entry: PPDV070.C
+Entry: PPDV071.C
+Entry: PPDV072.C
+Entry: PPDV073.C
+Entry: PPDV074.C
+Entry: PPDV075.C
+Entry: PPDV076.C
+Entry: PPDV077.C
+Entry: PPDV078.C
+Entry: PPDV079.C
+Entry: PPDV080.C
+Entry: PPDV081.C
+Entry: PPDV082.C
+Entry: PPDV083.C
+Entry: PPDV084.C
+Entry: PPDV085.C
+Entry: PPDV086.C
+Entry: PPDV087.C
+Entry: PPDV088.C
+Entry: PPDV089.C
+Entry: PPDV090.C
+Entry: PPDV091.C
+Entry: PPDV092.C
+Entry: PPDV093.C
+Entry: PPDV094.C
+Entry: PPDV095.C
+Entry: PPDV096.C
+Entry: PPDV097.C
+Entry: PPDV098.C
+Entry: PPDV099.C
+Entry: PPDV100.C
+Entry: PPDV101.C
+Entry: PPDV102.C
+Entry: PPDV103.C
+Entry: PPDV104.C
+Entry: PPDV105.C
+Entry: PPDV106.C
+Entry: PPDV107.C
+Entry: PPDV108.C
+Entry: PPDV109.C
+Entry: PPDV110.C
+Entry: PPDV111.C
+Entry: PPDV112.C
+Entry: PPDV113.C
+Entry: PPDV114.C
+Entry: PPDV115.C
+Entry: PPDV116.C
+Entry: PPDV117.C
+Entry: PPDV118.C
+Entry: PPDV119.C
+Entry: PPDV120.C
+Entry: PPDV121.C
+Entry: PPDV122.C
+Entry: PPDV123.C
+Entry: PPDV124.C
+Entry: PPDV125.C
+Entry: PPDV126.C
+Entry: PPDV127.C
+Entry: PPDVDI.C
+Entry: PPDD000.C
+Entry: PPDD001.C
+Entry: PPDD002.C
+Entry: PPDD003.C
+Entry: PPDD004.C
+Entry: PPDD005.C
+Entry: PPDD006.C
+Entry: PPDD007.C
+Entry: PPDD008.C
+Entry: PPDD009.C
+Entry: PPDD010.C
+Entry: PPDD011.C
+Entry: PPDD012.C
+Entry: PPDD013.C
+Entry: PPDD014.C
+Entry: PPDD015.C
+Entry: PPDD016.C
+Entry: PPDD017.C
+Entry: PPDD018.C
+Entry: PPDD019.C
+Entry: PPDD020.C
+Entry: PPDD021.C
+Entry: PPDD022.C
+Entry: PPDD023.C
+Entry: PPDD024.C
+Entry: PPDD025.C
+Entry: PPDD026.C
+Entry: PPDD027.C
+Entry: PPDD028.C
+Entry: PPDGCRT.C
+Entry: PPDLPTR.C
+Endlist:
+
+List: Libraries	Abs Auto
+Endlist:
+
+List: Linker options	Abs Auto
+Endlist:
+
+List: Objtohex options	Abs Auto
+Endlist:
+
+
+Int: OuputFormat: 1
+Int: Warnlevel: 0
+Int: IdLength: 31
+Int: DebugBaud: 0
+Int: ComPort: 0
+Int: GlobOptLevel: 9
+Int: Rom_addr: 1015808
+Int: Init_addr: 1048560
+Int: Bss_addr: 256
+Int: Bss_size: 32512
+Int: Nvram_addr: 32768
+Int: Modelno: 0
+Int: Chiptype: 0
+Int: Heapsize: 0
+Int: Falign: 0
+Int: Jalign: 0
+Int: Lalign: 0
+
+Bool: Globopt: 1
+Bool: Postopt: 1
+Bool: Assemopt: 1
+Bool: Symbolic_debug: 0
+Bool: Nolocal: 0
+Bool: Usefloat: 0
+Bool: Autoload: 0
+Bool: Cppasm: 0
+Bool: Genlist: 0
+Bool: GenSrclist: 0
+Bool: Gotadrs: 1
+Bool: Multirom: 0
+Bool: Stopwarn: 1
+Bool: Hardfloat: 0
+Bool: Wildcards: 0
+Bool: I80188eb: 0
+Bool: V25: 0
+
+String: Outfile:D:\TOOLS\C\PPDGEM\PPDGEM-S.LIB
+String: Mapfile:
+String: Symfile:

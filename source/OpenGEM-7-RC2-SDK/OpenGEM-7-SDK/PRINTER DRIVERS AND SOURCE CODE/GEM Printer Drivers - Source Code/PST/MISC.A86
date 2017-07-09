@@ -1,0 +1,395 @@
+;/*		MISC.A86	11/17/86 - 12/29/86	J. Grant	*/
+
+CGROUP		GROUP	CODE
+DGROUP		GROUP	DATA
+		cseg
+
+		public	SMALL?
+		public	_mwmpyl
+		public	f_close
+		public	f_first
+		public	f_next
+		public	f_open
+		public	f_read
+		public	f_seek
+		public	fullpath
+		public	muldiv
+		public	s_cat
+		public	s_scan
+		public	swapbyte
+
+CLOSE_FILE	equ	3eh		; DOS "close file"
+DOS		equ	21h		; DOS function interrupt
+FIND_FIRST	equ	4eh		; DOS "find first matching file"
+FIND_NEXT	equ	4fh		; DOS "find next matching file"
+OPEN_FILE	equ	3dh		; DOS "open file"
+READ_FILE	equ	3fh		; DOS "read file"
+SEEK_FILE	equ	42h		; DOS "seek file"
+SET_DTA		equ	1ah		; DOS "set disk transfer address"
+
+SMALL?:
+
+;************************************************************************
+;*	LONG:product = _mwmpyl(a,b)					*
+;************************************************************************
+_mwmpyl:
+		push	bp                                 
+		mov	bp,sp                              
+		mov	bx,8[bp]                         
+		mov	ax,6[bp]                         
+		mul	bx                                 
+		xchg	cx,ax                              
+		mov	ax,4[bp]                         
+		mov	si,ax                              
+		mul	bx                                 
+		add	cx,dx                              
+		xchg	si,ax                              
+		mul	word ptr 0ah[bp]                   
+		add	ax,cx                              
+		mov	dx,si                              
+		xchg	dx,ax                              
+		pop	bp                                 
+		ret	8                               
+
+
+;************************************************************************
+;*	f_close(WORD:handle)						*
+;*		Close the file associated with the handle passed in.	*
+;************************************************************************
+f_close:
+		push	bp
+		mov	bp, sp
+
+; Close the file.
+		mov	bx, 4[bp]
+		mov	ah, CLOSE_FILE
+		int	DOS
+
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	BOOLEAN:found = f_first(ADDR:name)				*
+;*		Find the first matching file name.			*
+;************************************************************************
+f_first:
+		push	bp
+		mov	bp, sp
+
+; Set up the DTA.
+		mov	ah, SET_DTA
+		mov	dx, offset g_dta
+		int	DOS
+
+; Perform the "find first".
+		mov	dx, 4[bp]
+		mov	cx, 3
+		mov	ah, FIND_FIRST
+		int	DOS
+		mov	ax, 0
+		jc	end_f_first
+		inc	ax
+
+end_f_first:
+		pop	bp
+		ret
+
+;************************************************************************
+;*	BOOLEAN:found = f_next()					*
+;*		Find the next matching file name.			*
+;************************************************************************
+f_next:
+		mov	ah, FIND_NEXT
+		int	DOS
+		mov	ax, 0
+		jc	end_f_next
+		inc	ax
+end_f_next:
+		ret
+
+
+;************************************************************************
+;*	WORD:handle = f_open(ADDR:name)					*
+;*		Open a file and return a handle (zero if open fails).	*
+;************************************************************************
+f_open:
+		push	bp
+		mov	bp, sp
+
+; Open the file.
+		mov	dx, 4[bp]		; ds:dx -> file name
+		xor	al, al			; open for read
+		mov	ah, OPEN_FILE
+		int	DOS
+		jnc	end_f_open		; returning handle (ax)
+
+; An error occurred opening the file.  Return a handle of zero.
+		xor	ax, ax
+
+end_f_open:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	WORD:length = f_read(WORD:handle, ADDR:buffer, WORD:count)	*
+;*		Read from the file associated with the handle into the	*
+;*		designated buffer.					*
+;************************************************************************
+f_read:
+		push	bp
+		mov	bp, sp
+
+; Get the parameters and read from the file.
+		mov	bx, 4[bp]		; bx = file handle
+		mov	dx, 6[bp]		; ds:dx -> buffer
+		mov	cx, 8[bp]		; cx = count
+		mov	ah, READ_FILE
+		int	DOS
+		jnc	end_f_read
+		xor	ax, ax			; return zero for error
+
+end_f_read:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	LONG:newloc = f_seek(WORD:handle, LONG:location, WORD:origin)	*
+;*		Seek to the designated file location.			*
+;************************************************************************
+f_seek:
+		push	bp
+		mov	bp, sp
+
+; Get the parameters and perform the seek.
+		mov	bx, 4[bp]		; bx = file handle
+		mov	dx, 6[bp]
+		mov	cx, 8[bp]		; cx:dx = seek location
+		mov	ax, 10[bp]		; al = origin (0 begin, 2 end)
+		mov	ah, SEEK_FILE
+		int	DOS
+		mov	bx, ax
+		mov	ax, dx			; ax:bx = new location
+
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	fullpath(ADDR:dest, ADDR:filename)				*
+;*		Prepend the GDOS path to the filename.			*
+;************************************************************************
+fullpath:
+		push	bp
+		mov	bp, sp
+		cld
+
+; Copy the GDOS drive number and string.
+		push	ds
+		mov	ax, ds
+		mov	es, ax
+		mov	di, 4[bp]		; es:di -> gdos path string
+		lds	si, g_gdosad
+		lodsb				; al = drive number
+		add	al, 'a'			; convert to lower case drive
+		stosb
+		mov	es:byte ptr [di], ':'
+		inc	di
+fp_path_loop:
+		lodsb
+		cmp	al, 0			; quit when null found
+		je	end_fp_path_loop
+		stosb
+		jmps	fp_path_loop
+end_fp_path_loop:
+		pop	ds
+
+; Append the file name to the path.
+		mov	al, '\'
+		stosb
+		mov	si, 6[bp]
+fp_filename_loop:
+		lodsb
+		stosb
+		cmp	al, 0			; quit when null found
+		jne	fp_filename_loop
+
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	WORD:value = muldiv(WORD:mul1, WORD:mul2, WORD:div1)		*
+;*		( ( ( mul1 * 2 * mul2 ) / div1 ) + 1) / 2		*
+;************************************************************************
+muldiv:
+		push	bp
+		mov	bp, sp
+
+; Double mul2.
+		mov	ax, 06[bp]
+		shl	ax, 1
+
+; Multiply by mul1.
+		mov	bx, 04[bp]
+		imul	bx
+
+; Divide by div1.
+		mov	bx, 08[bp]
+		idiv	bx
+
+; Round appropriately, depending on the sign of the result.
+		and	ax, ax
+		js	muldiv_negative
+		inc	ax
+		shr	ax, 1
+		pop	bp
+		ret
+
+muldiv_negative:
+		add	ax, -1
+		neg	ax
+		shr	ax, 1
+		neg	ax
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	s_cat(ADDR:dest, ADDR:source)					*
+;*		Concatenate source onto destination.			*
+;************************************************************************
+s_cat:
+		push	bp
+		mov	bp, sp
+		cld
+
+; Find the end of the destination string.
+		mov	ax, ds
+		mov	es, ax
+		mov	di, 4[bp]		; es:di -> destination
+		xor	al, al
+		xor	cx, cx
+		sub	cx, di			; cx = search bound
+	repne	scasb
+		dec	di			; append at null
+
+; Append the source string and null terminate.
+		mov	si, 6[bp]		; ds:si -> source
+sc_loop:
+		lodsb
+		stosb
+		cmp	al, 0
+		jne	sc_loop
+
+end_s_cat:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	ADDR:ptr = s_scan(ADDR:buf, WORD:buflen, ADDR:sub, WORD:sublen)	*
+;*		Scan for a substring within a string.			*
+;************************************************************************
+s_scan:
+		push	bp
+		mov	bp, sp
+		cld
+
+; Get the scan parameters.
+		mov	ax, ds
+		mov	es, ax
+		mov	di, 4[bp]		; es:di -> buffer
+		mov	bx, 6[bp]		; bx = buffer length
+		mov	si, 8[bp]		; ds:si -> substring
+		mov	dx, 10[bp]
+		dec	dx			; dx = substring length
+		lodsb				; al = initial matching byte
+		jz	ss_single
+		mov	bp, si			; save substring "start"
+
+; Top of the search loop.
+ss_search_loop:
+		cmp	bx, dx
+		jb	ss_nomatch		; skip if remaining too short
+		mov	cx, bx			; scan entire buffer
+	repne	scasb				; scan for initial match
+		jne	ss_nomatch
+		jcxz	ss_nomatch
+		mov	bx, cx			; save buffer remaining
+		mov	si, bp			; ds:si -> substring
+		mov	cx, dx			; substring length
+		push	di			; save buffer start
+	repe	cmpsb
+		je	ss_match		; match found
+		pop	di			; restore scan location
+		jmps	ss_search_loop
+
+; Scan for a single byte.
+ss_single:
+		mov	cx, bx
+	repne	scasb				; scan for a match
+		jne	ss_nomatch
+		mov	ax, di
+		jmps	end_s_scan
+
+; Match:  return ending pointer.
+ss_match:
+		pop	ax			; dummy pop
+		mov	ax, di
+		jmps	end_s_scan
+
+; No match:  return null pointer.
+ss_nomatch:
+		xor	ax, ax
+
+end_s_scan:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	swapbyte(WORD:count, ADDR:location)				*
+;*		Swap the number of words requested.			*
+;************************************************************************
+swapbyte:
+		push	bp
+		mov	bp, sp
+
+; Get the count of words to be swapped and the location of the buffer to
+; be swapped.
+		mov	cx, 4[bp]		; cx = count
+		mov	di, 6[bp]		; di -> buffer to swap
+
+; Swap bytes.
+swapbyte_loop:
+		mov	ax, [di]
+		xchg	ah, al
+		mov	[di], ax
+		inc	di
+		inc	di
+		loop	swapbyte_loop
+
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	Code segment data.						*
+;************************************************************************
+
+		public	g_gdosad
+
+g_gdosad	rd	1
+
+
+;************************************************************************
+;*	Data segment data.						*
+;************************************************************************
+		dseg
+
+		extrn	g_dta:byte
+
+		end

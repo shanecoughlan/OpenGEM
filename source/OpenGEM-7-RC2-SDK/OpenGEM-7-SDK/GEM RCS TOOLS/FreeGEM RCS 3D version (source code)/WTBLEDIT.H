@@ -1,0 +1,73 @@
+#define WTBLEDIT 2  	/* TREE */
+#define MENU 0  	/* TREE */
+#define INFODIAL 1  	/* TREE */
+#define INFOHIDE 8  	/* OBJECT in TREE #1 */
+#define FBOXGDAD 14  	/* OBJECT in TREE #2 */
+#define FBOXDAD 20  	/* OBJECT in TREE #2 */
+#define FNTNAME1 21  	/* OBJECT in TREE #2 */
+#define FNTNAME2 22  	/* OBJECT in TREE #2 */
+#define FNTNAME3 23  	/* OBJECT in TREE #2 */
+#define FNTNAME4 24  	/* OBJECT in TREE #2 */
+#define FNTNAME5 25  	/* OBJECT in TREE #2 */
+#define FNTNAME6 26  	/* OBJECT in TREE #2 */
+#define FNTNAME7 27  	/* OBJECT in TREE #2 */
+#define FNTNAME8 28  	/* OBJECT in TREE #2 */
+#define FNTNAME9 29  	/* OBJECT in TREE #2 */
+#define FNTNAM10 30  	/* OBJECT in TREE #2 */
+#define FNTNAM11 31  	/* OBJECT in TREE #2 */
+#define FUPARROW 16  	/* OBJECT in TREE #2 */
+#define FSCRLBAR 15  	/* OBJECT in TREE #2 */
+#define FVSLID 17  	/* OBJECT in TREE #2 */
+#define FVELEV 18  	/* OBJECT in TREE #2 */
+#define FDNARROW 19  	/* OBJECT in TREE #2 */
+#define SBOXGDAD 37  	/* OBJECT in TREE #2 */
+#define SBOXDAD 43  	/* OBJECT in TREE #2 */
+#define SZNAME1 44  	/* OBJECT in TREE #2 */
+#define SZNAME2 45  	/* OBJECT in TREE #2 */
+#define SZNAME3 46  	/* OBJECT in TREE #2 */
+#define SZNAME4 47  	/* OBJECT in TREE #2 */
+#define SZNAME5 48  	/* OBJECT in TREE #2 */
+#define SZNAME6 49  	/* OBJECT in TREE #2 */
+#define SZNAME7 50  	/* OBJECT in TREE #2 */
+#define SZNAME8 51  	/* OBJECT in TREE #2 */
+#define SZNAME9 52  	/* OBJECT in TREE #2 */
+#define SZNAME10 53  	/* OBJECT in TREE #2 */
+#define SZNAME11 54  	/* OBJECT in TREE #2 */
+#define SUPARROW 39  	/* OBJECT in TREE #2 */
+#define SSCRLBAR 38  	/* OBJECT in TREE #2 */
+#define SVSLID 40  	/* OBJECT in TREE #2 */
+#define SVELEV 41  	/* OBJECT in TREE #2 */
+#define SDNARROW 42  	/* OBJECT in TREE #2 */
+#define STYLEBOX 32  	/* OBJECT in TREE #2 */
+#define NORMSTYL 33  	/* OBJECT in TREE #2 */
+#define BOLDSTYL 34  	/* OBJECT in TREE #2 */
+#define ITALSTYL 35  	/* OBJECT in TREE #2 */
+#define BDITSTYL 36  	/* OBJECT in TREE #2 */
+#define ABOUITEM 7  	/* OBJECT in TREE #0 */
+#define SIZEDIAL 3  	/* TREE */
+#define SIZEOK 3  	/* OBJECT in TREE #3 */
+#define SIZECNCL 4  	/* OBJECT in TREE #3 */
+#define SIZEADD 2  	/* OBJECT in TREE #3 */
+#define WTBLDONE 55  	/* OBJECT in TREE #2 */
+#define WTADDFNT 6  	/* OBJECT in TREE #2 */
+#define WTDELFNT 7  	/* OBJECT in TREE #2 */
+#define WTADDSIZ 8  	/* OBJECT in TREE #2 */
+#define WTDELSIZ 9  	/* OBJECT in TREE #2 */
+#define WTFNTWAR 10  	/* OBJECT in TREE #2 */
+#define WTFNTDIR 11  	/* OBJECT in TREE #2 */
+#define WTRENBAK 12  	/* OBJECT in TREE #2 */
+#define WTRENCUR 13  	/* OBJECT in TREE #2 */
+#define WTTITLE 1  	/* OBJECT in TREE #2 */
+#define WTBLCMDS 5  	/* OBJECT in TREE #2 */
+#define AFMSTYLE 4  	/* TREE */
+#define AFMOK 13  	/* OBJECT in TREE #4 */
+#define AFMCNCL 14  	/* OBJECT in TREE #4 */
+#define AFMNORMS 4  	/* OBJECT in TREE #4 */
+#define AFMBOLDS 5  	/* OBJECT in TREE #4 */
+#define AFMITALS 6  	/* OBJECT in TREE #4 */
+#define AFMBDITS 7  	/* OBJECT in TREE #4 */
+#define AFMNORMF 9  	/* OBJECT in TREE #4 */
+#define AFMBOLDF 10  	/* OBJECT in TREE #4 */
+#define AFMITALF 11  	/* OBJECT in TREE #4 */
+#define AFMBDITF 12  	/* OBJECT in TREE #4 */
+

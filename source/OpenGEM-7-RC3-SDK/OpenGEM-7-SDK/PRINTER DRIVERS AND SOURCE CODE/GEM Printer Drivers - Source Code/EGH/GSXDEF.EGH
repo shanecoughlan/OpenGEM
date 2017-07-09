@@ -1,0 +1,85 @@
+/**************************************************************************
+ * Device dependent constants for the Epson GQ-3500 Laser printer driver. *
+ **************************************************************************/
+#define cdo_text	FALSE		/* device text support */
+#define cdo_rule	FALSE		/* device ruled-lines support */
+#define no_tintrule	FALSE
+#define autocopy	TRUE		/* automatic multicopy support */
+
+#define MIN_L_WIDTH	1
+#define MAX_L_WIDTH	150
+#define MAX_COLOR	2
+#define MAX_LINE_STYLE	7
+#define MAX_MARK_INDEX	6
+#define MX_FIL_STYLE	4
+#define MX_FIL_INDEX	24
+#define MAX_WRITE_MODE	3
+#define MAX_ARC_CT	70
+
+/********************************************************
+ *  Epson GQ-3500 Laser Printer:			*
+ *  NOTE:  X must be an even multiple of 8 (-1)		*
+ *	   Y must be EXACT here, and will be translated	*
+ *	    to an even multiple of G_SL_HGT (-1) at	*
+ *	    v_opnwk() time.				*
+ *	Letter size paper - 8.5 x 11 inches		*
+ *	    print area - 8 x 10.5 inches		*
+ *		300 dpi -> 2400 horizontal dots		*
+ *		300 dpi -> 3150 vertical dots		*
+ *	Half size paper - 8.5 x 5.5 inches		*
+ *	    print area - 8 x 5.5 inches			*
+ *		300 dpi -> 2400 horizontal dots		*
+ *		300 dpi -> 1650 vertical dots 		*
+ *	B5 size paper - 17.6 x 25 cm. (6.93" x 9.84")	*
+ *	    print area - 6.43 x 9.84 inches		*
+ *		300 dpi -> 1929 horizontal dots**	*
+ *				**(8 x 241 = 1928)	*
+ *		300 dpi -> 2952 vertical dots 		*
+ *	A4 size paper - 21 x 29.7 cm. (8.27" x 11.69")	*
+ *	    print area - 7.77 x 11.69 inches		*
+ *		300 dpi -> 2331 horizontal dots**	*
+ *				**(8 x 291 = 2328)	*
+ *		300 dpi -> 3507 vertical dots  		*
+ *	Legal size paper - 8.5 x 14 inches		*
+ *	    print area - 8 x 14 inches			*
+ *		300 dpi -> 2400 horizontal dots		*
+ *		300 dpi -> 4200 vertical dots		*
+ *	Double size paper - 11 x 17 inches		*
+ *	    print area - LETTER				*
+ *	Broad sheet paper - 18 x 24 inches		*
+ *	    print area - LETTER				*
+ ********************************************************/
+/* These constants are one less than the number of pixels because they	*/
+/*    are used to reference array values (i.e. 0 -> 959 = 960) 		*/
+#define	X_LETTER	2399
+#define	Y_LETTER	3150
+#define	X_HALF		2399
+#define	Y_HALF		1650
+#define	X_B5		1927
+#define	Y_B5		2952
+#define	X_A4		2327
+#define	Y_A4		3507
+#define	X_LEGAL		2399
+#define	Y_LEGAL		4200
+#define	X_DOUBLE	X_LETTER
+#define	Y_DOUBLE	Y_LETTER
+#define	X_BROAD		X_LETTER
+#define	Y_BROAD		Y_LETTER
+
+#define	TOP_MARGIN	75		/* quarter inch */
+#define	BOT_MARGIN	75		/* quarter inch */
+#define LEFT_MARGIN	0
+#define RIGHT_MARGIN	0
+
+/* Duplicates of assembly constants for C code - used in v_opnwk() */
+#define	C_GSLHGT	1		/* G_SL_HGT */
+#define C_ASLHGT	50		/* A_SL_HGT */
+#define C_RESXMX	2399		/* RES_XMX */
+#define C_RESYMX	4199		/* RES_YMX */
+#define	C_XDPI		300		/* XDPI */
+#define	C_YDPI		300		/* YDPI */
+#define X_ASPECT        85		/* XSIZE */
+#define Y_ASPECT        85		/* YSIZE */
+
+/* Used in alphtext.c to build alpha map table file name */
+#define DEVICE_ABBREVIATION "egh"

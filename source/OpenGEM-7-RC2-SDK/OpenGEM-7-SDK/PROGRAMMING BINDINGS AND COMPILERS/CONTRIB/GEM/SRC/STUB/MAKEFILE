@@ -1,0 +1,26 @@
+
+CC     = gcc
+CFLAGS = -I../../include
+LIBS   = -L../../lib -lgem
+CP     = copy
+RM     = xdel /n
+
+TARGET=stub2acc
+
+all:	$(TARGET).exe accstub.exe
+
+accstub.exe:	accstub.asm
+	djasm $< $@
+	$(CP) $@ ..\..\lib\accstub.acc
+
+$(TARGET).exe:	$(TARGET).o
+	$(CC) -o $(TARGET) $< $(LIBS)
+	$(CP) $(TARGET).exe ..\..\bin
+
+tidy:
+	-$(RM) *.bak
+	-$(RM) $(TARGET).o
+	-$(RM) $(TARGET)
+
+clean:	tidy
+	-$(RM) $(TARGET).exe

@@ -1,0 +1,8 @@
+Notes on Pacific C and RSCREATE:
+
+  RSCREATE appears to work in the small model, but the .RSC file it produces 
+has a different layout from the original EXAMPLE.RSC (supplied). It does
+not work in the large model.
+
+  The warning level has been set to 5, so that the machine-generated 
+EXAMPLE.RSH file can be compiled without warnings.

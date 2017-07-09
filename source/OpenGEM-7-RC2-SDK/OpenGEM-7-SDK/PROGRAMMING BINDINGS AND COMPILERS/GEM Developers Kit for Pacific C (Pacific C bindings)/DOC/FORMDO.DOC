@@ -1,0 +1,162 @@
+/****************************************************************************
+*     FORMDO.DOC  -  GEM/3 Programmer's Toolkit - Digital Research, Inc.
+****************************************************************************/
+/*
+form_do()
+
+	- The  source  to  form_do()  is provided  to  allow  for 
+        simpler  application tailoring of the  AES's  generalized 
+        form fill-in capability.   This source code refers to two 
+        new calls:
+
+		form_keybd()
+
+		form_button()
+
+
+     NOTE:  Use this code only if the normal form_do code doesn't suit 
+            your needs.  ( AND AT YOUR OWN RISK !! )
+
+
+        form_do() is as follows:
+*/
+
+WORD find_obj( tree, start_obj, which ) /* routine to find the next editable */
+
+	REG LONG	tree;           /* text field, or a field that is as */
+	WORD		start_obj;      /* marked as a default return field. */
+	WORD		which;
+{
+	REG WORD	obj, flag, theflag, inc;
+
+	obj = 0;
+	flag = EDITABLE;
+	inc = 1;
+	switch( which )
+	{
+	  case FMD_BACKWARD:
+		inc = -1;
+					 /* fall thru */
+	  case FMD_FORWARD:
+		obj = start_obj + inc;
+		break;
+	  case FMD_DEFLT:
+		flag = DEFAULT;
+		break;
+	}
+
+	while ( obj >= 0 )
+	{
+	  theflag = LWGET(OB_FLAGS(obj));
+
+	  if ( theflag & flag )
+	    return(obj);
+
+	  if ( theflag & LASTOB )
+	    obj = -1;
+	  else
+	    obj += inc;
+	}
+	return( start_obj );
+}
+
+
+WORD fm_inifld( tree, start_fld )
+
+	LONG		tree;
+	WORD		start_fld;
+{
+						/* position cursor on	*/
+						/* the starting field	*/
+	if ( start_fld == 0 )
+	  start_fld = find_obj( tree, 0, FMD_FORWARD );
+	return( start_fld );
+}
+
+
+WORD form_do( tree, start_fld )
+
+	REG LONG	tree;
+	WORD		start_fld;
+{
+	REG WORD	edit_obj;
+	WORD		next_obj;
+	WORD		which, cont;
+	WORD		idx;
+	WORD		mx, my, mb, ks, kr, br;
+
+	wind_update(1);
+	wind_update(3);
+						/* set starting field	*/
+						/* to edit, if want	*/
+						/* first editing field  */
+						/* then walk tree	*/
+	next_obj = fm_inifld( tree, start_fld );
+	edit_obj = 0;
+						/* interact with user	*/
+	cont = TRUE;
+	while( cont )
+	{
+						/* position cursor on	*/
+						/*   the selected 	*/
+						/*   editting field	*/
+	  if ( (next_obj != 0) &&
+	       (edit_obj != next_obj) )
+	  {
+	    edit_obj = next_obj;
+	    next_obj = 0;
+	    objc_edit( tree, edit_obj, 0, &idx, EDINIT );
+	  }
+						/* wait for mouse or key */
+	  which = evnt_multi(MU_KEYBD | MU_BUTTON, 
+			0x02, 0x01, 0x01, 
+			0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0,
+			0x0L,
+			0, 0,
+			&mx, &my, &mb, &ks, &kr, &br);
+						/* handle keyboard event*/
+	  if ( which & MU_KEYBD )
+	  {
+	    cont = form_keybd( tree, edit_obj, next_obj, kr, &next_obj, &kr );
+	    if (kr)
+	      objc_edit( tree, edit_obj, kr, &idx, EDCHAR );
+	  }
+						/* handle button event	*/
+	  if (which & MU_BUTTON)
+	  {
+	    next_obj = objc_find( tree, ROOT, MAX_DEPTH, mx, my );
+ 	    if (next_obj == NIL)
+	    {
+	      /* sound(TRUE, 440, 2); */
+	      next_obj = 0;
+	    }
+	    else
+	      cont = form_button( tree, next_obj, br, &next_obj );
+	  }
+						/* handle end of field	*/
+						/* clean up		*/
+	  if ( (!cont) ||
+	       ((next_obj != 0) && 
+		(next_obj != edit_obj)) )
+
+	  {
+	    objc_edit( tree, edit_obj, 0, &idx, EDEND );
+	  }
+	}
+
+	wind_update(2);
+	wind_update(0);
+						/* return exit object	*/
+						/* hi bit may be set	*/
+						/* if exit obj. was	*/
+						/* double-clicked	*/
+	return( next_obj );
+}
+
+/* NOTE:   This is the end of the source code for form_do.  Remember this 
+           code was provided for you to use or modify in the writing of 
+           your own code to perform similar functions.  BEWARE, check your 
+           code carefully.
+
+	====End of FORMDO.DOC==== 

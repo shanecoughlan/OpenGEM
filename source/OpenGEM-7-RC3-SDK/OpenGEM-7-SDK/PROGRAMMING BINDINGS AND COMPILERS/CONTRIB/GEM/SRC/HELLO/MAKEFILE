@@ -1,0 +1,41 @@
+
+CC     = gcc
+CFLAGS = -I../../include
+LIBS   = -L../../lib -lgem
+CP     = copy
+RM     = xdel /n
+
+TARGET=hello
+DATARGET=hello-da
+
+all:	$(TARGET).app $(TARGET).acc
+
+$(TARGET).app:	$(TARGET).exe
+	$(CP) $(TARGET).exe $(TARGET).app
+	$(CP) $(TARGET).app ..\..\bin
+
+$(TARGET).exe:	$(TARGET).o
+	$(CC) -o $(TARGET) $< $(LIBS)
+
+$(TARGET).acc: $(DATARGET).exe
+	$(CP) ..\..\lib\accstub.acc $(TARGET).acc
+	stubedit $(TARGET).acc runfile=$(DATARGET).exe
+	../../bin/stub2acc $(TARGET).acc
+	$(CP) $(TARGET).acc ..\..\bin
+
+$(DATARGET).exe:	$(DATARGET).o
+	$(CC) -o $(DATARGET) $< $(LIBS)
+	$(CP) $(DATARGET).exe ..\..\bin
+	$(CP) ..\..\lib\accstub.acc $(DATARGET).acc
+
+$(DATARGET).o:	$(TARGET).c
+	$(CC) -c -DDESKACC -o $@ $<
+
+tidy:
+	-$(RM) *.bak
+	-$(RM) $(TARGET).o
+	-$(RM) $(TARGET).exe
+	-$(RM) $(TARGET)
+
+clean:	tidy
+	-$(RM) $(TARGET).app

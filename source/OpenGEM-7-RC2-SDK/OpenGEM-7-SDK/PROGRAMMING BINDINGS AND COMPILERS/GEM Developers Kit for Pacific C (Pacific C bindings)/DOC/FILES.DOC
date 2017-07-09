@@ -1,0 +1,217 @@
+*******************************************************************************
+*	FILES.DOC - GEM/3 Programmer's Toolkit - Digital Research, Inc.       * 
+*                                                                             *
+*	    The following files are provided with your GEM/3 PTK              *
+*******************************************************************************
+
+Root
+
+ INSTALL .APP     =     Installation Utility
+ INSTAL  .RSC     =     Resource for Installation Utility
+ INSTALL .TXT     =     Control file for Installation Utility
+
+Folder BINDINGS
+
+ INSTLIB .APP     =     Binding source installation utility
+ INSTLIB .RSC     =     Resource for installation utility
+ INSTLIB .TXT     =     Configuration file for installation utility
+ AESBIND .SRC     =     C-Source for AES bindings
+ AESLIB  .HDR     =     Header for splitted AES sources
+ DOSBIND .SRC     =     C-Source for DOS bindings
+ DOSLIB  .HDR     =     Header for splitted DOS sources
+ MISC    .SRC     =     some stuff, updated from time to time
+ OBLIB   .SRC     =     C-Source for easy object bindings
+ OBLIB   .HDR     =     Header for splitted object sources
+ RCLIB   .SRC     =     C-Source for raster bindings
+ RCLIB   .HDR     =     Header for splitted raster sources
+ VDIBIND .SRC     =     C-Source for VDI bindings
+ VDILIB  .HDR     =     Header for splitted VDI sources
+ XFMLIB  .SRC     =     C-Source for tranformation bindings
+ XFMLIB  .HDR     =     Header for splitted transformation sources
+ TURBOC  .CMM     =     Turbo C makefiles ... common library model
+ TURBOC  .LIB     =     Turbo C makefiles ... library library model
+ TURBOC  .SEP     =     Turbo C makefiles ... separated library model
+ MSC     .CMM     =     Microsoft C makefiles ... common library model
+ MSC     .LIB     =     Microsoft C makefiles ... library library model
+ MSC     .SEP     =     Microsoft C makefiles ... separated library model
+ HIGHC   .CMM     =     High C makefiles ... common library model
+ HIGHC   .LIB     =     High C makefiles ... library library model
+ HIGHC   .SEP     =     High C makefiles ... separated library model
+
+ Folder DOC
+ 
+ README   .DOC     =     **IMPORTANT**  READ THIS FILE FIRST  **IMPORTANT** 
+ DEBUG    .DOC     =     Debugging information
+ FILES    .DOC     =     This file lists the GEM/3 PTK files with descriptions
+ FORMDO   .DOC     =     Source code for FORM_DO
+ SAMPLE   .SID     =     Information About the SID Sample
+ XFORM    .DOC     =     Documentation for transformations
+
+ Folder INC
+ 
+ AES     .H       =     Contains all definitions used by the AES
+ AESBIND .H       =     Definitions required only for the bindings
+ DOSBIND .H       =     Definitions used by DOS
+ OBLIB   .H       =     Definitions used by OBLIB
+ PORTAB  .H       =     Definitions that make your sources portable
+ RCLIB   .H       =     Definitions for raster bindings
+ VDI     .H       =     Definitions used by the VDI
+ XFMLIB  .H       =     Definitions for transformation bindings
+
+ Folder SAMPLES\SPOOLER
+
+ SPOOLERS.APP     =     Small Memory Spooler Application
+ SPOOLER .C       =     Source for Spooler Example
+ SPOOLER .DFN     =     Definitions of Spooler RSC
+ SPOOLER .H       =     Header of Spooler RSC
+ SPOOLER .RSC     =     Resource of Spooler Example
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+
+ Folder SAMPLES\USERDEF
+
+ USERDEFS.APP     =     Small Memory Example of User-defined Objects
+ USERDEF .C       =     Source for User-defined Objects Example
+ USERDEF .DFN     =     Definitions of Userdef RSC
+ USERDEF .H       =     Header of Userdef RSC
+ USERDEF .RSC     =     Resource of Userdef Example
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+
+ Folder SAMPLES\CLOCK
+
+ CLOCKS  .ACC     =     Analog Clock (small memory model, accessory)
+ CLOCKS  .APP     =     Analog Clock (small memory model, application)
+ CLOCK   .C       =     Source of Analog Clock
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+
+ Folder SAMPLES\MEMGRAF
+
+ MEMGRAFS.ACC     =     Memory Graph (small memory model, accessory)
+ MEMGRAFS.APP     =     Memory Graph (small memory model, application)
+ MEMGRAF .C       =     Source of Memory Graph
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+
+ Folder SAMPLES\EVENTS
+
+ EVENTSS .APP     =     Example for Testing Events (small memory model)
+ EVENTS  .DFN     =     Definitions of EVENTS.RSC
+ EVENTS  .GEM     =     Vector Graphic File used for displaying a curve
+ EVENTS  .RSC     =     Resource of EVENTS
+ EVENTS  .C       =     Source of EVENTS?.APP
+ META_F  .C       =     Source of EVENTS?.APP
+ META_R  .C       =     Source of EVENTS?.APP
+ META_T  .C       =     Source of EVENTS?.APP
+ META_OUT.C       =     Source of EVENTS?.APP
+ WINDOW  .C       =     Source of EVENTS?.APP
+ XMAIN   .C       =     Source of EVENTS?.APP
+ EVENTS  .H       =     Header of EVENTS.RSC
+ META    .H       =     Definitions used by displaying a metafile
+ PROTO   .H       =     Definitions of all existing functions
+ TYPES   .H       =     Definitions of structures
+ WINDOW  .H       =     Definitions of window structures
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+
+ Folder SAMPLES\FDTEST
+
+ FDTESTS .APP     =     Test for the new form_exdo() (small memory model)
+ FDTEST  .C       =     Source of Test the new form_exdo()
+ FDTEST  .DFN     =     Definitions of FDTEST.RSC
+ FDTEST  .H       =     Header of FDTEST.RSC
+ FDTEST  .RSC     =     Resource of test the new form_exdo()
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+
+ Folder SAMPLES\DOODLE
+ 
+ DOODLES .APP     =     The DOODLE application
+ DOODLE  .C       =     Source for DOODLE application
+ DOODLE  .DFN     =     Resource definition file (used by RCS.APP)
+ DOODLE  .H       =     Resource definitions for C-source
+ DOODLE  .RSC     =     Resource
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+ 
+ Folder SAMPLES\FREEMEM
+ 
+ FREEMEMS.ACC     =     The FREEMEM accessory
+ FREEMEM .C       =     Source for FREEMEM accessory
+ FREEMEM .DFN     =     Resource definition file (used by RCS.APP)
+ FREEMEM .H       =     Resource definitions for C-source
+ FREEMEM .RSC     =     Resource
+ FREEMEM .RSH     =     Resource C-source
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ 
+ Folder SAMPLES\HELLO
+ 
+ HELLOS  .ACC     =     The HELLO accessory
+ HELLOS  .APP     =     The HELLO application
+ HELLO   .C       =     Source for HELLO accessory and application
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+ 
+ Folder SAMPLES\RSCREATE
+ 
+ EXAMPLE .DFN     =     Resource definition file (used by RCS.APP)
+ EXAMPLE .H       =     Resource definitions for C-source
+ EXAMPLE .RSC     =     Resource
+ EXAMPLE .RSH     =     Resource C-source
+ RSCREATE.C       =     Source for RSCREATE
+ RSCREATE.EXE     =     RSCREATE - Executable convert utility program
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+ 
+ Folder SAMPLES\STARTUP
+ 
+ C0ACCTC .ASM     =     Accessory runtime startup source for Turbo C
+ C0ACCTCS.OBJ     =     Binary file of above (small memory model)
+ C0ACCTCL.OBJ     =     Binary file of above (large memory model)
+ C0ACCMS .ASM     =     Accessory runtime startup source for MSC
+ C0ACCTCS.OBJ     =     Binary file of above (small memory model)
+ C0ACCTCL.OBJ     =     Binary file of above (large memory model)
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ 
+ Folder SAMPLES\XFORM
+ 
+ XFORMS  .APP     =     The transformation application XFORM
+ XFORM   .C       =     Source of transformation application
+ XFORM   .DFN     =     Resource definition file (used by RCS.APP)
+ XFORM   .H       =     Resource definitions for C-source
+ XFORM   .RSC     =     Resource
+ MAKEFILE.MSC     =     Makefile to use with Microsoft C MAKE Utility
+ MAKEFILE.TC      =     Makefile to use with Turbo C MAKE Utility
+ MAKEFILE.HC      =     Makefile to use with High C / NDMAKE Utility
+ 
+ Folder TOOLS
+ 
+ GEMSID  .APP     =     GEM Symbolic Debugger
+ KERMIT  .EXE     =     Communication Software
+ MSKERMIT.INI     =     Initialization data for KERMIT.EXE
+ RCS     .APP     =     Resource Construction Set Application
+ RCS     .RSC     =     Resource for RCS
+ RCSLOW  .RSC     =     Resource for Screens with low resolutions
+ 
+ Folder TOOLS\SRC
+ 
+ LMAP2SYM.C       =     Convert a MAP-file into a SYM-file (large memory model)
+ LMAP2SYM.EXE     =     Executable of MAP to SYM conversion (large memory model)     
+ MAP2SYM .C       =     Convert a MAP-file into a SYM-file (small memory model)
+ MAP2SYM. EXE     =     Executable of MAP to SYM conversion (small memory model)
+ PMAP2SYM.C       =     Convert a MAP-file into a SYM-file (Phoenix PLINK)
+ PMAP2SYM.EXE     =     Executable of MAP to SYM conversion (Phoenix PLINK)     
+
+	====End of FILES.DOC====

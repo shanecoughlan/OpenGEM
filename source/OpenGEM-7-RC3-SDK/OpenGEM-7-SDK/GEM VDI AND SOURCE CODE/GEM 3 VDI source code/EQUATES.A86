@@ -1,0 +1,143 @@
+;/*		EQUATES.A86	1/29/87 - 4/9/87	J. Grant	*/
+
+; Memory to allocate for fonts in paragraphs.
+
+SD_FONT_MAX		equ	5120	; max memory for screen fonts (80K)
+PD_FONT_MAX		equ	32767	; max memory for non-screen fonts
+SD_FONT_FREE		equ	640	; min to leave free (10K)
+PD_FONT_FREE		equ	640	; min to leave free (10K)
+FONT_MIN		equ	100	; min memory to allocate in any case
+
+; PCDOS interrupts, errors, and function equates.
+ALLOCATE		equ	48h	; allocate memory function
+EXEC			equ	4bh	; load and execute function
+EXIT_PROGRAM		equ	4ch	; exit program function
+FILE_CLOSE		equ	3eh	; close file function
+FILE_OPEN		equ	3dh	; open file function
+FILE_CREATE		equ	3ch	; create file function
+FILE_DELETE		equ	41h	; delete file function
+FILE_READ		equ	3fh	; read file function
+FILE_SEEK		equ	42h	; position file pointer function
+FILE_WRITE		equ	40h	; write file function
+FIND_FIRST		equ	4eh	; find first matching file function
+FIND_NEXT		equ	4fh	; find next matching file function
+FREE_MEM		equ	49h	; free allocated memory function
+GET_DIR			equ	47h	; return current directory function
+GET_DRIVE		equ	19h	; get current drive function
+GET_DTA			equ	2fh	; get current disk transfer address
+INPUT_CHARACTER		equ	08h	; direct console input function
+INSUFFICIENT_MEMORY	equ	08h	; allocation error:  not enough memory
+LOAD			equ	4bh	; load and execute program function
+PCDOS			equ	21h	; function request interrupt
+PRINT_STRING		equ	09h	; print string function
+SET_DIR			equ	3bh	; change current directory function
+SET_DRIVE		equ	0eh	; set current drive function
+SET_DTA			equ	1ah	; set disk transfer address function
+SETBLOCK		equ	4ah	; modify memory block function
+
+; Stack size equate.
+STACK_SIZE		equ	750
+
+; Equates for offsets in font header of font files (and other font info).
+DATA_PAGED		equ	10h	; font data unavailable flag
+COMPRESSED		equ	0020h	; font data compressed flag
+ALL_RESIDENT		equ	01h	; all associated headers resident
+USE_FULL_ID		equ	2000h	; offset to full font id word
+FONT_ID			equ	0	; offset to font id
+POINT_SIZE		equ	2	; offset to font point size
+FACE_NAME		equ	4	; offset to face name
+FONT_FILE_NAME_OFF	equ	32	; offset to font file name offset
+FONT_FILE_NAME_SEG	equ	34	; offset to font file name segment
+FONT_FIRST_ADE		equ	36	; offset to lowest ade
+FONT_TOP		equ	40	; offset to top distance
+MAX_CELL_WIDTH		equ	52	; offset to maximum cell width
+LEFT_OFF		equ	54	; offset to left offset
+RIGHT_OFF		equ	56	; offset to right offset
+FLAGS_WORD		equ	66	; offset to font flags
+HOR_TABLE_OFF		equ	68	; offset to horizontal table offset
+HOR_TABLE_SEG		equ	70	; offset to horizontal table segment
+OFF_TABLE_OFF		equ	72	; offset to offset table offset (!?)
+OFF_TABLE_SEG		equ	74	; offset to offset table segment
+DAT_TABLE_OFF		equ	76	; offset to data table offset
+DAT_TABLE_SEG		equ	78	; offset to data table segment
+FORM_WIDTH		equ	80	; offset to form width
+FORM_HEIGHT		equ	82	; offset to form height
+FONT_PTR_OFF		equ	84	; offset to next font header offset
+FONT_PTR_SEG		equ	86	; offset to next font header segment
+NEXT_SET_OFF		equ	88	; offset to multi-set offset
+NEXT_SET_SEG		equ	90	; offset to mutli-set segment
+USE_COUNT_LO		equ	92	; offset to use counter (low word)
+USE_COUNT_HI		equ	94	; offset to use counter (high word)
+FONT_FILE_DATA_OFF	equ	96	; offset to font file data offset
+FONT_FILE_DATA_SEG	equ	98	; offset to font file data segment
+FONT_FILE_DATA_SIZE	equ	100	; offset to font file data size
+FONT_RESERVED		equ	102	; offset to reserved section
+FONT_STRINDEX		equ	102	; offset to font string index
+FONT_HDRLRU_LO		equ	104	; offset to low word of header LRU
+FONT_HDRLRU_HI		equ	106	; offset to high word of header LRU
+FONT_GDOS_FLAGS		equ	108	; offset to GDOS font management flags
+FONT_FULL_ID		equ	110	; offset to full font id word
+COMPRESSED_SIZE		equ	150	; offset to compressed data size
+
+; Equates for workstation table.
+WS_ENTRIES		equ	8	; entries in workstation table
+WS_RES 			equ	1	; driver resident bit
+WS_OPEN			equ	2	; driver open bit
+
+; Equates for offsets in the assignment table.
+ASS_LENGTH		equ	112     ; length of assignment item
+ASS_NAME_LGTH		equ	13	; length of a file name
+ASS_WORK_ID		equ	0	; offset to the workstation id
+ASS_RES_ID		equ	2	; offset to reserved byte
+ASS_FILE_NAME		equ	3	; offset to driver file name
+ASS_PATCH       	equ	16	; offset to driver patch word (byte)
+ASS_S_NAME		equ	18	; offset to driver short name
+ASS_L_NAME		equ	31	; offset to driver long name
+ASS_S_NAME_LEN		equ	13	; max length of driver short name
+ASS_L_NAME_LEN		equ	81      ; max length of driver long name
+ASS_NAMES_VALID		equ	2	; mask for bit if ASS_RES_ID, set if
+					;  short and long names are valid
+
+; Equates for offsets in the headers string file.
+STR_BUFSIZ		equ	32	; length of string structure
+STR_DATE		equ	0	; offset to font file date
+STR_TIME		equ	2	; offset to font file time
+STR_MULTI_ID		equ	4	; offset to multi-section identifier
+STR_SEEK_LO		equ	6	; offset to multi-section seek (low)
+STR_SEEK_HI		equ	8	; offset to multi-section seek (high)
+STR_FILENAME		equ	16	; offset to font file name string
+
+; Equates for offsets in paged font header items.
+PGHD_LENGTH		equ	9	; length of paged font header items
+PGHD_INDEX		equ	0	; offset to string index (masked word)
+PGHD_FACE		equ	2	; offset to face
+PGHD_SIZE		equ	4	; offset to point size
+PGHD_TOP		equ	5	; offset to top distance
+PGHD_DATASIZE		equ	7	; offset to font data size
+
+; Equates for offsets in font header file header.
+FHFH_PHDLOW		equ	0	; offset to paged header low address
+FHFH_PHDCOUNT		equ	2	; offset to paged header count
+FHFH_EFFSIZE		equ	4	; offset to effect buffer size (bytes)
+
+; Equates for font headers.
+FHDR_SIZE		equ	160	; size of font headers
+FHDR_MIN		equ	8192	; minimum space for font headers
+FHDR_MAX		equ	16384	; maximum space for font headers
+
+; Equates for enumeration values.
+SEL_POINT		equ	0	; point mode
+SEL_ABSOLUTE		equ	1	; absolute mode
+
+; Equates for ASCII character mnemonics.
+CR			equ	0Dh	; ASCII carriage return character
+CTL_Z			equ	1Ah	; ASCII control-z character
+LF			equ	0Ah	; ASCII line feed character
+NUL			equ	00h	; ASCII null character
+TAB			equ	09h	; ASCII tab character
+
+; Command line switch characters
+AA			equ	'/'	; alternate application
+SW			equ	'-'	; option switch
+
+			end

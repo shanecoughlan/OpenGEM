@@ -1,0 +1,53 @@
+NAME
+
+   CHOICE - Waits for the user to press a key, from a list of choices
+
+SYNOPSIS
+
+   CHOICE [/B] [/C[:]choices] [/N] [/S] [/T[:]c,nn] [text]
+
+OPTIONS
+
+ /B
+    Sounds an alert (beep) at prompt.
+
+ /C[:]choices
+    Specifies allowable keys in the prompt.  When displayed, the keys
+    will be separated by commas, will appear in brackets ([]), and will
+    be followed by a question mark.  If you don't specify the /C switch,
+    choice uses YN as the default.  The colon (:) is optional.
+
+ /N
+   Causes choice not to display the prompt.  The text before the prompt
+   is still displayed, however.  If you specify the /N switch, the
+   specified keys are still valid.
+
+ /S
+   Causes choice to be case sensitive.  If the /S switch is not
+   specified, choice will accept either upper or lower case of the keys
+   that the user specifies.
+
+ /T[:]c,nn
+     Causes choice to pause for a specified number of seconds before
+     defaulting to a specified key.  The values for the /T switch are
+     as follows:
+
+       c   Specifies the character to display after nn seconds.  The
+           character must be in the set of choices specified by the /C
+           switch.
+
+       nn  Specifies the number of seconds to pause.  Acceptable values
+           are from 0 to 99.  If 0 is specified, there will be no pause
+           before defaulting.
+
+   text
+     Prompt string to display
+
+RETURN VALUE
+
+   ERRORLEVEL is set to offset of key user presses in choices.
+
+AUTHOR
+
+   Jim Hall, jhall@freedos.net
+

@@ -1,0 +1,278 @@
+Support for enhanced FreeGEM features
+=====================================
+
+  GEM was GPLed in April 1999; since then I have uploaded source for a
+version ("FreeGEM") containing the extra functions in ViewMAX/2 and ViewMAX/3. 
+The following functions apply to FreeGEM and ViewMAX:
+
+     WORD xgrf_colour(WORD type, WORD fg, WORD bg, WORD style, WORD index);
+     WORD xgrf_dtmfdb(LPMFDB newdesk);
+
+  (there are also extra FreeGEM-only functions - see below).
+
+  In xgrf_colour():
+
+  type is the user interface object type, 0-15. The ones defined in
+VIEWHELP.RSC are:
+#define	CC_NAME		8         /* Active titlebar */
+#define	CC_SLIDER	9         /* Scrollbar background */
+#define	CC_DESKTOP	10        /* Desktop */
+#define	CC_BUTTON	11        /* Buttons and 3D areas */
+#define	CC_INFO		12        /* Information line */
+#define	CC_ALERT	13        /* Alert boxes (ignored) */
+#define	CC_SLCTDNAME	14        /* Inactive titlebar */
+
+FreeGEM adds the following types (dependent on extended 3D support):
+
+#define CC_3DSHADE	16        /* Foreground is 3D highlight &
+                                     background is 3D shadow*/
+#define CC_RADIO	17        /* Foreground & background colours of *
+                                   * the dot in the radio button        */
+#define CC_CHECK	18        /* Background is colour of tick */
+
+
+  In xgrf_dtmfdb(), the first reserved word of the MFDB contains the
+display mode for the image. It can be:
+
+#define DT_CENTER	1         Centred
+#define DT_TILE		2         Tiled
+
+
+There are also five extra object flags:
+
+#define ESCCANCEL 0x200           When applied to a button, ESC is a
+                                  shortcut for it.
+                                  You can make ESC a shortcut for a
+                                  button in form_alert(), by passing the
+                                  button number in the high byte of the
+                                  'default button' parameter. For example,
+                                  form_alert ((3 << 8) | 1, ...) means
+                                  button 1 is the default button, and
+                                  button 3 has ESC as the shortcut.
+#define BITBUTTON 0x400           Not used by the AES.
+#define SCROLLER 0x800            When applied to a button, it may intercept
+                                  "up" or "down" arrow keypresses; used in
+                                  list boxes.
+#define FLAG3D 0x1000             Draw object in 3D. Buttons are always 3D.
+#define USECOLOURCAT 0x2000       Use the system colours set by xgrf_colour().
+                                  xgrf_color(). The object's colour value
+                                  becomes the ViewMAX object type, as above.
+                                  3D objects always use system colours.
+
+FreeGEM adds:
+
+#define FL3DBAK 0x4000            Make a "sunken" 3D object rather than a
+                                  "raised" one.
+#define SUBMENU 0x8000            Reserved - used in Atari GEM.
+
+and two extra object states:
+
+#define HIGHLIGHTED 0x100	  Draw a highlight box round the object
+#define UNHIGHLIGHTED 0x200       Remove the highlight box
+
+NOTE: The supplied RCS has been extended to handle the extra flags.  This is 
+an experimental RCS which you should treat with caution. Save early, save
+often, and keep good backups.
+
+FreeGEM: Extra parameter to appl_init()
+=======================================
+
+  appl_init() now takes an extra parameter; a pointer to a structure of type
+X_BUF_V2. If you don't want to use this parameter, pass NULL. If a program
+wants to use the extra features in FreeGEM, it must pass a valid pointer;
+future GEM versions may use this as a test to see whether they should
+emulate FreeGEM or Atari GEM.
+
+  To use the structure, fill it with zeroes and set its "buf_len" member to
+its size. On return, if the program is running under FreeGEM, the remainder
+of the structure will be filled with data (all pointers will be linear
+addresses):
+
+typedef struct x_buf_v2
+{
+	WORD	buf_len;	/* Size of structure passed. Set by caller;
+				 * on return, size of data returned by GEM */
+	WORD	arch;	        /* 16 for 16-bit, 32 for any future 
+				 * 32-bit version. 0 if not FreeGEM. */
+	LONG  	cc;		/* Address of an array of 19 CLRCAT
+				 * structures (containing data from
+                                 * xgrf_colour() calls).
+                                 * This is so that they can be read by
+                                 * a program without having to fiddle
+                                 * with ViewMAX.INI */
+	LONG    w_active;	/* Address of the tree (18 elements)
+                                 * that is used to draw window frames and
+                                 * controls. The intention is that the
+                                 * glyphs on the buttons could be changed
+                                 * by a program. Use of this value is now
+                                 * deprecated; wind_set() and wind_get()
+                                 * (described below) should be used instead.
+                                 */
+	LONG	info;		/* ASCII information such as a version 
+				 * string. This will be max. 40 characters 
+				 * with no newlines */
+        LONG    abilities;      /* Bit 0 (ABLE_GETINFO) is set if the AES
+                                 * supports an Atari-style appl_getinfo()
+                                 * call.
+                                 * Bit 1 (ABLE_PROP) is set if the AES
+                                 * supports prop_get(), prop_put() and
+                                 * prop_del() - see below
+                                 * Bit 2 (ABLE_WTREE) is set if the AES
+                                 * supports WF_OBFLAGS, WF_OBSPEC and
+                                 * WF_OBTYPE - see below
+                                 * Bit 3 (ABLE_X3D) is set if the AES
+                                 * supports GEM/5 style 3D using the
+                                 * DRAW3D and WHITEBAK object states.
+                                 * Bit 4 (ABLE_XSHL) is set if the AES
+                                 * supports xhsl_getshell() and
+                                 * xshl_setshell() calls.
+                                 */
+} X_BUF_V2;
+
+
+FreeGEM: Property file
+======================
+
+  There is a compile-time option in the latest GEM AES to include three
+extra functions: prop_get(), prop_put() and prop_del() (nos. 1010-1012).
+These are used to access a global settings file. The file currently has
+an extremely simple structure, but the functions allow for a more
+complicated tree-structured system.
+
+  The syntax is:
+
+  WORD prop_get(char *program, char *section, char *buf, WORD buflen,
+                WORD options);
+
+   "program" is a name that identifies your program. It should be formed of
+  one or more words separated by dots - for example, the DEMO sample uses
+  "PTK.DEMO". You should avoid program names starting "GEM." to avoid a clash
+  with GEM itself.
+   "section" is the name of the field to retrieve. Again, this should be
+  one or more words separated by dots. DEMO uses "Pen.shade", "Pen.colour" and
+  "Pen.size".
+   "buf" is the address of the buffer to which the information will be
+  written. 
+   "buflen"  is the size of "buf", including the terminating 0.
+   "options" should be 0 if the setting is per-user, 1 if it is for all
+            users. This is for future expansion since GEM does not
+            currently support multiple user profiles. It is recommended that
+            "options" should be set to 0 if at all possible.
+
+  This function returns:
+  0 - Property read successfully.
+  1 - Property was not found.
+ -1 - File I/O error.
+ -2 - Not enough memory to do this.
+
+  WORD prop_put(char *program, char *section, char *buf, WORD options);
+
+  The parameters and return values are as for prop_get() above, except
+ that this function will never return 1. Note that prop_get() will remove
+ leading spaces from returned values, so if you are writing a string value
+ that may start with spaces, you must put it in quotes before calling
+ prop_put().
+
+  WORD prop_del(char *program, char *section, WORD options);
+
+  The parameters are as for prop_get() above.
+
+  The current property file format is an ASCII file: \GEMAPPS\GEMSYS\GEM.CFG.
+ The "program" and "section" fields are concatenated to produce a single
+ string, making each line look like:
+
+      PTK.DEMO.Pen.size: 5
+      PTK.DEMO.Pen.shade: 4
+      PTK.DEMO.Pen.colour: 4
+
+  You are strongly discouraged from allowing programs to edit this file
+ directly!
+
+FreeGEM: xapp_getinfo()
+=======================
+
+  This function was added to correspond to the Atari appl_getinfo() function,
+takes the same parameters and returns the same results. You can call it as
+appl_getinfo() instead of xapp_getinfo() if you want.
+
+FreeGEM: xapp_getshell() & xapp_setshell()
+==========================================
+
+  These functions are used to change the name of the shell program (normally
+DESKTOP.APP).
+
+  xapp_getshell() will return the program name (no path; it is assumed that
+the program is always in \GEMAPPS\GEMSYS). It returns 0 if this is the
+standard shell DESKTOP.APP, and 1 if the shell has been set using the GEM.CFG
+file or xapp_setshell().
+
+  xapp_setshell() sets the shell name. Again, no path can be passed. It
+returns 0 if successful, 1 if the filename was too long.
+
+FreeGEM: Window decorations
+===========================
+
+  The window decorations can be changed using wind_set() and wind_get(). This
+is how:
+
+#define WF_OBFLAG  1001	/* Window tree: flag words */
+#define WF_OBTYPE  1002	/* Window tree: type words */
+#define WF_OBSPEC  1003	/* Window tree: spec dwords */ 
+
+  wind_get(n, WF_OBFLAG, &a, &b, &c, &d) - a = object flags for decoration "n"
+  wind_get(n, WF_OBTYPE, &a, &b, &c, &d) - a = object type of decoration "n"
+  wind_get(n, WF_OBSPEC, &a, &b, &c, &d) - (b<<16)|a = spec of decoration "n"
+  wind_set(n, WF_OBFLAG,  a,  b,  c,  d) - Set flags for decoration "n" to "a"
+  wind_set(n, WF_OBSPEC,  a,  b,  c,  d) - Set spec of decoration "n" to
+                                           (b<<16)|a
+
+  The "n" parameter is one of:
+
+#define W_BOX            0  outline
+#define W_TITLE	         1  titlebar outline
+#define W_CLOSER         2  close box
+#define W_NAME	         3  titlebar
+#define W_FULLER         4  full-size box
+#define W_INFO           5  info bar
+#define W_DATA	         6  work area outline
+#define W_WORK	         7  work area
+#define W_SIZER	         8  resize box
+#define W_VBAR           9  vertical scroll bar outline
+#define W_UPARROW       10  scroll up box
+#define W_DNARROW       11  scroll down box
+#define W_VSLIDE        12  vertical scroll bar
+#define W_VELEV	        13  scroll thumb
+#define W_HBAR          14  horizontal scroll bar outline
+#define W_LFARROW       15  scroll left box
+#define W_RTARROW       16  scroll right box
+#define W_HSLIDE        17  horizontal scroll bar
+#define W_HELEV	        18  horizontal scroll bar thumb
+
+FreeGEM: Extended 3D
+====================
+
+  FreeGEM implements an extended 3D controls system, similar to that in GEM/5.
+This system works by overloading the WHITEBAK and DRAW3D flags; it is
+therefore incompatible with Atari GEM, which overloads WHITEBAK differently.
+If the ABLE_X3D bit is set in the AES abilities field, then the following
+features are available:
+
+* Checkboxes. Set the DRAW3D state and the SELECTABLE flag on a 2-dimensional
+             object such as a G_STRING.
+
+* Radio buttons. Set the RBUTTON flag on a checkbox.
+
+    By default, checkboxes and radio buttons display as if on a 3D background.
+  Set the WHITEBAK state to make them display correctly on a white background.
+
+* Default buttons. Set the DEFAULT state and the DRAW3D flag on a G_BUTTON
+ object, and a <=" symbol will appear on it.
+
+* Sunken 3D objects. Set the FL3DBAK flag on them rather than FLAG3D, and
+ the object will be drawn sunken.
+
+* Ability to set 3D light/dark colours, tick and dot colours using
+ xgrf_colour().
+
+* 3D objects with no black border - set the WHITEBAK flag. 
+

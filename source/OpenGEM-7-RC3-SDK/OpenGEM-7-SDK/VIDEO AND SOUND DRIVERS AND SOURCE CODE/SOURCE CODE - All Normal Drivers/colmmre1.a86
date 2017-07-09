@@ -1,0 +1,1678 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+
+EJECT
+;Hist
+;
+dseg
+	extrn	ptsin_ptr:dword, intin_ptr:dword
+	extrn	fill_style:word
+cseg
+	extrn	txtblt_rrot_table_1:word
+	public	read_ptsin, read_intin, write_ptsin
+	public	expand_byte
+;
+; These three appear to be new in SDPSC9, and I'm not sure which source file
+; they ultimately belong in.
+;
+read_ptsin: 
+	push	bp
+	mov	bp, sp
+	mov	ax, 4[bp]
+	mov	bx, ds
+	mov	es, bx
+	mov	si, offset PTSIN
+	cmp	ax, 100h
+	jc	read_ptsin1
+	les	si, ptsin_ptr
+read_ptsin1:
+	shl	ax, 1
+	add	si, ax
+	mov	ax, es:[si]
+	pop	bp
+	retn	
+
+write_ptsin:
+	push	bp
+	mov	bp, sp
+	mov	ax, 4[bp]
+	mov	cx, 6[bp]
+	mov	bx, ds
+	mov	es, bx
+	mov	si, offset PTSIN
+	cmp	ax, 100h
+	jc	write_ptsin1
+	les	si, ptsin_ptr
+write_ptsin1:
+	shl	ax, 1
+	add	si, ax
+	mov	es:[si], cx
+	pop	bp
+	retn	
+
+read_intin:
+	push	bp
+	mov	bp, sp
+	mov	ax, 4[bp]
+	les	si, intin_ptr
+	shl	ax, 1
+	add	si, ax
+	mov	ax, es:[si]
+	pop	bp
+	retn	
+
+
+
+	public	vec_len
+	public	GET_DS
+	public	ABLINE
+	public	HABLINE
+	public	DIS_CUR
+	public	HIDE_CUR
+	public	MOV_CUR
+	public	SMUL_DIV
+	public	CLC_FLIT
+	public	XFM_CRFM
+	if not GSX
+	 public	XFM_UDFL
+	 public	VEX_BUTV
+	 public	VEX_MOTV
+	 public	VEX_CURV
+	endif
+	public	RECTFILL
+if mono_port
+	public	next_seg_pgdown
+next_seg_pgdown:
+	sub	di, true_plane_size			;wrap back to 0 offset base
+	push	dx
+	push	ax
+	mov	dx, plane_sel_port
+	mov	al, ss:current_bank
+	inc	al
+	out	dx, al
+	mov	ss:current_bank, al
+	pop	ax
+	pop	dx
+	ret
+endif
+vec_len:
+		push	bp
+		mov	bp, sp
+
+; Check for zeroes.
+		cmp	word ptr 4[bp], 0
+		jne	x_squared
+		cmp	word ptr 6[bp], 0
+		jne	x_squared
+		xor	bx, bx				; return value
+		jmp	search_loop_end
+
+; Calculate delta_x squared.
+x_squared:
+		mov	dx, 4[bp]		; delta_x parameter
+		mov	ax, dx
+		imul	dx
+		mov	vec_len_high, dx		; save high word of square
+		mov	vec_len_low, ax			; save low word of square
+
+; Calculate delta_y squared and add to delta_x squared.
+		mov	dx, 6[bp]		; delta_y parameter
+		mov	ax, dx
+		imul	dx
+
+		add	vec_len_low, ax
+		adc	vec_len_high, dx		; high/low = sum of squares
+
+; Get the initial binary search boundaries.  This is done by taking an
+;   approximate square root based on the highest order set bit in the
+;   high/low bit string.
+		cmp	vec_len_high, 0
+		je	no_high_byte
+
+		mov	ax, vec_len_high		; check on high order byte
+		mov	cl, 16
+		jmp	bounds_loop
+
+no_high_byte:
+		mov	ax, vec_len_low			; check on low order byte
+		sub	cl, cl
+
+bounds_loop:
+		cmp	ax, 1			; done yet?
+		je	bounds_loop_end
+		inc	cl
+		shr	ax, 1
+		jmp	bounds_loop
+
+bounds_loop_end:
+		shr	cl, 1
+		mov	bx, 1
+		shl	bx, cl			; bx = initial low bound
+		mov	cx, bx
+		shl	cx, 1			; cx = initial high bound
+
+; Perform a binary search for a square root (somewhat brutishly).
+search_loop:
+		mov	ax, cx
+		sub	ax, bx
+		cmp	ax, 1			; done with the search?
+		jle	search_loop_end
+
+		shr	ax, 1
+		add	ax, bx			; candidate = (high+low)/2
+		mov	si, ax			; save a copy for next pass
+		mul	ax			; dx/ax = candidate square
+
+		cmp	dx, vec_len_high		; check against high word
+		ja	high_adjust
+		jb	low_adjust
+
+		cmp	ax, vec_len_low			; check against low word
+		ja	high_adjust
+		jb	low_adjust
+
+		mov	bx, si			; exact root found!
+		jmp	search_loop_end
+
+high_adjust:
+		mov	cx, si			; adjust high value down
+		jmp	search_loop
+
+low_adjust:
+		mov	bx, si			; adjust low value up
+		jmp	search_loop
+
+search_loop_end:
+		mov	ax, bx			; ax = solution
+
+		pop	bp
+		ret
+
+;
+;***************************************************************************
+;
+; SMUL_DIV (m1,m2,d1)
+;
+;	 ( ( ( m1 * m2 ) / d1 ) + 1 / 2	
+;	m1 = signed 16 bit integer
+;	m2 = snsigned 15 bit integer
+;	d1 = signed 16 bit integer
+;
+;***************************************************************************
+SMUL_DIV:
+	push	bp		;save the callers bp
+	mov	bp,sp
+	mov	ax,06[bp]
+	mov	bx,04[bp]
+	imul	bx		; m2 * m1
+	mov	si, 1
+	and	dx, dx
+	jns	smul_div_1
+	neg	si
+smul_div_1:
+	mov	bx,08[bp]
+	idiv	bx		; m2 * m1 / d1
+	pop	bp
+	and	bx, bx		; test if divisor is negative
+	jns	smul_div_2
+	neg	si
+	neg	bx		; make it positive
+smul_div_2:
+	and	dx, dx		; test if remainder is negative
+	jns	smul_div_3
+	neg	dx		; make remainder positive
+smul_div_3:
+	shl	dx, 1		; see if 2 * remainder is > divisor
+	cmp	dx, bx
+	jl	smul_div_4
+	add	ax, si
+smul_div_4:
+	ret
+eject
+EJECT
+;************************************************************************
+;TENNIS 								*
+;	Entry	CX - delta count for ABLINE (count includes last point) *
+;	Exit	CX is decremented by one if:				*
+;			XOR writing mode and the line about to be	*
+;			drawn is not the last of the poly line		*
+;			else Cx is left alone				*
+;	Purpose:  Xor does not Xor itself at intersection points of	*
+;		  polline or plydpl of fill				*
+;************************************************************************
+tennis:
+	cmp	WRT_MODE, 2		; check if xor
+	jnz	jimmy	 
+	cmp	LSTLIN, 0		; check if XOR and last line of pollin
+	jnz	jimmy			; if false go around 
+	cmp	cx, 1
+	jz	jimmy
+	dec	cx
+jimmy:	ret
+;
+EJECT
+;****************************************************************
+;Subroutine	HABLINE						*
+;	Entry:	X1-coordinate					*
+;		Y1-coordinate					*
+;		X2-coordinate					*
+;		patptr - pointer to fill pattern table		*
+;								*	
+;	Purpose:						*
+;		This routine will draw a line from (X1,Y1) to	*
+;		(X2,Y1) using a horizontal line algorithm.	*
+;****************************************************************
+HABLINE:
+	push	bp
+	push	Y2
+	mov	ax, Y1
+	mov	Y2, ax
+	call	BOX_FILL
+	pop	Y2
+	pop	bp
+	ret
+
+GET_DS:
+	mov	ax,ds
+	ret
+;
+;******************************************************************************
+;
+; PROCEDURE:	RECTFIL		Fill Rectangle
+;
+; Inputs:	X1,Y1 = upper left
+;		X2,Y2 = lower right
+;
+;******************************************************************************
+;
+RECTFILL:
+	mov	ax, CLIP		; is clipping on?
+	and	ax, ax
+	jnz	rectfill_clip_1
+	jmp 	BOX_FILL		; goto horizontal line draw routine
+rectfill_clip_1:
+	mov	 ax, XMN_CLIP
+	mov	 bx, X1
+	mov	 cx, X2
+	cmp	bx, ax			; is x1 < xmn_clip
+	jnl	rectfill_clip_3	
+	cmp	cx, ax			; is x2 >= xmn_clip
+	jl	rectfill_clip_2
+	mov	X1, ax 
+rectfill_clip_3:
+	mov	ax, XMX_CLIP
+	cmp	cx, ax			; is x2 > xmx_clip
+	jle	rectfill_clip_4
+	cmp	bx, ax			; is x1 <= xmx_clip
+	jg	rectfill_clip_2
+	mov	X2, ax
+	jmps	rectfill_clip_4
+rectfill_clip_2:
+	ret				; if x2 not > xmn_clip exit
+rectfill_clip_4:
+	mov	 ax, YMN_CLIP
+	mov	 bx, Y1
+	mov	 cx, Y2
+	cmp	bx, ax			; is y1 < ymn_clip
+	jnl	rectfill_clip_5	
+	cmp	cx, ax			; is y2 >= ymn_clip
+	jl	rectfill_clip_2
+	mov	Y1, ax 
+rectfill_clip_5:
+	mov	ax, YMX_CLIP
+	cmp	cx, ax			; is y2 > ymx_clip
+	jle	rectfill_clip_6
+	cmp	bx, ax			; is y1 <= ymx_clip
+	jg	rectfill_clip_2
+	mov	Y2, ax
+rectfill_clip_6:
+	jmps	BOX_FILL
+;******************************************************************************
+; BOX_FILL
+;	Fill a rectangular area with pattern
+;
+;	Entry	X1,Y1 = upper left corner  inclusive
+;		X2,Y2 = lower right corner inclusive
+;
+;******************************************************************************
+
+;
+; This is where I attempt to adapt BOX_FILL for a 320x200 2bpp display.
+;
+BOX_FILL:
+	mov	bx, X1
+	and	bx, 0fff8h	; make sure it lines up on a word boundary
+				; [2bpp] With only 4 pixels/byte, we only
+				; need zero the bottom 3 bits
+	mov	ax, Y1		; find the physical address
+	call	concat		; di = display memory pointer
+if byte_swap
+	and	di, 0fffeh	; make sure it points to low byte
+endif
+if mono_multisegs or mono_xrxfp
+;
+else
+	mov	ax, graph_plane
+	mov	es, ax		; init the segment register
+endif
+BOX_FILL_LINE:
+	mov	ax, 07h
+	mov	dx, X1
+	mov	bx, dx		; save X1 for later
+	and	bx, ax		; get the left mask word
+	shl	bx, 1		; [2bpp] 2 bits/pixel, so use even-numbered 
+				; masks
+	shl	bx, 1		; index by words
+	mov	bx, word_mask_table[bx]
+	not	bx		; make it the left one
+	xchg	bh,bl		; account for byte swap
+	mov	left_word_mask, bx
+
+	mov	bp, X2
+	inc	bp		; point one past the right most pixel
+	mov	bx, bp		; save X2 + 1 for later
+	and	bx, ax
+	shl	bx, 1		; index by words
+	shl	bx, 1		; [2bpp] 2 bits/pixel, so use even-numbered 
+				; masks
+	mov	bx, word_mask_table[bx]
+	xchg	bh,bl
+	mov	right_word_mask,bx
+	
+	mov	cl, 3		; find the word count bp = x2 , dx = x1
+	shr	bp, cl		; [2bpp] Divide by 8, not 16
+	shr	dx, cl
+	sub	bp, dx		; word count = x2/8 - x1/8 -1
+	dec	bp
+	jge	box_fill_ok
+	xor	bp,bp		; make word count = 0
+	cmp	bx, 0ffffh	; is it left only?
+	jz	box_left_mask_only
+	or	left_word_mask, bx
+box_left_mask_only:
+	mov	right_word_mask,0ffffh	; don't let the right mask do anything
+box_fill_ok:	
+	mov	si, Y1
+	mov	cx, Y2		; calculate the scan count
+	sub	cx, si
+	inc	cx		; cx = scan count = delta y + 1
+if wy700
+	shr	si,1
+endif
+	and	si, patmsk	; get the pattern index value
+
+	mov	bx, patptr	; get the pattern pointer
+	add	bx, si
+	add	bx, si		; index in properly
+;
+box_fill_1:
+	mov	plane_loop_count, num_planes/2		; load up the plane count
+	mov	ax, FG_BP_1
+;;;	shl	ax,1			; [2bpp] Only shift by 1
+	shl	ax,1			; set up the color index values
+	mov	TMP_FG_BP,ax
+	mov	ax, 1			; set up the mask bit for plane/color
+	push	patptr			; save away the pointer for user fill
+	push	ax
+box_fill_0:
+	pop	ax			; get ax back
+if (num_planes gt 2) and not( segment_access )
+	push	dx
+	push	bx
+	mov	dx, plane_sel_port
+	mov	bx, ax			; load up the pointer to table
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+	mov	ax, bx
+	pop	bx
+	pop	dx
+endif	 
+	shl	ax, 1			; move the bit mask over one
+	push	ax			; save the mask
+	mov	ax, bx
+	add	bx, NEXT_PAT		; add in the next pattern ammount
+	push	bx
+;
+; [2bpp] This bit is completely different. Rather than just setting BOX_MODE
+; to zero for "don't write" and nonzero for "write", set BOX_INK to the
+; (word-width) bit pattern for the colour.
+;
+	mov	bx, TMP_FG_BP		; get the temp colour
+	and	bx, 06h			; Mask down to ink bits
+	mov	bx, box_ink_values[bx]
+	mov	BOX_INK, bx
+	mov	bx,WRT_MODE
+	shl	bx,1
+	cmp	fill_style, 4
+	jnz	box_notudpt
+	add	bx, 8
+box_notudpt:
+	mov	bx, box_optbl[bx]
+	shr	TMP_FG_BP,1		; put the next plane bit into place
+	shr	TMP_FG_BP,1		; [2bpp] 
+	push	cx
+	push	dx
+	push	si
+	push	di
+	push	bp
+	call	bx			; call the box fill routine
+	mov	bx, NEXT_PAT
+	add	patptr, bx
+	pop	bp
+	pop	di
+	pop	si
+	pop	dx
+	pop	cx
+	pop	bx
+if (num_planes gt 2) and segment_access
+	mov	ax, es
+	add	ax, next_plane
+	mov	es, ax
+endif
+	dec	plane_loop_count	; is line done
+	jnz	box_fill_0
+	pop	ax
+	pop	patptr
+	ret
+;*******************************
+; box_tran_mode
+;	entry	es:di = memory address
+;		si    = pattern index
+;		ax    = pattern pointer
+;		patmsk = current pattern max count
+;		bp    = word count
+;		cx    = scan line count
+;		dx used for pattern storage
+;
+;*******************************	
+box_tran_mode:
+	mov	patcnt, si
+	mov	si, ax
+	jmps	box_tran
+box_tran_loop:
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_mem
+	cmp	di, true_plane_size
+	jc	box_tran_pattinc
+	sub	di, true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	box_tran_monook
+	mov	al, 0c0h
+	add	di, bytes_line
+box_tran_monook:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	box_tran_pattinc
+	call	next_seg_pgdown
+endif
+if mono_xrxfp
+	jnc	box_tran_pattinc
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	box_tran_pattinc_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+box_tran_pattinc_xrx:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	box_tran_pattinc
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	box_tran_pattinc
+	add	di, ss:true_to_first
+endif
+box_tran_pattinc:
+if wy700
+	test	cs:current_port,3
+	jnz	skip_inc_pat3
+endif
+	inc	si
+	inc	si		; point to next word 
+	inc	patcnt		; point to next word
+skip_inc_pat3:
+	mov	ax, patmsk
+	cmp	patcnt, ax	; is the pattern index > mask
+	jle	box_tran
+	mov	si, patptr	; point pattern back to top
+	mov	patcnt, 0	; start pattern count over
+box_tran:
+	push	di		; save the current address
+	push	cx		; save the outer loop count
+	push	bp		; save the row count
+	call	getpatsi	; Get pattern words
+	cmp	WRT_MODE, 3	; Write inverse pattern?
+	jnz	box_tran1
+	not	pat_w1		; OK, invert pattern bits
+	not	pat_w2
+box_tran1:
+;
+; Left Fringe
+	mov	ax, es:[di]	; apply the left fringe mask
+;
+;   Here it gets complex. In the 1bpp versions the program only has to OR 
+; bits in or AND them out. Here it must do both at the same time.
+;
+;   left_word_mask holds the bits that should not be touched. pat_w1 holds
+; the bits that the painting code wants to touch.
+;
+	mov	dx, pat_w1	;DX holds the bits that it wants to touch
+	not	dx		
+	or	dx, left_word_mask	;DX holds the bits that it can't touch
+ 	and	ax, dx		;Removed the bits it would like to touch
+	not	dx		;DX holds the bits that it can touch
+	mov	cx, BOX_INK
+	and	cx, dx		;CX holds the bits to paint
+	or	ax, cx		;Paint them
+	stosw 
+	mov	dx, pat_w2	;The bits it wants to touch
+	test	bp, bp
+	jz	box_tran_right
+;
+; Because the pattern has expanded from one word to two, the body of this loop
+; is repeated, once with DX = pat_w1 and once with DX = pat_w2. It leaves the
+; loop with DX = next pattern word to paint.
+;
+box_tran_inner:
+	mov	ax, es:[di]
+	not	dx		;The bits it can't touch
+	and	ax, dx		;Zero out the rest
+	not	dx
+	mov	cx, BOX_INK
+	and	cx, dx
+	or	ax, cx		;Paint the bits it can paint
+	stosw
+	mov	dx, pat_w1
+	dec	bp
+	jz	box_tran_right
+	mov	ax, es:[di]	;Second word
+	not	dx
+	and	ax, dx		;Zero out paintable bits
+	not	dx
+	mov	cx, BOX_INK
+	and	cx, dx
+	or	ax, cx		;OR in new values
+	stosw
+	mov	dx, pat_w2
+	dec	bp
+	jnz	box_tran_inner
+;
+; ES:DI points at the last byte. DX = pattern bits to draw. 
+;
+box_tran_right:
+	mov	ax, es:[di]
+	not	dx		
+	or	dx, right_word_mask	;DX holds the bits that it can't touch
+ 	and	ax, dx		;Removed the bits it would like to touch
+	not	dx		;DX holds the bits that it can touch
+	mov	cx, BOX_INK
+	and	cx, dx		;CX holds the bits to paint
+	or	ax, cx		;Paint them
+	stosw 
+	pop	bp
+	pop	cx
+	pop	di
+	dec	cx
+	jcxz	box_tran_done
+	jmp	box_tran_loop
+box_tran_done:
+	ret
+;
+;*******************************
+; box_xor_mode
+;	entry	es:di = memory address
+;		si    = pattern index
+;		ax    = pattern pointer
+;		patmsk = current pattern max count
+;		bp    = word count
+;		cx    = scan line count
+;		dx used for pattern storage
+;
+;*******************************	
+box_xor_mode:
+	mov	patcnt, si
+	mov	si, ax
+	jmps	box_xor
+box_xor_loop:
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	box_xor_pattinc
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	box_xor_pattinc_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+box_xor_pattinc_xrx:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	box_xor_pattinc
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, true_plane_size
+	jc	box_xor_pattinc
+	sub	di, true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	box_xor_monook
+	mov	al, 0c0h
+	add	di, bytes_line
+box_xor_monook:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	box_xor_pattinc
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	box_xor_pattinc
+	add	di, ss:true_to_first
+endif
+box_xor_pattinc:
+if wy700
+	test	cs:current_port,3
+	jnz	skip_inc_pat2
+endif
+	inc	si
+	inc	si		; point to next word 
+	inc	patcnt		; point to next word
+skip_inc_pat2:
+	mov	ax, patmsk
+	cmp	patcnt, ax	; is the pattern index > mask
+	jle	box_xor
+	mov	si, patptr	; point pattern back to top
+	mov	patcnt, 0	; start pattern count over
+box_xor:
+	push	di		; save the current address
+	push	cx		; save the outer loop count
+	push	bp
+	call	getpatsi	; get the current pattern
+;
+; Left Fringe 
+	mov	dx, left_word_mask	;DX holds the bits it can't touch
+	not	dx			
+	and	dx, pat_w1		;DX holds the bits it can touch
+	xor	es:[di], dx
+	inc	di
+	inc	di
+;
+; Inner Word Loop
+	mov	dx, pat_w2
+	test	bp, bp
+	jz	box_xor_right
+box_xor_word_loop:
+	xor	es:[di], dx
+	inc	di
+	inc	di
+	mov	dx, pat_w1
+	dec	bp
+	jz	box_xor_right
+	xor	es:[di], dx
+	inc	di
+	inc	di
+	mov	dx, pat_w2
+	dec	bp
+	jnz	box_xor_word_loop	
+box_xor_right:
+	mov	cx, right_word_mask	;CX holds the bits it can't touch
+	not	cx			
+	and	cx, dx		;CX holds the bits it can touch
+	xor	es:[di], cx
+	pop	bp
+	pop	cx
+	pop	di
+	loop	box_xor_loop
+	ret
+;
+;*******************************
+; box_replace_mode
+;	entry	es:di = memory address
+;		si    = pattern index
+;		bx    = pattern pointer
+;		patmsk = current pattern max count
+;		bp    = word count
+;		cx    = scan line count
+;		dx used for pattern storage
+;
+;*******************************	
+box_replace_mode:
+;
+	mov	bx, ax
+	jmps	box_replace
+box_to_0:
+	mov	bx, offset HOLLOW
+	push	patptr
+	push	patmsk
+	mov	patptr, bx
+	xor	si, si
+	mov	patmsk, si
+	call	box_replace
+	pop	patmsk
+	pop	patptr
+	ret
+box_rep_loop:
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_xrxfp
+	jnc	box_replace_pattinc
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	box_replace_pattinc_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+box_replace_pattinc_xrx:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	box_replace_pattinc
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if mono_mem
+	cmp	di, true_plane_size
+	jc	box_replace_pattinc
+	sub	di, true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	box_replace_monook
+	mov	al, 0c0h
+	add	di, bytes_line
+box_replace_monook:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	box_replace_pattinc
+	call	next_seg_pgdown
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	box_replace_pattinc
+	add	di, ss:true_to_first
+endif
+box_replace_pattinc:
+if wy700
+	test	cs:current_port,3
+	jnz	skip_inc_pat4
+endif
+	inc	si
+	inc	bx
+	inc	bx		; point to next word
+skip_inc_pat4:
+	cmp	si, patmsk	; is the pattern index > mask
+	jle	box_replace
+	mov	si,0
+	mov	bx, patptr	; point pattern back to top
+box_replace:
+	push	di		; save the current address
+	push	cx		; save the outer loop count
+	push	bp
+	call	getpatbx	; get the current pattern
+;
+; Left Fringe 
+	mov	ax, es:[di]	; apply the left fringe mask
+	mov	dx, left_word_mask
+	and	ax, dx		; Mask out the bits we want to paint
+	not	dx		; DX = bits we want to paint
+
+	if	rev_vid
+	mov	cx, pat_w1	;Paint the 'background' pixels. If not 
+	not	cx		;rev_vid, the 'and ax, dx' above did it.
+	and	cx, dx
+	or	ax, cx
+	endif
+
+	mov	cx, pat_w1
+	and	cx, dx		; CX = 0000ii00
+	and	cx, BOX_INK
+	or	ax, cx
+	stosw
+
+	mov	cx, BOX_INK
+	mov	dx, pat_w2
+	or	bp, bp
+	jz	box_rep_right
+box_rep_inner:
+	if	rev_vid
+	 not	dx
+	 mov	ax, dx	;Background bits
+	 not	dx
+	 and	dx, cx
+	 or	ax, dx	;Foreground bits
+	else
+	 mov	ax, dx	;Background bits
+	 and	ax, cx	;Foreground bits
+	endif
+	stosw
+	mov	dx, pat_w1
+	dec	bp
+	jz	box_rep_right
+	jmps	skip
+
+j_box_rep_loop:	jmps	box_rep_loop
+
+skip:
+	if	rev_vid
+	 not	dx
+	 mov	ax, dx	;Background bits
+	 not	dx
+	 and	dx, cx
+	 or	ax, dx	;Foreground bits
+	else
+	 mov	ax, dx	;Background bits
+	 and	ax, cx
+	endif
+	stosw
+	mov	dx, pat_w2
+	dec	bp
+	jnz	box_rep_inner
+;
+; Right Fringe
+box_rep_right:
+	mov	cx, right_word_mask
+	mov	ax, es:[di]		; apply the right fringe mask
+	and	ax, cx			; Cut out the bits that will be
+					; replaced.
+	not	cx			; Change the mask over
+
+if rev_vid
+	push	dx			; Pattern
+	not	dx			; Pattern background
+	and	dx, cx			; Mask to fringe
+	or	ax, dx			; Paint 'background' pixels
+	pop	dx
+endif
+	and	dx, cx			; Trim 'foreground' pixels
+	and	dx, BOX_INK
+	or	ax, dx			; Paint 'foreground' pixels
+	stosw				; store the word to memory
+	pop	bp
+	pop	cx
+	pop	di
+	loop	j_box_rep_loop
+	ret
+;
+;*******************************
+; box_udpt_mode
+;	entry	es:di = memory address
+;		si    = pattern index
+;		ax    = pattern pointer
+;		patmsk = current pattern max count
+;		bp    = word count
+;		cx    = scan line count
+;		dx used for pattern storage
+;
+;*******************************	
+box_udpt_mode:
+	mov	patcnt, si
+	mov	si, ax
+	jmps	box_udpt
+box_udpt_loop:
+if wy700
+	call	dest_add
+else
+	add	di, next_line
+endif
+if mono_mem
+	cmp	di, true_plane_size
+	jc	box_udpt_pattinc
+	sub	di, true_plane_size
+	mov	al, ss:current_bank
+	inc	al
+	cmp	al, 0c7h			;past last bank?
+	jnz	box_udpt_monook
+	mov	al, 0c0h
+	add	di, bytes_line
+box_udpt_monook:
+	mov	ss:current_bank, al
+	mov	es:.mono_mem_off, al
+endif
+if mono_port
+	cmp	di, true_plane_size			;have we wrapped past the end?
+	jc	box_udpt_pattinc
+	call	next_seg_pgdown
+endif
+if mono_xrxfp
+	jnc	box_udpt_pattinc
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	box_udpt_pattinc_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+box_udpt_pattinc_xrx:
+	mov	es, ax
+endif
+if mono_multisegs
+	jnc	box_udpt_pattinc
+	mov	es, graph_seg_high		;get the data from cs:	
+endif
+if multiseg
+	cmp	di, ss:true_plane_size
+	jc	box_udpt_pattinc
+	add	di, ss:true_to_first
+endif
+box_udpt_pattinc:
+if wy700
+	test	cs:current_port,3
+	jnz	skip_inc_pat1
+endif
+	inc	si
+	inc	si		; point to next word 
+	inc	patcnt		; point to next word
+skip_inc_pat1:
+	mov	ax, patmsk
+	cmp	patcnt, ax	; is the pattern index > mask
+	jle	box_udpt
+	mov	si, patptr	; point pattern back to top
+	mov	patcnt, 0	; start pattern count over
+box_udpt:
+	push	di		; save the current address
+	push	cx		; save the outer loop count
+	push	bp		; save the row count
+	call	getpatud	; Get pattern words
+;
+; Left Fringe
+;
+;   Here it gets complex. In the 1bpp versions the program only has to OR 
+; bits in or AND them out. Here it must do both at the same time.
+;
+;   left_word_mask holds the bits that should not be touched. pat_w1 holds
+; the bits that the painting code wants to touch.
+;
+	mov	dx, pat_w1	;DX holds the bits that it wants to touch
+	mov	ax, left_word_mask	;Left fringe mask
+	not	ax
+	and	dx, ax		;Mask off bits it can't touch
+	not	ax
+	and	ax, es:[di]
+	or	ax, dx	
+	stosw 
+	mov	dx, pat_w2	;The bits it wants to touch
+	test	bp, bp
+	jz	box_udpt_right
+;
+; Because the pattern has expanded from one word to two, the body of this loop
+; is repeated, once with DX = pat_w1 and once with DX = pat_w2. It leaves the
+; loop with DX = next pattern word to paint.
+;
+box_udpt_inner:
+	mov	ax, dx
+	stosw
+	mov	dx, pat_w1
+	dec	bp
+	jz	box_udpt_right
+	mov	ax, dx
+	stosw
+	mov	dx, pat_w2
+	dec	bp
+	jnz	box_udpt_inner
+;
+; ES:DI points at the last byte. DX = pattern bits to draw. 
+;
+box_udpt_right:
+	mov	ax, right_word_mask	;Left fringe mask
+	not	ax
+	and	dx, ax		;Mask off bits it can't touch
+	not	ax
+	and	ax, es:[di]
+	or	ax, dx	
+	stosw 
+	pop	bp
+	pop	cx
+	pop	di
+	dec	cx
+	jcxz	box_udpt_done
+	jmp	box_udpt_loop
+box_udpt_done:
+	ret
+
+	if	not GSX	
+;******************************************************************************
+;
+; VEX_BUTV
+;
+; Exchange button change vector
+;	
+;	Entry	contrl(7),contrl(8) = pointer to user defined routine
+;
+;	Exit	contrl(9),contrl(10) = old pointer to button routine
+;
+;
+;******************************************************************************
+VEX_BUTV:	
+	mov	si, offset userbut
+	call	exchg_vector
+	ret
+exchg_vector:
+	pushf
+	cli
+	push	es
+	push	ds
+	mov	ax, seg contrl
+	mov	ds, ax
+	les	di,contrl_ptr
+	mov	ax,[si]			;get the offset 
+	mov	es:word ptr 18[di],ax
+	mov	ax,2[si]
+	mov	es:word ptr 20[di],ax	;get the segment 
+	mov	ax,contrl+14
+	mov	[si],ax
+	mov	ax,contrl+16
+	mov	2[si],ax		;load the new offset/segment 
+	pop	ds
+	pop	es
+	popf	
+	ret
+;******************************************************************************
+;
+; VEX_MOTV
+;
+; Exchange coordinate change vector
+;	
+;	Entry	contrl(7),contrl(8) = pointer to user defined routine
+;
+;	Exit	contrl(9),contrl(10) = old pointer to button routine
+;
+;
+;******************************************************************************
+VEX_MOTV:	
+	mov	si, offset usermot
+	call	exchg_vector
+	ret
+;******************************************************************************
+;
+; VEX_CURV
+;
+; Exchange cursor draw vector
+;	
+;	Entry	contrl(7),contrl(8) = pointer to user defined routine
+;
+;	Exit	contrl(9),contrl(10) = old pointer to button routine
+;
+;
+;******************************************************************************
+VEX_CURV:	
+	mov	si, offset usercur
+	call	exchg_vector
+	ret
+
+	endif		;not GSX
+;
+;***********************************************************************
+;XFM_CRFM
+;        Transform the user defined cursor form to device spec format
+;
+;	Entry	CONTRL[7]
+;		CONTRL[8] = long pointer to input data
+;
+;	Exit	
+;		
+;
+;***********************************************************************
+XFM_CRFM:
+	push	ds			;make sure es=ds
+	pop	es
+	mov	di,offset mxhot		;point at dest
+	mov	si,offset intin
+	mov	cx,37
+	rep	movsw			;copy the data
+	mov	bx, mous_ci_data	; get the color index val
+	shl	bx,1
+	mov	ax, MAP_COL[bx]
+	call	mink
+	mov	MOUSE_INK, ax
+	if	num_planes gt 2
+	 mov	MOUSE_INK0, ax
+	 mov	MOUSE_INK1, bx
+	endif
+	mov	bx, mous_ci_mask
+	shl	bx,1
+	mov	ax, MAP_COL[bx]
+	call	mink
+	mov	MOUSE_PAPER, ax
+	if	num_planes gt 2
+	 mov	MOUSE_PAPER0, ax
+	 mov	MOUSE_PAPER1, bx
+	endif
+	ret
+;
+if num_planes gt 2
+
+mink:	mov	bx, ax
+	push	bx
+	shl	bx, 1
+	and	bx, 6
+	mov	ax, box_ink_values[bx]
+	pop	bx
+	shr	bx, 1
+	and	bx, 6
+	mov	bx, box_ink_values[bx]
+	ret
+else
+mink:	mov	bx, ax
+	shl	bx, 1
+	and	bx, 6
+	mov	ax, box_ink_values[bx]
+	ret
+endif
+	
+eject
+	if not GSX
+;***********************************************************************
+;XFM_UDFL
+;        Transform the user defined fill pattern to device spec format
+;
+;	Entry	INTIN[0] - INTIN[15] = fill pattern
+;		
+;
+;***********************************************************************
+if pc1512
+XFM_UDFL:
+	mov	dx, CONTRL+6		;get the intin count
+	mov	ax, dx			; save away the count
+	test	ax, 0Fh
+	jnz	xfm_udfl_bad
+	mov	cl, 4
+	shr	ax, cl
+	push	ds			;make sure es=ds
+	pop	es
+	mov	di,offset ud_patrn	;point at dest
+	mov	si,offset INTIN
+	mov	cx, dx
+	cmp	al, 1
+	jnz	udpt_4p
+	mov	udpt_np, 0
+	rep	movsw			;copy the data
+	mov	si,offset ud_patrn
+	sub	ax, ax
+	ret
+;
+udpt_4p:
+	cmp	al, 4
+	jnz	xfm_udfl_bad
+	mov	udpt_np, 32
+	call	xfm_udpt_4
+	sub	ax, ax
+	ret
+xfm_udfl_bad:
+	mov	ax, -1
+	ret
+
+else	;pc1512
+XFM_UDFL:
+	mov	dx, CONTRL+6		;get the intin count
+	mov	cx, dx			; save away the count
+	xor	al, al
+xfm_udfl_size_ck:
+	inc	al
+	sub	dx, 16
+	jc	xfm_udfl_bad
+	jz	xfm_udfl_size
+	jmps	xfm_udfl_size_ck
+xfm_udfl_size:
+	cmp	al, 1			; 1 is always ok
+	jz	xfm_udfl_ok
+	cmp	al, num_planes
+	jz	xfm_udfl_ok1
+xfm_udfl_bad:				;must be integral of 16
+	mov	ax, -1
+	ret
+xfm_udfl_ok:
+	mov	udpt_np, 0
+	jmps	xfm_udfl_ok2
+xfm_udfl_ok1:	
+	mov	udpt_np, 32
+xfm_udfl_ok2:
+	mov	dx, cx
+	push	ds			;make sure es=ds
+	pop	es
+	mov	di,offset ud_patrn	;point at dest
+	mov	si,offset INTIN
+	mov	cx, dx
+	rep	movsw			;copy the data
+	mov	si,offset ud_patrn
+if (msb_first and byte_swap)
+	mov	cx, dx			;swap 16 words
+xfm_udfl_loop:
+	mov	ax,[si]
+	xchg	ah,al
+	mov	[si],ax
+	inc	si
+	inc	si
+	loop	xfm_udfl_loop
+	ret
+endif	
+if (msb_first and not byte_swap)
+	ret
+endif
+if (not msb_first and not byte_swap)
+	mov	cx, dx
+xfm_udfl_loop:
+	push	cx
+	mov	ax,[si]
+	mov	cx,16
+xfm_udfl_ilp:
+	rol	ax,1
+	rcr	bx,1
+	loop	xfm_udfl_ilp
+	mov	[si],bx
+	pop	cx
+	inc	si
+	inc	si
+	loop	xfm_udfl_loop
+	ret
+endif	;not msb_first and not byte_swap
+endif	;pc1512
+endif	;not GSX
+eject
+
+clc_flitsub:
+	cmp	ss:plygn_bez,0
+	jle	clc_flitsub1
+	dec	ss:plygn_bez
+	mov	ax,ss:plygn_bez
+	shl	ax,1
+	push	es
+	les	bx,ss:intin_ptr
+	add	bx,ax
+	mov	bx,es:[bx]
+	pop	es
+	add	bx,2
+	shl	bx,1
+	add	bx,ss:flit_bez_off
+	mov	ss:flit_bez,bx
+	ret
+
+clc_flitsub1:
+	mov	ss:flit_bez, -1
+	ret
+
+
+clc_flitsub2:
+	mov	ss:plygn_rrot,1
+	mov	ax,cs
+	mov	ds,ax
+	mov	ax,offset txtblt_rrot_table_1
+	mov	di,ax
+	push	si
+	push	cx
+	mov	si,offset INTIN
+	mov	cx,80h
+clc_flitsub3:
+	mov	ax,ss:[si]
+	mov	[di],ax
+	inc	si
+	inc	si
+	inc	di
+	inc	di
+	loop	clc_flitsub3
+	pop	cx
+	pop	si
+	ret
+
+;***********************************************************************
+;CLC_FLIT
+;        Find the Intersection points for each raster line y
+;
+;	Entry	CONTRL[1] = vectex count
+;		PTSIN[]   = verticies
+;		y	  = scan line to intersect
+;		fill_int  = 0
+;
+;	Exit	fill_int  = count of intersections
+;		INTIN  = x values of intersections
+;
+;***********************************************************************
+CLC_FLIT:
+	mov	cx,CONTRL+2	; get points count
+	mov	ax,ds
+	mov	es,ax
+	mov	si,offset PTSIN
+	mov	di,offset INTIN
+	cmp	cx,80h
+	jc	flit_init1
+	les	si,ptsin_ptr
+flit_init1:
+	mov	ss:flit_bez_off,si
+	call	clc_flitsub
+flit_lp:
+	cmp	si,ss:flit_bez
+	jnz	flit_lp1
+	call	clc_flitsub
+	add	si,4
+	dec	cx
+	jnz	flit_lp1
+	jmp	sort_fill_int
+
+flit_lp1:
+	push	cx
+	mov	cx, es:6[si]
+;;	test	ch, 80h		; look at the flag if not a required edge
+;;	jnz	no_fill_int
+	mov	dx, es:2[si] 
+;;	and	dx, 7fffh	; get rid of flag if any
+	sub	cx, dx     	; get delta y
+	jz	fillit_zero	; goto next x,y if deltay = 0
+	mov	bx, ss:Y1
+	mov	ax, bx
+	sub	ax, dx   	; delta y1
+	sub	bx, es:6[si]	; delta y2
+	mov	dx,ax
+	xor	dx,bx		; check if signs =
+	jns	fillit_done
+	mov	dx, es:4[si]
+	sub	dx, es:[si]	; dx = delta x
+	add	dx,dx		; 2 * delta x
+	imul	dx		; ax = dx * 2 * deltay1
+	idiv	cx		; ax = dx * 2 * deltay1 / deltay
+	and	ax,ax		; test if negative
+	js	int_neg
+	inc	ax
+	shr	ax,1
+load_fill_int:
+	add	ax, es:[si]	; add in x1
+	mov	[di],ax
+	inc	di
+	inc	di
+	inc	ss:fill_int	; increment fill count  and buffer pointer
+	cmp	ss:word ptr fill_int,80h
+	jnz	fillit_done
+	call	clc_flitsub2
+fillit_done:
+	inc	si
+	inc	si
+	inc	si
+	inc	si		; increment ptsin ptr
+	pop	cx
+	loop	flit_lp
+	mov	ax,ds
+	mov	es,ax
+	mov	si,offset INTIN
+	mov	bx,cs
+	cmp	ax,bx
+	jnz	flit_2
+	mov	si,offset txtblt_rrot_table_1
+flit_2:	mov	ax,ss
+	mov	ds,ax
+	jmps	sort_fill_int
+
+fillit_zero:
+;;	or	6[si], 8000h	; set the flag for done with edge
+	jmps	fillit_done
+
+int_neg:
+	neg	ax
+	inc	ax
+	shr	ax,1
+	neg	ax
+	jmps	load_fill_int
+
+sort_fill_int:
+	mov	cx, fill_int		
+	cmp	cx, 2
+	jz	fast_fill_int		; if 2 then simple sort and draw
+	jl	fill_no_int		; if less than 2 then do nothing
+	dec	cx			; make it 0 based	
+	jmp	full_fill_sort
+fill_no_int:
+	ret
+fast_fill_int:
+	mov	ax, es:[si]		; get the first x
+	mov	bx, es:2[si]
+	cmp	ax, bx
+	jle	fast_fill_int_1
+	xchg	ax, bx			; if x1 > x2 exchange them
+fast_fill_int_1:
+	mov	X1, ax
+	mov	X2, bx
+	call	HLINE_CLIP
+	ret
+full_fill_sort:
+	mov	dx, cx
+	mov	di, si
+full_fill_sort_outlp:
+	push	cx			; save the full count
+	mov	si, di
+	mov	ax, es:word ptr 0[si]	; get the initial lower word
+full_fill_sort_inlp:
+	mov	bx, es:word ptr 2[si]
+	cmp	ax, bx			; is ax <= bx
+	jle	full_fill_sort_inlp_1
+	mov	es:word ptr 0[si], bx	; if ax > bx then exchange
+	mov	es:word ptr 2[si], ax
+	mov	bx, ax			; set up for next word
+full_fill_sort_inlp_1:
+	mov	ax, bx			; already have lower word
+	inc	si
+	inc	si			; point upwards
+	loop	full_fill_sort_inlp
+	pop	cx
+	dec	dx
+	jnz	full_fill_sort_outlp
+	mov	cx, fill_int
+	shr	cx, 1			; make count of word pairs
+full_fill_drawlp:
+	mov	ax, es:[di]
+	mov	bx, es:2[di]
+	mov	X1, ax
+	mov	X2, bx
+	push	es
+	push	di
+	push	cx
+	call	HLINE_CLIP
+	pop	cx
+	pop	di
+	pop	es
+	add	di,4			; point to the next pair
+	loop	full_fill_drawlp
+	ret
+HLINE_CLIP:
+	mov	ax, CLIP		; is clipping on?
+	and	ax, ax
+	jnz	hline_clip_1
+	jmp 	HABLINE			; goto horizontal line draw routine
+hline_clip_1:
+	mov	 ax, XMN_CLIP
+	mov	 bx, X1
+	mov	 cx, X2
+	cmp	bx, ax			; is x1 < xmn_clip
+	jnl	hline_clip_3	
+	cmp	cx, ax			; is x2 >= xmn_clip
+	jl	hline_clip_2
+	mov	X1, ax 
+hline_clip_3:
+	mov	ax, XMX_CLIP
+	cmp	cx, ax			; is x2 > xmx_clip
+	jle	hline_clip_4
+	cmp	bx, ax			; is x1 <= xmx_clip
+	jg	hline_clip_2
+	mov	X2, ax
+hline_clip_4:
+	jmp	HABLINE
+hline_clip_2:
+	ret				; if x2 not > xmn_clip exit
+eject
+
+;
+; Given a pattern word in DX, convert it to the 2 words that will be drawn. 
+;
+getpatsi:
+	mov	dx, [si]
+	jmps	getpat
+;
+getpatbx:
+	mov	dx, [bx]
+getpat:	push	bx
+	mov	bl, dh
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]
+	mov	pat_w1, bx
+	mov	bl, dl
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]
+	mov	pat_w2, bx
+	pop	bx
+	ret
+;
+; As getpat above, but retrieves data from a user-defined pattern (ie, 
+; in colour). It therefore merges the values from both planes of the
+; definition.
+;
+getpatud:
+	xchg	bx, si
+	push	ax
+	push	bx
+	push	cx
+	mov	dx, [bx]	;First plane
+	add	bx, NEXT_PAT
+	mov	ax, [bx]	;Second plane
+
+	mov	bl, dh		;Expand first byte of 1st plane into cx
+	mov	bh, 0
+	shl	bx, 1
+	mov	cx, cs:expand_byte[bx]
+	and	cx, 05555h
+	mov	bl, ah		;Expand first byte of 2nd plane into bx
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]
+	and	bx, 0AAAAh
+	or	cx, bx		;Combine the expanded bytes
+	mov	pat_w1, cx
+	
+	mov	bl, dh		;Expand second byte of 1st plane into cx
+	mov	bh, 0
+	shl	bx, 1
+	mov	cx, cs:expand_byte[bx]
+	and	cx, 05555h
+	mov	bl, ah		;Expand second byte of 2nd plane into bx
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]
+	and	bx, 0AAAAh
+	or	cx, bx		;Combine the expanded bytes
+	mov	pat_w2, cx
+	pop	cx
+	pop	bx
+	pop	ax
+	xchg	bx, si
+	ret	
+;
+; 256 words which expand a byte to a word, doubling each bit.
+;
+expand_byte	dw	00000h, 00003h, 000Ch, 000Fh
+		dw	00030h, 00033h, 003Ch, 003Fh
+		dw	000C0h, 000C3h, 00CCh, 00CFh
+		dw	000F0h, 000F3h, 00FCh, 00FFh
+		dw	00300h, 00303h, 030Ch, 030Fh
+		dw	00330h, 00333h, 033Ch, 033Fh
+		dw	003C0h, 003C3h, 03CCh, 03CFh
+		dw	003F0h, 003F3h, 03FCh, 03FFh
+		dw	00C00h, 00C03h, 0C0Ch, 0C0Fh
+		dw	00C30h, 00C33h, 0C3Ch, 0C3Fh
+		dw	00CC0h, 00CC3h, 0CCCh, 0CCFh
+		dw	00CF0h, 00CF3h, 0CFCh, 0CFFh
+		dw	00F00h, 00F03h, 0F0Ch, 0F0Fh
+		dw	00F30h, 00F33h, 0F3Ch, 0F3Fh
+		dw	00FC0h, 00FC3h, 0FCCh, 0FCFh
+		dw	00FF0h, 00FF3h, 0FFCh, 0FFFh
+		dw	03000h, 03003h, 300Ch, 300Fh
+		dw	03030h, 03033h, 303Ch, 303Fh
+		dw	030C0h, 030C3h, 30CCh, 30CFh
+		dw	030F0h, 030F3h, 30FCh, 30FFh
+		dw	03300h, 03303h, 330Ch, 330Fh
+		dw	03330h, 03333h, 333Ch, 333Fh
+		dw	033C0h, 033C3h, 33CCh, 33CFh
+		dw	033F0h, 033F3h, 33FCh, 33FFh
+		dw	03C00h, 03C03h, 3C0Ch, 3C0Fh
+		dw	03C30h, 03C33h, 3C3Ch, 3C3Fh
+		dw	03CC0h, 03CC3h, 3CCCh, 3CCFh
+		dw	03CF0h, 03CF3h, 3CFCh, 3CFFh
+		dw	03F00h, 03F03h, 3F0Ch, 3F0Fh
+		dw	03F30h, 03F33h, 3F3Ch, 3F3Fh
+		dw	03FC0h, 03FC3h, 3FCCh, 3FCFh
+		dw	03FF0h, 03FF3h, 3FFCh, 3FFFh
+		dw	0C000h, 0C003h, 0C00Ch, 0C00Fh
+		dw	0C030h, 0C033h, 0C03Ch, 0C03Fh
+		dw	0C0C0h, 0C0C3h, 0C0CCh, 0C0CFh
+		dw	0C0F0h, 0C0F3h, 0C0FCh, 0C0FFh
+		dw	0C300h, 0C303h, 0C30Ch, 0C30Fh
+		dw	0C330h, 0C333h, 0C33Ch, 0C33Fh
+		dw	0C3C0h, 0C3C3h, 0C3CCh, 0C3CFh
+		dw	0C3F0h, 0C3F3h, 0C3FCh, 0C3FFh
+		dw	0CC00h, 0CC03h, 0CC0Ch, 0CC0Fh
+		dw	0CC30h, 0CC33h, 0CC3Ch, 0CC3Fh
+		dw	0CCC0h, 0CCC3h, 0CCCCh, 0CCCFh
+		dw	0CCF0h, 0CCF3h, 0CCFCh, 0CCFFh
+		dw	0CF00h, 0CF03h, 0CF0Ch, 0CF0Fh
+		dw	0CF30h, 0CF33h, 0CF3Ch, 0CF3Fh
+		dw	0CFC0h, 0CFC3h, 0CFCCh, 0CFCFh
+		dw	0CFF0h, 0CFF3h, 0CFFCh, 0CFFFh
+		dw	0F000h, 0F003h, 0F00Ch, 0F00Fh
+		dw	0F030h, 0F033h, 0F03Ch, 0F03Fh
+		dw	0F0C0h, 0F0C3h, 0F0CCh, 0F0CFh
+		dw	0F0F0h, 0F0F3h, 0F0FCh, 0F0FFh
+		dw	0F300h, 0F303h, 0F30Ch, 0F30Fh
+		dw	0F330h, 0F333h, 0F33Ch, 0F33Fh
+		dw	0F3C0h, 0F3C3h, 0F3CCh, 0F3CFh
+		dw	0F3F0h, 0F3F3h, 0F3FCh, 0F3FFh
+		dw	0FC00h, 0FC03h, 0FC0Ch, 0FC0Fh
+		dw	0FC30h, 0FC33h, 0FC3Ch, 0FC3Fh
+		dw	0FCC0h, 0FCC3h, 0FCCCh, 0FCCFh
+		dw	0FCF0h, 0FCF3h, 0FCFCh, 0FCFFh
+		dw	0FF00h, 0FF03h, 0FF0Ch, 0FF0Fh
+		dw	0FF30h, 0FF33h, 0FF3Ch, 0FF3Fh
+		dw	0FFC0h, 0FFC3h, 0FFCCh, 0FFCFh
+		dw	0FFF0h, 0FFF3h, 0FFFCh, 0FFFFh
+

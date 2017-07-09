@@ -1,0 +1,156 @@
+		        GEM(R)/3 Driver Pack #2
+			    README.DOC File
+			       March 1988
+
+This file is divided into the following sections:
+
+1.  Hewlett Packard HPGL (and Compatibles) Plotter Configuration File
+2.  Houston Instruments DM/PL Plotter Configuration File
+______________________________________________________________________
+
+SECTION 1. USING THE HEWLETT PACKARD HPGL (AND COMPATIBLES) PLOTTER 
+           CONFIGURATION FILE
+
+* The HPGL Driver supports a configuration file to allow proper
+  operation when the driver cannot communicate with the plotter 
+  directly. It may also be used to customize the plotter's 
+  performance with certain pen and media combinations.
+
+* The configuration file MUST be named VDHPX.CNF and reside in the
+  \GEMAPPS\GEMSYS directory.
+
+* The configuration file will usually be used to slow the plotter
+  down when making transparencies. For this purpose, the velocity 
+  command (see below) is provided. Follow the manufacturer's 
+  recommendation for the pens and media you will use.
+
+* The plotter should be set up for 9600 baud, 8 data bits, 1 stop bit,
+  and no parity. Refer to the plotter documentation to see how this 
+  is done.
+
+* There are plotters which do not support the HPGL "OI"command but which 
+  allow the driver to identify the HP plotter model by other means. If 
+  your plotter does not support the HPGL OI function, you may specify 
+  in the configuration file the HP plotter model number that best 
+  matches your plotter.
+
+* When using OUTPUT.APP, changing the paper size has no effect until a
+  new start command is given. Also, changing paper size in the middle of
+  an output list is not recommended.
+
+* Commands available for the configuration file.
+
+	model(nnnn)   - This identifies the plotter model to the driver.
+			THIS IS ALSO THE ONLY CONFIG FILE PARAMETER THAT
+			TAKES PRECEDENCE OVER INFORMATION RETURNED FROM 
+			THE PLOTTER. Using this parameter has the effect 
+			of suppressing an identifier inquiry to the 
+			plotter from the driver. This is done because 
+			some plotters do not support the HPGL OI 
+		        command. Acceptable model numbers are:
+
+				7440	7470	7475	7550
+				7570	7580	7585	7586
+
+	numpens(n)    - Informs the driver of the number of pens to be 
+			made available. The number of pens used is 
+			determined by the model number specified. The 
+			default is 8.
+
+	penwidth(x)   - Specifies pen width in tenths of a millimeter.
+			The default is 0.3mm. 
+
+	velocity(v)   - Specifies pen velocity in centimeters/second.
+			The default is dependent on the model of the 
+			plotter.
+
+	roman()	      - No parameters. Its presence in the configuration 
+			file tells the driver that the plotter supports 
+			Hewlett Packard's roman (character set 7) 
+			extensions set.
+
+	init(". . .") - Specifies a string of HPGL commands to be sent 
+			to the plotter after it has been initialized.  
+			The double quotes are mandatory. In addition,  
+			the string MUST NOT contain any double quotes.  
+			Control characters, however, are allowed.
+
+       final(". . .") - This is similar to the init command, however, 
+			it is sent to the plotter when the plotting 
+			session is being terminated.
+_____________________________________________________________________
+
+SECTION 2. USING THE HOUSTON INSTRUMENTS DM/PL PLOTTER 
+           CONFIGURATION FILE
+
+* The DM/PL Driver supports a configuration file to allow proper
+  operation when the driver cannot communicate with the plotter 
+  directly. It may also be used to customize the plotter's 
+  performance with certain pen and media combinations.
+
+* The configuration file MUST be named VDHIX.CNF and reside in the
+  \GEMAPPS\GEMSYS directory.
+
+* The configuration file will usually be used to slow the plotter
+  down when making transparencies. For this purpose, the velocity 
+  command is provided. Follow the manufacturer's recommendation for 
+  the pens and media you will use.
+
+* The plotter should be set up for 9600 baud, 8 data bits, 1 stop bit,
+  and no parity. Refer to the plotter documentation to see how this 
+  is done.
+
+* When using this plotter with OUTPUT.APP, only one filename should 
+  be entered in an output list at one time. Entering multiple files 
+  will mean that the output for successive copies or files will not 
+  be positioned correctly on the plotter paper.
+
+* The following commands are available for the configuration file.
+
+	model(nn)     - Identifies the plotter model to the driver.
+			Acceptable values are 29, 41, 42, 51, 52, 61, 
+			and 62.
+
+	numpens(n)    - Informs the driver of the number of pens to 
+			be made available to the application. The 
+			default is 14.
+
+	penwidth(x)   - Specifies pen width in tenths of a millimeter.
+			The default is 0.3mm.
+
+	velocity(v)   - Specifies pen velocity in centimeters/second.
+			The default is dependent on the model of the 
+			plotter.
+
+	chart(x)      - Specifies the chart size.  Use "s" for small 
+			and "l" for large chart format. 
+
+	resolution(n) - Specifies the resolution for the plotter to use.
+			Normally,  the default resolution is best.
+			However, one can obtain some reduction in plot 
+			file size by specifying a coarser resolution. 
+			Use the following values for n to specify 
+			resolution:
+
+			     Value   Resolution(mm)
+			
+		          	1 =  .001
+				2 =  .005
+				3 = 0.1
+				4 = 0.025
+
+			The default is 0.025mm.
+
+	init(". . .") - Specifies a string of DM/PL commands to be sent 
+			to the plotter after it has been initialized.  
+			The double quotes are mandatory. In addition,  
+			the string MUST NOT contain any double quotes.  
+			However, control characters are allowed.
+
+       final(". . .") - This is similar to the init command. It is sent 
+			to the plotter when the plotting session is 
+			being terminated.
+
+			
+
+			End of README.DOC

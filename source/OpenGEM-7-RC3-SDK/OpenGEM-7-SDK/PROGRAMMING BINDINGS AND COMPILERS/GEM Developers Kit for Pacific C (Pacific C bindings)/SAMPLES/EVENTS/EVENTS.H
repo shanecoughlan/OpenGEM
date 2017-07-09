@@ -1,0 +1,41 @@
+#define MENU 0  	/* TREE */
+#define INFOEINT 12  	/* OBJECT in TREE #0 */
+#define DESKTITL 3  	/* OBJECT in TREE #0 */
+#define INFOBOX 1  	/* TREE */
+#define TIMER 5  	/* OBJECT in TREE #0 */
+#define TIMERON 23  	/* OBJECT in TREE #0 */
+#define TIMEROFF 24  	/* OBJECT in TREE #0 */
+#define S1000 26  	/* OBJECT in TREE #0 */
+#define S500 27  	/* OBJECT in TREE #0 */
+#define S250 28  	/* OBJECT in TREE #0 */
+#define S100 29  	/* OBJECT in TREE #0 */
+#define S0 30  	/* OBJECT in TREE #0 */
+#define M1 6  	/* OBJECT in TREE #0 */
+#define M1ON 34  	/* OBJECT in TREE #0 */
+#define M1OFF 35  	/* OBJECT in TREE #0 */
+#define M1EINTRI 37  	/* OBJECT in TREE #0 */
+#define M1AUSTRI 38  	/* OBJECT in TREE #0 */
+#define M2 7  	/* OBJECT in TREE #0 */
+#define M2ON 40  	/* OBJECT in TREE #0 */
+#define M2OFF 41  	/* OBJECT in TREE #0 */
+#define M2EINTRI 43  	/* OBJECT in TREE #0 */
+#define M2AUSTRI 44  	/* OBJECT in TREE #0 */
+#define BUTTON 8  	/* OBJECT in TREE #0 */
+#define BON 47  	/* OBJECT in TREE #0 */
+#define BOFF 46  	/* OBJECT in TREE #0 */
+#define CLICK1 48  	/* OBJECT in TREE #0 */
+#define CLICK2 49  	/* OBJECT in TREE #0 */
+#define KEYBOARD 9  	/* OBJECT in TREE #0 */
+#define KON 60  	/* OBJECT in TREE #0 */
+#define KOFF 61  	/* OBJECT in TREE #0 */
+#define EVENT 4  	/* OBJECT in TREE #0 */
+#define QUIT 21  	/* OBJECT in TREE #0 */
+#define S10 31  	/* OBJECT in TREE #0 */
+#define S1 32  	/* OBJECT in TREE #0 */
+#define B1 52  	/* OBJECT in TREE #0 */
+#define GEDRUECK 56  	/* OBJECT in TREE #0 */
+#define B2 53  	/* OBJECT in TREE #0 */
+#define B3 54  	/* OBJECT in TREE #0 */
+#define NGEDRUE 57  	/* OBJECT in TREE #0 */
+#define CLICK0 58  	/* OBJECT in TREE #0 */
+

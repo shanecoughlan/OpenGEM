@@ -1,0 +1,107 @@
+FREEGEM OUTPUT
+BUILD 20010102
+
+Copyright (c) Digital Research, Inc. 1985-1989
+Copyright (c) Caldera Thin Clients, Inc. 1999
+Copyright (c) Owen Rudge 2000-2001
+
+INTRODUCTION
+============
+
+Thanks for download the latest version of FreeGEM Output. Please see below
+for updates in this version.
+
+SYSTEM REQUIREMENTS
+===================
+
+This version of Output requires FreeGEM or GEM/3. It will not work with GEM/2
+or earlier. I've found it runs under ViewMAX/1, and I added an image file to
+the Output list, and viewed that. I then tried to load a list and view
+those, and it crashed. You can run Output on ViewMAX/2, but it crashes
+with the Item Selector and trying to view files. It works with GEM/4, but
+cannot view the special Artline GEM files viewable by Output 4.0.
+It doesn't seem to work under GEM/5 (although my copy of GEM/5 seems to
+have stopped running anything). It does not run under GEM/XM.
+
+INSTALLATION
+============
+
+To install Output, copy the OUTPUT.APP and OUTPUT.RSC files to your GEMAPPS
+directory.
+
+BUILDING OUTPUT
+===============
+
+To build Output, ensure that you have the build tools available from
+http://www.deltasoft.com/downloads.htm installed, and run the BUILD.BAT file
+in the SOURCE directory. If all is well, it should build.
+
+NEW IN THIS RELEASE
+===================
+
+- Added support for help in settings dialogs
+- Checked GEM version number at startup and quit if running under GEM/1 or 2
+- Made message that appears when OUTPUT.RSC not found more friendly
+- Started adding support for extended File Selector, but gave up (delayed?)
+  when bindings were out-of-date and I needed to add the necessary calls
+  myself :)
+
+KNOWN BUGS IN THIS RELEASE
+==========================
+
+- None, although there probably are some
+
+VERSION HISTORY
+===============
+
+Release 20010102
+----------------
+
+- Added support for help in settings dialogs
+- Checked GEM version number at startup and quit if running under GEM/1 or 2
+- Made message that appears when OUTPUT.RSC not found more friendly
+- Started adding support for extended File Selector, but gave up (delayed?)
+  when bindings were out-of-date and I needed to add the necessary calls
+  myself :)
+
+Release 20001117 (not released to public)
+-----------------------------------------
+
+- Recompiled and checked for bugs for Owen's FreeGEM Distribution 1.1
+
+Release 20000627
+----------------
+
+- Resources updated with new interface changes
+- Output 3D-ised
+- Archive tidied up
+- Fixed bug I created when editing RSC (if I'd remembered to release Output
+  yesterday [26/6/2000] it would still exist)
+
+Release 20000417
+----------------
+
+- About dialog has been updated
+
+- Copyright messages in code have been updated
+
+CONTACT INFORMATION
+===================
+
+You can contact me via e-mail at gem@orudge.freeuk.com.
+
+Web Site
+--------
+
+Main site:        www.owenrudge.co.uk
+OSPlus:           www.osplus.co.uk
+GEM:              www.owenrudge.co.uk/GEM/
+Transport Tycoon: www.transporttycoon.uk.tt
+Utility Base:     www.owenrudge.co.uk/utils/
+
+E-mail:           orudge@freeuk.com
+
+Enjoy!
+
+Owen Rudge
+2nd January 2001

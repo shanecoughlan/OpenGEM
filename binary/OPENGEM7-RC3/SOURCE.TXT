@@ -1,0 +1,15 @@
+SOURCE 
+
+If you require the source code for OpenGEM please
+send a self-addressed envelope to:
+
+OpenGEM Source Code
+c/o Shane Coughlan
+203 Aubrey Shinhama
+2286-18 Yashimanishi-Machi
+Takamatsu-Shi
+Kagawa-Ken
+761-0113
+Japan
+
+You can also download the source from http://gem.opendawn.com

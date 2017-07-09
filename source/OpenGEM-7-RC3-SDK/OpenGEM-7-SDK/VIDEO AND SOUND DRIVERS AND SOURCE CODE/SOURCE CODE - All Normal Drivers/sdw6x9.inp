@@ -1,0 +1,21 @@
+sdw6x9.vga = entry,
+w6x_zyxg,
+debug,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+w6x_drv,
+wxpttxt1,
+wxpttxt2,
+wxptdraw,
+w6xmblit,
+w6xblit,
+w6xpat,
+enddseg, 
+vgacp, 
+vgafont[nop]
+                                                                    
+                                                                    

@@ -1,0 +1,18 @@
+This is the INSTALL file for CHOICE
+____________________________________________________________________
+
+To compile:
+
+** You will need Borland C 3.1 (should compile under TurboC as well)
+and the "Cats" library.  You can download the "Cats" library from
+http://www.freedos.org/jhall/cats/
+
+
+
+1. type:
+
+   MAKE -F MAKEFILE.BC
+
+2. the resulting program is CHOICE.EXE
+
+3. enjoy!

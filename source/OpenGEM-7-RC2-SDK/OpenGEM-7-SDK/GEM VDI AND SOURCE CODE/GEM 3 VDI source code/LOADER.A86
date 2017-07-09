@@ -1,0 +1,803 @@
+;/*		LOADER.A86	1/29/87 - 3/7/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	build_assign_table
+		public	check_resident
+		public	find_app
+		public	find_drivers
+		public	gem_directory
+		public	loader_code_start
+		public	overlay_loader
+		public	print_driver_info
+		public	reset_and_exit
+
+; External entry points.
+		extrn	check_and_load:near
+		extrn	clear_ws_table_entry:near
+		extrn	gdos_entry:near
+		extrn	parse_command_line:near
+		extrn	set_gdos_directory:near
+
+; External data.
+include externs.a86
+
+
+
+;************************************************************************
+;* overlay_loader							*
+;*	The non-overlayable part of the GDOS loader starts here.	*
+;************************************************************************
+overlay_loader:
+
+; Shrink the size of the program.  The parameters for the PC DOS setblock
+; function (es, bx) were set at the end of the overlayable portion of code.
+		clc
+		mov	ah, SETBLOCK
+		mov	es, psp_base
+		int	PCDOS
+		jnc	move_assign_table	; no carry -> no error occured
+		cmp	ax, 7			; corrupt memory table?
+		jne	insuff_mem
+		mov	dx, offset no_table
+		jmp	reset_and_exit		; print error and exit
+insuff_mem:
+		cmp	ax, 8			; insufficient memory?
+		jne	bad_block
+		mov	dx, offset no_mem
+		jmp	reset_and_exit		; print error and exit
+bad_block:
+		mov	dx, offset invalid_addr
+		jmp	reset_and_exit		; printer error and exit
+
+; Move the assignment table to the address calculated for it.
+move_assign_table:
+		mov	ds, assign_seg		; ds:si -> assignment table
+		xor	si, si
+		mov	es, overlay_segment
+		xor	di, di			; es:di -> new assigntable
+		mov	cx, assign_table_length	; cx = count of bytes
+	rep	movsb
+		mov	assign_seg, es		; es = new table segment
+
+; Load resident drivers.
+		mov	si, es
+		mov	ds, si
+		xor	si, si			; ds:si -> first driver
+look_next_driver:
+		cmp	word ptr ASS_WORK_ID[si], 0	; done?
+		je	exec_app
+		cmp	byte ptr ASS_RES_ID[si], 0	; driver resident?
+		je	next_driver		; look at next driver
+		mov	bx, ds:[si]		; bx = driver ID
+		mov	work_identifier, bx	; save driver ID
+		push	ds
+		push	si
+		call	check_and_load		; load the driver
+		pop	si
+		pop	ds
+		cmp	load_successful, 1
+		je	update_table
+		mov	dx, offset bad_driver
+		jmp	reset_and_exit
+
+; Find an empty spot in the workstation table.
+update_table:
+		mov	di, cs
+		mov	es, di
+		mov	di, offset ws_id	; es:di = workstation id table
+		mov	cx, WS_ENTRIES		; cx = workstation table size
+		xor	ax, ax			; ax = null item
+	repne	scasw				; scan for an empty spot
+		jz	found_empty_entry
+		mov	dx, offset work_table_full
+		jmp	reset_and_exit		; dump nastygram and abort
+
+; Update the workstation table.
+found_empty_entry:
+		sub	di, offset ws_id + 2	; di = workstation table index
+		mov	ax, work_identifier
+		mov	ws_id[di], ax		; store workstation identifier
+		mov	ax, driver_off
+		mov	ws_coff[di], ax		; store driver code offset
+		mov	ax, driver_seg
+		mov	ws_cseg[di], ax		; store driver code segment
+		mov	ax, driver_head
+		mov	ws_chead[di], ax	; store driver header segment
+		mov	ax, driver_size
+		mov	ws_size[di], ax		; store driver size
+		mov	ws_flags[di], WS_RES	; indicate resident driver
+		call	print_driver_info
+next_driver:
+		add	si, ASS_LENGTH		; point to next driver entry
+		jmps	look_next_driver
+
+; Prepare to EXEC the requested application.  Patch interrupts.
+exec_app:
+		xor	ax, ax
+		mov	es, ax
+		push	es:word ptr .3bch
+		mov	es:word ptr .3bch, offset gdos_entry
+		push	es:word ptr .3beh
+		mov	es:word ptr .3beh, seg gdos_entry
+
+; Set the drive and directory.
+		mov	dl, gdos_drive
+		mov	ah, SET_DRIVE
+		int	PCDOS
+		push	cs
+		pop	ds
+		mov	dx, offset gdos_path	; set gdos path first
+		mov	ah, SET_DIR		;  since app_path may be
+		int	PCDOS			;  relative (..\gemboot)
+		mov	dx, offset app_path
+		mov	ah, SET_DIR
+		int	PCDOS
+
+; Set up the parameter block for the exec call.  Restore the PSP command tail
+; size, which was probably wiped out as part of the first PSP FCB.
+		mov	ax, psp_base
+		mov	pblock + 6, 5ch		; first FCB offset
+		mov	pblock + 8, ax		; first FCB segment
+		mov	pblock + 10, 6ch	; second FCB offset
+		mov	pblock + 12, ax		; second FCB segment
+		mov	es, ax
+		mov	al, save_tail_len
+		mov	es:byte ptr .80h, al	; PSP command tail length
+
+; Save the environment.
+		mov	ss_save, ss
+		mov	sp_save, sp
+
+; Load and execute the application.
+		mov	dx, offset app_name	; ds:dx -> app file name
+		mov	bx, ds
+		mov	es, bx
+		mov	bx, offset pblock	; es:bx -> parameter block
+		mov	ah, EXEC		; load and execute function
+		xor	al, al			; load and execute sub-func
+		int	PCDOS
+
+; Restore the environment.
+		cli
+		mov	sp, sp_save
+		mov	ss, ss_save
+		sti
+		mov	ax, 0			; must "mov" to preserve CF
+		mov	es, ax
+		pop	es:word ptr .3beh
+		pop	es:word ptr .3bch
+
+; Check for an EXEC error.  If one occurred, process it.
+		jnc	check_step_aside
+		mov	dx, offset aside_error
+		push	cs
+		pop	ds
+		mov	ah, PRINT_STRING
+		int	PCDOS
+		mov	dx, offset any_key
+		int	PCDOS
+		mov	ah, INPUT_CHARACTER
+		int	PCDOS
+		jmp	exec_app
+
+; Has a full step-aside been requested?  If so, process it.  If not,
+; that's all!
+check_step_aside:
+		cmp	step_aside, 0		; step-aside requested?
+		jz	terminate		; no:  terminate
+
+; Save the environment.
+		mov	ss_save, ss
+		mov	sp_save, sp
+
+; Load and execute the application.
+		mov	bx, cs
+		mov	ds, bx
+		mov	dx, offset aside_file	; ds:dx = app file name
+		mov	es, bx
+		mov	bx, offset aside_block	; es:bx = parameter block
+		mov	ah, EXEC		; load and execute function
+		xor	al, al			; load and execute sub-func
+		int	PCDOS
+
+; Restore the environment and zero out the step-aside flag.
+		cli
+		mov	sp, sp_save
+		mov	ss, ss_save
+		sti
+		mov	step_aside, 0
+		jmp	exec_app
+
+; Error exit.  Output a couple of error messages.
+reset_and_exit:
+		push	cs
+		pop	ds
+		mov	ah, PRINT_STRING
+		int 	PCDOS
+		mov	dx, offset not_installed_msg
+		mov	ah, PRINT_STRING
+		int 	PCDOS
+
+; Reset the directory and exit.
+terminate:
+		mov	dx, seg root_path
+		mov	ds, dx
+		mov	dx, offset root_path
+		mov	ah, SET_DIR
+		int	PCDOS
+
+		xor	al, al
+		mov	ah, EXIT_PROGRAM
+		int	PCDOS
+
+
+;************************************************************************
+;* print_driver_info							*
+;************************************************************************
+print_driver_info:
+; Save registers.  Save workstation table index.
+		push	ds
+		push	si
+		mov	bx, di			; bx = workstation table index
+		mov	di, cs
+		mov	es, di
+
+; Convert the location information into the location info sub-string.  The
+; conversion will be performed from right to left.
+prep_hex_out:
+		std
+		push	bx			; save index
+		mov	bx, ws_cseg[bx]		; bx = segment of code
+		mov	ch, 4			; number of digits
+		mov	cl, ch			; bits to shift
+		mov	di, offset location_info + 3
+
+next_hex_digit:
+		mov	ax, bx
+		and	al, 0fh			; mask four bits (hex digit)
+		cmp	al, 9
+		jle	zero_to_nine
+		add	al, 'A' - 10		; convert to alpha character
+		jmps	move_next_hex
+
+zero_to_nine:
+		add	al, '0'			; convert to numeric character
+
+move_next_hex:
+		stosb
+		shr	bx, cl			; shift to next hex digit
+		dec	ch
+		jnz	next_hex_digit		; do four bytes
+
+		pop	bx			; restore index
+		mov	bx, ws_coff[bx]		; bx = offset of code
+		mov	ch, 4			; number of digits
+		mov	cl, ch			; bits to shift
+		mov	di, offset location_info + 8 ; SSSS:OOOO
+
+next_hex_digit2:
+		mov	ax, bx
+		and	al, 0fh			; mask four bits (hex digit)
+		cmp	al, 9
+		jle	zero_to_nine2
+		add	al, 'A' - 10		; convert to alpha character
+		jmps	move_next_hex2
+
+zero_to_nine2:
+		add	al, '0'			; convert to numeric character
+
+move_next_hex2:
+		stosb
+		shr	bx, cl			; shift to next hex digit
+		dec	ch
+		jnz	next_hex_digit2		; do four bytes
+
+; Output the message.
+		mov	dx, offset resident_driver
+		mov	ax, cs
+		mov	ds, ax			; ds:dx = pointer to message
+		mov	ah, PRINT_STRING
+		int	PCDOS
+
+; Restore.
+		pop	si
+		pop	ds
+		cld
+		ret
+
+
+;************************************************************************
+;* Local data area for information which must be retained after loading.*
+;************************************************************************
+
+prog_size	dw	0
+assign_table_length	dw	0
+overlay_segment	dw	0
+any_key		db	CR, LF, 'Press any key to continue$'
+ss_save		rw	1
+sp_save		rw	1
+root_path	db	'\', 0
+app_path	db	'\', 0
+		rb	63
+command_tail	db	0, CR
+
+
+;************************************************************************
+;* loader_code_start							*
+;************************************************************************
+loader_code_start:
+
+; Save the PSP segment address so the GDOS can find its FCBs later.
+		mov	psp_base, es
+
+; Get the current drive and path.
+		mov	ah, GET_DRIVE
+		int	PCDOS
+		mov	gdos_drive, al
+		mov	saved_drive, al
+
+		mov	dl, al
+		inc	dl
+		mov	ax, seg gdos_path
+		mov	ds, ax
+		mov	si, offset gdos_path + 1; ds:si = GDOS path string
+		mov	ah, GET_DIR
+		int	PCDOS
+
+		mov	si, offset saved_path + 1; ds:si = saved path string
+		mov	ah, GET_DIR
+		int	PCDOS
+
+		mov	si, offset app_path + 1	; ds:si = application path
+		mov	ah, GET_DIR
+		int	PCDOS
+
+; Initialize the exec parameter block to indicate no command tail.  Parse
+; the command line.
+ini_parm_block:
+		mov	pblock + 2, offset command_tail
+		mov	pblock + 4, seg command_tail
+		call	parse_command_line
+		  
+; Find the application.
+		call	find_app
+
+; Initialize the workstation table to zeroes.
+		mov	cx, WS_ENTRIES		; cx = number of table entries
+		xor	bx, bx			; bx = table index
+init_table_loop:
+		call	clear_ws_table_entry	; clear the table entry
+		inc	bx
+		inc	bx			; next index
+		loop	init_table_loop
+
+; Try to build an assignment table.  If none is built (length zero),
+; report an error and exit.
+		call	set_gdos_directory
+		call	build_assign_table
+		cmp	di, 0
+		jne	lcs_calc_overlay
+		mov	dx, offset no_drivers	; dx -> error string
+		jmp	reset_and_exit
+
+; Compute the ending address of the overlayable part of the GDOS and the
+; driver.  This is equal to the address of the first paragraph after the
+; overlay point plus the size of the assign table in paragraphs.
+lcs_calc_overlay:
+		mov	ax, offset loader_code_start
+		mov	cl, 4
+		shr	ax, cl
+		add	ax, seg loader_code_start
+		inc	ax
+		mov	overlay_segment, ax
+		mov	dx, assign_table_length
+		shr	dx, cl
+		inc	dx
+		add	ax, dx
+		mov	bx, ax
+		sub	bx,psp_base
+		inc	bx
+		mov	prog_size, bx
+
+; Switch the stack to the PSP and jump to the resident part of the loader.
+end_overlay:
+		cld
+		pushf
+		pop	si
+		cli
+		mov	ss, psp_base
+		mov	sp, 0feh
+		push	si
+		popf
+		jmp	overlay_loader
+
+
+;************************************************************************
+;* find_app								*
+;************************************************************************
+find_app:
+; Set up a DTA at the end of the stack segment.
+		mov	ax, STACK_SIZE
+		mov	cl, 4
+		shr	ax, cl
+		mov	bx, ss
+		add	ax, bx
+		inc	ax
+		mov	ds, ax
+		xor	dx, dx
+		mov	ah, SET_DTA
+		int	PCDOS
+
+; Does the application exist in the current directory?
+		mov	ax, cs
+		mov	ds, ax
+		mov	dx, offset app_name
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		jc	check_gem_directories
+		jmp	end_find_app
+
+; Couldn't find the application in the current directory.  Check the
+; GEMBOOT driectory.
+
+check_gem_directories:
+
+		mov	dx, offset gemboot
+		call	gem_directory
+		jc	traverse_search_path
+		jmp	end_find_app
+
+; Couldn't find the application in a GEM directory.  Traverse the search path.
+traverse_search_path:
+		mov	es, psp_base
+		mov	es, es:.2ch		; environment segment address
+
+; Look for 'PATH'.
+		mov	al, path_string
+		xor	di, di			; es:di = environment address
+		mov	cx, 7fffh		; maximum environment space
+find_repeat:
+	repne	scasb
+		jne	end_find_app		; couldn't find 'PATH'
+		mov	dx, di			; save
+		mov	bx, cx			; save
+		dec	di
+		mov	si, offset path_string
+		mov	cx, path_string_len
+	repe	cmpsb
+		jcxz	path_found
+		mov	cx, bx			; restore
+		mov	di, dx			; restore
+		jmps	find_repeat
+
+; Found 'PATH'.  The first path name is pointed to by es:di.
+path_found:
+		xor	bx, bx			; done flag
+path_check_loop:
+		cmp	bx, 0			; done yet?
+		jne	app_not_found
+		mov	si, offset app_path
+		mov	dx, si
+		dec	si
+get_path_loop:
+		mov	al, es:[di]
+		cmp	al, 0
+		jne	check_for_semi
+		inc	bx
+		jmps	check_path
+check_for_semi:
+		inc	di
+		cmp	al, ';'
+		je	check_path
+		inc	si
+		mov	ds:[si], al
+		jmps	get_path_loop
+
+; A path name is now stored in app_path.  Concatenate the file name.
+check_path:
+		cmp	byte ptr [si], '\'	; '\' already specified?
+		je	prep_get_name_loop
+		inc	si
+		mov	byte ptr [si],'\'
+prep_get_name_loop:
+		push	si			; save for later
+		push	di			; save for later
+		inc	si
+		mov	di, offset app_name
+get_name_loop:
+		mov	al, [di]
+		inc	di
+		mov	[si], al
+		inc	si
+		cmp	al, 0
+		jne	get_name_loop
+
+; Does the file exist?
+		mov	ax, cs
+		mov	ds, ax
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		pop	di			; restore environment pointer
+		pop	si			; restore path end pointer
+		jc	path_check_loop		; not found:  try another
+
+; Found the file.  Tag a null at the end of the path name.  If the path name
+; is something like 'C:\', make sure that the '\' is included.
+		dec	si			; point to candidate ':'
+		cmp	byte ptr [si], ':'
+		jne	null_tag		; skip if not '?:\'
+		inc	si
+		mov	byte ptr [si], '\'	; concatenate '\'
+null_tag:
+		inc	si
+		mov	byte ptr [si], 0
+end_find_app:
+		ret
+
+; The application does not exist.  Output an error message and exit.
+app_not_found:
+		mov	dx, offset app_error
+		jmp	reset_and_exit
+
+
+;************************************************************************
+;* gem_directory							*
+;************************************************************************
+gem_directory:
+
+; Set to the requested directory.
+		mov	ah, SET_DIR
+		int	PCDOS
+		jc	end_gem_directory
+
+; Look for the application.
+		push	dx
+		mov	dx, offset app_name
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		pushf
+
+; Restore the GDOS directory.
+		mov	dx, offset gdos_path
+		mov	ah, SET_DIR
+		int	PCDOS
+
+; If the application was found, copy the directory name.
+		popf
+		pop	dx
+		jc	end_gem_directory
+		mov	si, dx
+		mov	di, offset app_path
+gem_directory_loop:
+		lodsb
+		mov	[di], al
+		inc	di
+		cmp	al, 0
+		jne	gem_directory_loop
+		clc
+
+end_gem_directory:
+		ret
+
+
+;************************************************************************
+;* build_assign_table							*
+;*	Assignment table length returned in di.				*
+;************************************************************************
+build_assign_table:
+		cld
+
+; Find out where the initial copy of the assignment table should be built.
+		mov	ax, STACK_SIZE/16
+		mov	dx, ss
+		add	ax, dx
+		inc	ax			; ax = file buffer segment
+		mov	dx, ax			; dx = DTA segment
+		add	ax, 20
+		mov	assign_seg, ax
+		mov	es, ax
+		xor	di, di			; ds:di -> assignment table
+
+; Assumed state of affairs:
+;	ASS_LENGTH		equ	16	; length of assignment item
+;	ASS_NAME_LGTH		equ	13	; length of a file name
+;	ASS_WORK_ID		equ	0	; offset to the workstation id
+;	ASS_RES_ID		equ	2	; offset to reserved byte
+;	ASS_FILE_NAME		equ	3	; offset to driver file name
+;
+;	es:di -> next write location in the assignment table.
+
+; Set up a DTA.
+		mov	local_dta, dx
+		mov	ds, dx
+		xor	dx, dx
+		mov	ah, SET_DTA
+		int	PCDOS
+
+; Find  a screen driver.
+		mov	ax, cs
+		mov	ds, ax
+		mov	dx, offset sd_name
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		jnc	bat_found_screen
+		mov	dx, offset no_screen
+		jmp	reset_and_exit
+
+; Found the screen driver. Save information.
+bat_found_screen:
+		mov	bx, di			; save start of table item
+		mov	es:word ptr ASS_WORK_ID[di], 1	; screen id
+		mov	ds, local_dta
+		mov	si, 30			; ds:si -> file name in DTA
+		add	di, ASS_FILE_NAME
+		mov	cx, 13			; cx = loop maximum
+	rep	movsb				; copy file name
+		mov	di, bx
+		call	check_resident
+		add	di, ASS_LENGTH
+
+; Look for plotter drivers.
+		mov	dx, offset vd_name	; cs:dx -> plotter driver name
+		mov	bp, 11			; bp = plotter driver id
+		call	find_drivers
+
+; Look for printers drivers.
+		mov	dx, offset pd_name	; cs:dx -> printer driver name
+		mov	bp, 21			; bp = printer driver id
+		call	find_drivers
+
+; Look for metafile drivers.
+		mov	dx, offset md_name	; cs:dx -> metafile name
+		mov	bp, 31			; bp = metafile driver id
+		call	find_drivers
+
+; Look for camera drivers.
+		mov	dx, offset cd_name	; cs:dx -> camera driver name
+		mov	bp, 41			; bp = camera driver id
+		call	find_drivers
+
+; Look for scanner drivers.
+		mov	dx, offset id_name	; cs:dx -> scanner driver name
+		mov	bp, 61			; bp = scanner driver id
+		call	find_drivers
+
+; The table has been successfully built.  Save its length and zero out
+; the last link.
+bat_table_done:
+		mov	es:word ptr ASS_WORK_ID[di], 0	; zero workstation id
+		add	di, 2
+		mov	assign_table_length, di
+		ret
+
+
+;************************************************************************
+;* find_drivers								*
+;*	es:di -> assignment table item.					*
+;*	cs:dx -> driver name						*
+;*	bp = starting driver id						*
+;************************************************************************
+find_drivers:
+		mov	ax, cs
+		mov	ds, ax
+		xor	cx, cx
+		mov	ah, FIND_FIRST
+		int	PCDOS
+		jc	end_find_drivers
+		mov	cx, 9			; cx = maximum driver count
+		mov	ds, local_dta
+
+; Top of the driver search loop.  If the file is not really an executable
+; driver, ignore it.
+fd_loop:
+		push	cx			; save maximum driver count
+		mov	dx, 30			; ds:dx -> file name in DTA
+		mov	ax, 256*FILE_OPEN
+		int	PCDOS
+		jc	fd_find_next
+		mov	bx, ax			; bx = file handle
+		mov	cx, 2			; cx = read count
+		mov	dx, 48			; ds:dx -> read buffer
+		mov	ah, FILE_READ
+		int	PCDOS
+		pushf				; save read status
+		mov	ah, FILE_CLOSE
+		int	PCDOS
+		popf				; restore read status
+		jc	fd_find_next
+		cmp	word ptr .48, 5a4dh	; valid EXE file signature?
+		jne	fd_find_next
+
+; Update the assignment table.
+		mov	bx, di			; save start of table item
+		mov	es:ASS_WORK_ID[di], bp	; save workstation id
+		inc	bp
+		mov	si, 30			; ds:si -> file name in DTA
+		add	di, ASS_FILE_NAME
+		mov	cx, 13			; cx = loop maximum
+	rep	movsb				; copy file name
+		mov	di, bx			; restore table item start
+		call	check_resident
+		add	di, ASS_LENGTH
+
+; Get the next printer driver.
+fd_find_next:
+		pop	cx			; restore maximum driver count
+		mov	ah, FIND_NEXT
+		int	PCDOS			; find the next match
+		jc	end_find_drivers
+		loop	fd_loop
+
+; That's all!
+end_find_drivers:
+		ret
+
+
+;************************************************************************
+;* check_resident							*
+;*	es:di -> assignment table item.					*
+;************************************************************************
+check_resident:
+		push	ds
+
+; Bail out if no resident driver specified.
+		mov	es:byte ptr ASS_RES_ID[di], 0
+		cmp	resident_valid, 0
+		je	end_check_resident
+		mov	cl, resident_valid
+		xor	ch, ch			; cx = resident length
+
+; Look for an exact match.
+		mov	ax, cs
+		mov	ds, ax
+		mov	si, offset rd_name	;ds:si -> resident name
+		push	di
+		add	di, ASS_FILE_NAME
+	rep	cmpsb
+		pop	di
+		jne	end_check_resident
+		mov	es:byte ptr ASS_RES_ID[di], 1
+
+; That's all!
+end_check_resident:
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* Data area for information which can be discarded after loading.	*
+;************************************************************************
+
+app_error	db	'Application not found$'
+gemboot		db	'..\GEMBOOT', 0
+invalid_addr	db	'Invalid memory block address$'
+local_dta	rw	1
+no_drivers	db	'No drivers found$'
+no_mem		db	'Insufficient memory$'
+no_screen	db	'No screen driver found$'
+no_table	db	'Corrupted memory table$'
+path_string	db	'PATH='
+path_string_len	dw	5
+vd_name		db	'VD*.*', 0	; plotters
+pd_name		db	'PD*.*', 0	; printers
+md_name		db	'MD*.*', 0	; metafile
+cd_name		db	'CD*.*', 0	; cameras
+id_name		db	'ID*.*', 0	; scanners
+
+
+	db	'-------------------------------------------------', CR, LF
+	db	'GEMVDI                               Version 2.3 ', CR, LF
+	db	'Serial No. XXXX-0000-654321   All Rights Reserved', CR, LF
+	db	'Copyright (C) 1985-1987     Digital Research Inc.', CR, LF
+	db	'-------------------------------------------------', CR, LF
+	db	'10/01/87'
+
+		end	loader_code_start

@@ -1,0 +1,81 @@
+;Project file: D:\TOOLS\C\PPDGEM\EXE2ACC.PRJ for Pacific C MS-DOS V7.51
+
+List: Object Files	Abs Auto
+Entry: $(LIB)\RT86--DS.OBJ
+Endlist:
+
+List: CPP Include Paths	Abs Auto
+Entry: $(INC)
+Endlist:
+
+List: CPP Pre-defined Symbols	Abs Auto
+Entry: -DDOS
+Entry: -D_HOSTED
+Entry: -Di8086
+Entry: -D__PACIFIC__
+Entry: -DHI_TECH_C
+Entry: -DSMALL_CODE
+Entry: -SP2,2,2,2,2,2,2
+Entry: -S1,2,2,4,4,8
+Entry: -DSMALL_DATA
+Entry: -DSMALL_MODEL
+Endlist:
+
+List: Source Files	Abs Auto
+Entry: D:\TOOLS\C\PPDGEM\EXE2ACC.C
+Endlist:
+
+List: Libraries	Abs Auto
+Entry: $(LIB)\86--DSC.LIB
+Endlist:
+
+List: Linker options	Abs Auto
+Entry: -lm
+Entry: -p_TEXT,text,CODE=0/,LDATA=0/,LBSS=0/,NVRAM=0/,data=0/,bss,stack=0/
+Endlist:
+
+List: Objtohex options	Abs Auto
+Entry: -lDos_hdr
+Entry: -E00h
+Endlist:
+
+
+Int: OuputFormat: 0
+Int: Warnlevel: 0
+Int: IdLength: 31
+Int: DebugBaud: 0
+Int: ComPort: 0
+Int: GlobOptLevel: 1
+Int: Rom_addr: 1015808
+Int: Init_addr: 1048560
+Int: Bss_addr: 256
+Int: Bss_size: 32512
+Int: Nvram_addr: 32768
+Int: Modelno: 0
+Int: Chiptype: 0
+Int: Heapsize: 0
+Int: Falign: 0
+Int: Jalign: 0
+Int: Lalign: 0
+
+Bool: Globopt: 1
+Bool: Postopt: 1
+Bool: Assemopt: 1
+Bool: Symbolic_debug: 0
+Bool: Nolocal: 0
+Bool: Usefloat: 0
+Bool: Autoload: 0
+Bool: Cppasm: 0
+Bool: Genlist: 0
+Bool: GenSrclist: 0
+Bool: Gotadrs: 0
+Bool: Multirom: 0
+Bool: Stopwarn: 1
+Bool: Hardfloat: 0
+Bool: Wildcards: 0
+Bool: I80188eb: 0
+Bool: V25: 0
+
+String: Outfile:D:\TOOLS\C\PPDGEM\EXE2ACC.EXE
+String: Mapfile:
+String: Symfile:

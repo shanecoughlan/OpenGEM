@@ -1,0 +1,1475 @@
+;/*		FONTS.A86	1/29/87 - 4/10/87	J. Grant	*/
+
+graphics_loader_code	cseg	para	public
+
+include equates.a86
+
+; Public entry points.
+		public	calc_effects_buffer
+		public	effects_buffer
+		public	find_fonts
+		public	find_lfu
+		public	font_data_load
+		public	font_invoke_driver
+		public	font_manager
+		public	free_font_memory
+		public	lfu_wrap_check
+		public	link_font
+		public	load_data
+		public	load_fonts
+		public	load_headers
+		public	load_multi
+		public	name_check
+		public	patch_font_header
+		public	remove_lfu
+		public	unload_fonts
+		public	update_size_info
+		public	write_string_info
+
+; External entry points.
+		extrn	access_file:near
+		extrn	adjust_for_paged_headers:near
+		extrn	build_info_file:near
+		extrn	check_big_data:near
+		extrn	close_file:near
+		extrn	decode:near
+		extrn	driver:near
+		extrn	ds_font_info:near
+		extrn	es_font_info:near
+		extrn	find_first_font:near
+		extrn	get_header_room:near
+		extrn	header_manager:near
+		extrn	open_string_file:near
+		extrn	page_link:near
+		extrn	read_file:near
+		extrn	read_headers:near
+		extrn	read_string_data:near
+		extrn	reset_current_directory:near
+		extrn	reset_dta:near
+		extrn	seek_file:near
+		extrn	set_font_directory:near
+		extrn	set_gdos_directory:near
+		extrn	set_gdos_dta:near
+		extrn	write_headers:near
+
+; External data.
+include externs.a86
+
+
+;************************************************************************
+;* load_fonts								*
+;*	bx = workstation table index.					*
+;************************************************************************
+load_fonts:
+
+; Establish the font directory and GDOS DTA.  Assume that there will be an
+; error and set intout[0] to 0.
+		call	set_font_directory
+		call	set_gdos_dta
+		les	di, contrl
+		mov	es:word ptr 8[di], 1	; return one intout value
+		les	di, intout
+		mov	es:word ptr [di], 0	; intout[0] = 0
+
+; Find out if fonts are already loaded on the workstation.  If so, return.
+		cmp	ws_font_seg[bx], 0	; any fonts there yet?
+		je	lf_check_other_wks
+		jmp	lf_reset		; fonts loaded:  just return
+
+lf_check_other_wks:
+		call	find_fonts		; fonts loaded?
+		jc	lf_find_identifier	; fonts not loaded anywhere
+		mov	ax, ws_font_seg[si]
+		mov	ws_font_seg[bx], ax	; store font address
+		mov	ax, ws_texbuf[si]
+		mov	ws_texbuf[bx], ax	; store buffer address
+		jmp	lf_reset		; font loading not necessary
+
+; Find the workstation identifier in the assignment table.  If it is not
+; there, something is seriously wrong (just return, though).  If fonts are
+; already loaded, return.
+lf_find_identifier:
+		mov	ds, assign_seg
+		mov	si, ws_root[bx]
+		dec	si
+		shl	si, 1			; si = table index of root
+		mov	dx, ws_id[si]		; dx = workstation identifier
+		mov	work_identifier, dx	; save workstation identifier
+		mov	screen_font, 0
+		cmp	dx, 10
+		ja	lf_assign_table_address
+		mov	screen_font, 1
+lf_assign_table_address:
+		mov	si, ASS_WORK_ID		; ds:si = assignment table
+lf_table_loop:
+		cmp	dx, [si]		; found the driver?
+		je	lf_found_driver		; yes:  loop done
+		add	si, ASS_LENGTH		; no:  try next
+		cmp	word ptr ASS_WORK_ID[si], 0	; done?
+		jnz	lf_table_loop
+		jmp	lf_reset		; no such driver:  return zero
+
+; Find out if there are any associated fonts.
+lf_found_driver:
+		call	find_first_font		; status returned in carry
+		jnc	lf_allocate_font_memory
+		jmp	lf_reset		; skip if no fonts
+
+; Allocate memory for the fonts.
+lf_allocate_font_memory:
+		mov	bx, 0ffffh		; go for the works
+		mov	ax, 256*ALLOCATE
+		int	PCDOS			; bound to fail -- too much!
+		cmp	ax, INSUFFICIENT_MEMORY
+		je	lf_try_allocate_again
+		jmp	lf_reset		; skip if memory chain error
+lf_try_allocate_again:
+		cmp	screen_font, 1
+		jne	lf_not_screen		
+		mov	ax, SD_FONT_MAX		; ax = max memory to use
+		mov	cx, SD_FONT_FREE	; cx = min to leave free
+		jmp	lf_check_call		; now check intin[1] & [2]
+lf_not_screen:	mov	ax, PD_FONT_MAX		; ax = max memory to use
+		mov	cx, PD_FONT_FREE	; cx = min to leave free
+lf_check_call:	push	ds			; save ds
+		lds	si, contrl		; ds:si -> contrl array
+		cmp	word ptr 6[si], 3	; see it # intin >= 3
+		jl	lf_calc_allocate	; no user override
+		lds	si, intin		; ds:si -> intin array
+		mov	ax, 2[si]		; max = intin[1]
+		mov	cx, 4[si]		; min = intin[2]
+lf_calc_allocate:
+		pop	ds			; restore ds
+		sub	bx, cx			; subtract off free amount
+		cmp	bx, FONT_MIN		; see if at least MIN
+		jge	lf_minok		; if not then
+		mov	bx, FONT_MIN		; go for min
+lf_minok:	cmp	bx, ax			; compare to max
+		jle	lf_real_allocate	; this much is right
+		mov	bx, ax			; max is right
+lf_real_allocate:
+		mov	ax, 256*ALLOCATE
+		int	PCDOS			; grab what remains
+		jnc	lf_allocate_done
+		jmp	lf_reset
+lf_allocate_done:
+		mov	fb_seg, ax		; save font block segment
+		cmp	bx, 100			; minimum memory for fonts
+		ja	lf_prep_headers_load
+		jmp	lf_deallocate
+
+; Load the font headers.
+lf_prep_headers_load:
+		mov	fb_size, bx		; save font block size
+		mov	fb_free_size, bx	; save font block free size
+		mov	this_font_seg, ax
+		xor	ax, ax
+		mov	this_font_off, ax
+		mov	last_font_seg, ax
+		mov	last_font_off, ax
+		mov	text_buffer_size, ax
+		mov	fhdr_count, ax
+		mov	phdr_low, ax
+		mov	phdr_count, ax
+		mov	incomplete_load, ax
+		mov	header_space, FHDR_MAX
+		call	read_headers		; read from headers file
+		jnc	lf_headers_done		; success:  headers loaded
+		call	load_headers		; load headers the hard way
+		jnc	lf_headers_done
+		jmp	lf_reset
+
+; All of the headers have been loaded.  Discard headers for fonts which
+; will not fit in memory.  Account for any paged headers.
+lf_headers_done:
+		mov	bx, ws_index		; bx = workstation table index
+		cmp	ws_font_seg[bx], 0	; any fonts loaded?
+		jne	lf_check_for_big_data
+		jmp	lf_deallocate		; no:  bail out
+lf_check_for_big_data:
+		call	check_big_data
+		cmp	phdr_count, 0
+		je	lf_text_buffer_memory
+		call	adjust_for_paged_headers
+
+; "Allocate" memory for the text effects buffer from the remaining
+; free memory.
+lf_text_buffer_memory:
+		call	effects_buffer
+		jc	lf_deallocate
+
+; Load all the font data which can be loaded.
+		call	load_data
+
+; If all the fonts loaded, release whatever memory might be left.  Otherwise,
+; keep it around for paging.  If this is a screen font, keep all the
+; memory (may need it later for another font load).
+lf_release_extra:
+		cmp	font_loaded, 0
+		je	lf_deallocate
+;;;;;		cmp	screen_font, 1		; is this for a screen?
+;;;;;		je	lf_data_load_done
+		cmp	all_loaded, 0
+		je	lf_data_load_done
+		mov	es, fb_seg		; es = start of font block
+		mov	bx, fb_size
+		sub	bx, fb_free_size	; bx = amount of block used
+		mov	fb_size, bx
+		mov	fb_free_size, 0
+		mov	ax, 256*SETBLOCK
+		int	PCDOS
+
+; Copy the control array and set contrl[7] to be the font link.  Transfer
+; control to the driver.
+lf_data_load_done:
+		mov	bx, ws_index		; bx = workstation table index
+		call	font_invoke_driver	; does it all
+		jmps	lf_check_load
+
+; An error has occurred causing termination of the font loading. Make the
+; font memory block unusable, but don't deallocate it (just in case
+; a subsequent unload_fonts/load_fonts is done which depends on the
+; memory being available).
+lf_deallocate:
+		mov	bx, ws_index		; bx = workstation table index
+		mov	ws_font_seg[bx], 0	; clear font segment info
+		mov	ax, fb_seg
+		inc	ax
+		mov	ws_font_block[bx], ax	; save font block address
+
+; Save the paged low pointer and count and the effects buffer size in
+; the font header file header.  If the loading was incomplete, return
+; a -1 for the number of fonts loaded.
+lf_check_load:
+		mov	ds, fb_seg
+		mov	ax, phdr_low
+		mov	.FHFH_PHDLOW, ax
+		mov	ax, phdr_count
+		mov	.FHFH_PHDCOUNT, ax
+		mov	ax, eff_size
+		mov	.FHFH_EFFSIZE, ax
+		mov	bx, ws_index
+		mov	ds, ws_font_seg[bx]
+		call	ds_font_info
+		mov	ax, font_val
+		mov	ws_face[bx], ax
+		mov	ax, .POINT_SIZE
+		mov	ws_point[bx], ax
+		mov	ws_selmode[bx], SEL_POINT
+		xor	ax, ax
+		mov	ws_lrulo[bx], ax
+		mov	ws_lruhi[bx], ax
+		cmp	incomplete_load, 0
+		je	lf_reset
+		les	di, intout
+		mov	es:word ptr [di], -1	; intout[0] = -1
+
+; Restore the directory and DTA.
+lf_reset:
+		call	reset_current_directory
+		call	reset_dta
+		ret
+
+
+;************************************************************************
+;* load_headers								*
+;************************************************************************
+load_headers:
+
+; Reserve a paragraph at the beginning for miscellaneous info.
+		les	di, this_font_addr	; es:di -> miscellaneous info
+		mov	cx, 8
+		xor	ax, ax
+		cld
+	rep	stosw				; zero the misc buffer
+		mov	fhdr_count, ax		; zero resident header count
+		inc	this_font_seg
+		dec	fb_free_size
+		sub	header_space, 16
+
+; Create a font headers string file.
+		mov	di, offset info_file	; di -> destination path
+		mov	dx, offset str_suffix	; dx -> "FSTR.INF"
+		call	build_info_file
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset info_file
+		xor	cx, cx
+		mov	str_index, cx		; intialize string index
+		mov	ah, FILE_CREATE
+		int	PCDOS			; create the output file
+		jnc	lh_save_handle
+		stc				; set error
+		jmp	end_load_headers
+lh_save_handle:
+		mov	str_handle, ax		; save file handle
+
+; Set up the search first/search next info for DOS.
+		call	find_first_font		; status returned in carry
+
+; Top of the headers loading loop.  If there is enough room in the font block
+; for a header, open the file.  If not, make room.
+lh_loop:
+		call	name_check		; make sure not driver
+		jnc	lh_size_check
+		jmp	lh_headers_next
+lh_size_check:
+		call	get_header_room
+		jnc	lh_open_header
+		jmp	lh_done
+lh_open_header:
+		mov	dx, seg gdos_dta
+		mov	ds, dx
+		mov	dx, offset gdos_dta + 30	; ds:dx -> file name
+		push	dx
+		call	access_file		; open font file (size in dx)
+		pop	dx
+		cmp	bx, 0			; error?
+		jne	lh_save_header_string_info
+		jmp	lh_headers_next
+
+; Output font header string information.
+lh_save_header_string_info:
+		xor	ax, ax
+		mov	header_segment, ax
+		mov	header_offset, ax
+		call	write_string_info
+
+; Read in a "standard" (i.e., DRI GEMVDI) font header.
+		mov	multi_id, ax
+		mov	file_handle, bx		; save handle for later
+		lds	si, this_font_addr	; ds:si -> where to load it
+		mov	dx, si
+		mov	cx, 88			; "standard" header size
+		call	read_file
+		cmp	ax, cx
+		je	lh_check_extended
+		jmp	lh_headers_close_file
+
+; If the header is a "standard" header, loading is done for it and the header
+; can be initialized.  Otherwise, check the size of the extended header and
+; read it in if space permits.
+lh_check_extended:
+		cmp	word ptr .HOR_TABLE_OFF, 88
+		jg	lh_prep_extension_read
+		mov	word ptr .NEXT_SET_OFF, 0
+		mov	word ptr .NEXT_SET_SEG, 0
+		jmps	lh_initialize_standard_header
+lh_prep_extension_read:
+		mov	cx, .HOR_TABLE_OFF
+		cmp	cx, FHDR_SIZE
+		jle	lh_read_extension
+		mov	cx, FHDR_SIZE
+lh_read_extension:
+		sub	cx, 88			; cx = additional bytes
+		lea	dx, 88[si]		; ds:dx -> additional space
+		call	read_file
+		cmp	ax, cx			; read ok?
+		je	lh_initialize_standard_header
+		jmp	lh_headers_close_file
+
+; Link the font into the font chain.  Patch the font header as necessary.
+lh_initialize_standard_header:
+		call	link_font
+		call	patch_font_header
+
+; Adjust for the next header.
+		mov	last_font_seg, ds
+		mov	last_font_off, si
+		call	update_size_info
+
+; Check for multi-set header and process.
+		inc	fhdr_count		; count the header
+		call	load_multi
+
+; Close the font file.
+lh_headers_close_file:
+		mov	bx, file_handle
+		call	close_file
+
+; Prepare for the next pass through the headers loading loop.
+lh_headers_next:
+		mov	ah, FIND_NEXT
+		int	PCDOS			; find the next match
+		jc	lh_done
+		jmp	lh_loop
+
+; Font header loading done.  Close the string file.  If there is
+; nothing in the file, delete it.
+lh_done:
+		cmc				; return error flag
+		pushf				; save status
+		mov	bx, str_handle
+		mov	ah, FILE_CLOSE
+		int	PCDOS
+		cmp	str_index, 0
+		jne	lh_restore_status
+		mov	dx, cs
+		mov	ds, dx
+		mov	dx, offset info_file
+		mov	ah, FILE_DELETE
+		int	PCDOS			; delete the file
+lh_restore_status:
+		popf				; restore status
+
+; That's all!
+end_load_headers:
+		ret
+
+
+;************************************************************************
+;* update_size_info							*
+;*	ds:si -> primary font header					*
+;************************************************************************
+update_size_info:
+		sub	header_space, FHDR_SIZE
+		mov	ax, ds
+		add	ax, FHDR_SIZE/16
+		mov	this_font_seg, ax
+		mov	this_font_off, 0
+		cmp	phdr_count, 0
+		jne	end_update_size_info
+		sub	fb_free_size, FHDR_SIZE/16	; adjust size left
+end_update_size_info:
+		ret
+
+
+;************************************************************************
+;* load_multi								*
+;*	ds:si -> primary font header					*
+;************************************************************************
+load_multi:
+		mov	ax, .NEXT_SET_OFF
+		mov	header_offset, ax
+		mov	bx, .NEXT_SET_SEG
+		mov	header_segment, bx
+		xor	ax, ax
+		mov	.NEXT_SET_OFF, ax
+		mov	.NEXT_SET_SEG, ax
+
+; If this font file is split into multiple sets, load the next one.
+lm_top:
+		mov	ax, header_offset
+		or	ax, header_segment
+		jnz	lm_seek
+		jmp	end_load_multi
+
+; Find the location in the file where the next set begins.
+lm_seek:
+		mov	bx, file_handle
+		mov	cx, header_segment
+		mov	dx, header_offset
+		call	seek_file
+		jnc	lm_process
+		jmp	end_load_multi
+
+; If there is enough room in the font block for a header, open the file.
+; If not, make room.
+lm_process:
+		call	get_header_room
+		jnc	lm_write_header_string
+		jmp	end_load_multi
+
+; Output font header string information.
+lm_write_header_string:
+		inc	multi_id
+		call	write_string_info
+
+; Read the multi-set header.
+		lds	si, this_font_addr	; ds:si -> where to load it
+		mov	dx, si
+		mov	cx, 118			; extended header size
+		call	read_file
+
+; Is there anything beyond the extended header?  If so, read it.
+lm_check_more:
+		cmp	word ptr .HOR_TABLE_OFF, 118
+		jg	lm_read_more
+		jmps	lm_initialize_header
+lm_read_more:
+		mov	cx, .HOR_TABLE_OFF
+		cmp	cx, FHDR_SIZE
+		jle	lm_read_extension
+		mov	cx, FHDR_SIZE
+lm_read_extension:
+		sub	cx, 118			; cx = additional bytes
+		lea	dx, 118[si]		; ds:dx -> additional space
+		call	read_file
+
+; Initialize the multi-set header.  Return to the top of the multi-set loading
+; loop to determine whether another needs to be loaded.
+lm_initialize_header:
+		inc	fhdr_count		; count the header
+		call	patch_font_header
+		push	word ptr .NEXT_SET_OFF
+		push	word ptr .NEXT_SET_SEG
+		xor	ax, ax
+		mov	.NEXT_SET_SEG, ax
+		mov	.NEXT_SET_OFF, ax
+		call	page_link
+		pop	header_segment
+		pop	header_offset
+		call	update_size_info
+		jmp	lm_top
+
+; That's all!
+end_load_multi:
+		ret
+
+
+;************************************************************************
+;* write_string_info							*
+;************************************************************************
+write_string_info:
+		push	ax
+		push	bx
+		push	cx
+		push	si
+		push	di
+		push	ds
+		push	es
+
+; Initialize the string buffer.
+		mov	cx, STR_BUFSIZ
+		mov	ax, cs
+		mov	es, ax
+		mov	di, offset str_buf	; es:di -> string buffer
+		xor	ax, ax
+		cld
+		push	di
+	rep	stosb				; clear string buffer
+		pop	di
+
+; Copy information into the string buffer.
+		mov	ax, seg gdos_dta
+		mov	ds, ax
+		mov	ax, word ptr gdos_dta + 24
+		mov	STR_DATE[di], ax	; save font file date stamp
+		mov	ax, word ptr gdos_dta + 22
+		mov	STR_TIME[di], ax	; save font file time stamp
+		mov	ax, multi_id
+		mov	STR_MULTI_ID[di], ax	; save multi-section id
+		mov	ax, header_offset
+		mov	STR_SEEK_LO[di], ax	; save header seek loc (low)
+		mov	ax, header_segment
+		mov	STR_SEEK_HI[di], ax	; save header seek loc (high)
+		mov	si, offset gdos_dta + 30	; ds:si -> file name
+		add	di, STR_FILENAME
+wsi_header_string_loop:
+		lodsb
+		stosb
+		cmp	al, 0
+		jne	wsi_header_string_loop
+
+; Output the string buffer.
+		mov	bx, str_handle		; bx = file handle
+		mov	ax, cs
+		mov	ds, ax
+		mov	dx, offset str_buf	; ds:dx -> string buffer
+		mov	cx, STR_BUFSIZ		; cx = string buffer length
+		mov	ah, FILE_WRITE
+		int	PCDOS
+
+; That's all!
+		pop	es
+		pop	ds
+		pop	di
+		pop	si
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;* calc_effects_buffer							*
+;*	ds:si -> font header						*
+;************************************************************************
+calc_effects_buffer:
+
+; Text needs a scratch buffer allocated from dynamic memory.  Calculate the
+; size which needs to be allocated for this font.  If it is larger than the
+; size required for any previous font, save it.  The size required is
+;      8 * width * height (for screens)
+;      2.5 * width * height (for printers)
+; where "height" is the font form height and "width" is determined by
+; adding together the font's left offset, right offset, and maximum cell
+; width, rounding up to the next multiple of sixteen, dividing by eight (to
+; get the number of bytes), and then rounding to the next higher multiple of
+; sixteen (i.e., paragraph boundary).
+		mov	ax, .LEFT_OFF
+		add	ax, .RIGHT_OFF
+		add	ax, .MAX_CELL_WIDTH	; ax = maximum width
+		add	ax, 15			; for rounding
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; divide by eight
+		inc	ax			; and fudge by one byte
+		mul	word ptr .FORM_HEIGHT	; ax = maximum bytes for font
+		add	ax, 15
+		and	ax, 0fff0h		; next higher paragraph
+
+; If the device is a printer, no doubling will be performed in the driver.
+; In that event, the size multiplier only needs to be two and a half.
+		cmp	work_identifier, 21
+		jl	ceb_non_printer_calculation
+		cmp	work_identifier, 31
+		jge	ceb_non_printer_calculation
+		mov	dx, ax
+		shl	ax, 1
+		shr	dx, 1
+		add	ax, dx			; multiply by 2.5
+		jmps	ceb_check_buffer_size
+
+ceb_non_printer_calculation:
+		shl	ax, 1
+		shl	ax, 1
+		shl	ax, 1			; multiply by eight
+
+ceb_check_buffer_size:
+		cmp	ax, text_buffer_size
+		jle	end_calc_effects_buffer
+		mov	text_buffer_size, ax	; save maximum bytes
+
+; That's all!
+end_calc_effects_buffer:
+		ret
+
+
+;************************************************************************
+;* effects_buffer							*
+;*	bx = workstation table index					*
+;************************************************************************
+effects_buffer:
+		mov	ax, text_buffer_size	; get desired size
+		mov	eff_size, ax
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; ax = size in paragraphs
+		cmp	fb_free_size, ax	; room for text buffer?
+		jna	eb_error
+		sub	fb_free_size, ax
+		mov	es, this_font_seg
+		mov	ws_texbuf[bx], es	; save text buffer segment
+		mov	dx, es
+		add	ax, dx
+		mov	fb_free_seg, ax		; save free block segment
+		mov	fb_free_off, 0		; save free block offset
+		mov	ax, fb_free_size
+		clc
+		jmps	end_effects_buffer
+
+; Process error.
+eb_error:
+		stc
+
+; That's all!
+end_effects_buffer:
+		ret
+
+
+;************************************************************************
+;* load_data								*
+;*	bx = workstation table index					*
+;************************************************************************
+load_data:
+
+; Load all the font data which can be loaded.
+		mov	ds, ws_font_seg[bx]
+		xor	si, si			; ds:si -> first font header
+		mov	font_loaded, si
+		mov	multi_id, si
+		mov	all_loaded, 1		; assume all will load
+ld_loop:
+		mov	ax, .FONT_FILE_DATA_SIZE
+		add	ax, 15			; for rounding up (paragraph)
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; ax = size in paragraphs
+		cmp	ax, fb_free_size
+		jle	ld_get_data
+		mov	all_loaded, 0
+		jmps	ld_next_header
+ld_get_data:
+		call	font_data_load
+		cmp	word ptr .NEXT_SET_SEG, 0
+		jz	ld_next_header
+		mov	ds, .NEXT_SET_SEG
+		inc	multi_id
+		jmps	ld_loop
+ld_next_header:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	end_load_data
+		mov	ds, .FONT_PTR_SEG
+		mov	multi_id, 0
+		jmps	ld_loop
+
+; That's all!
+end_load_data:
+		ret
+
+
+;************************************************************************
+;* name_check								*
+;*	Returns carry flag set if name is a driver name.		*
+;************************************************************************
+name_check:
+		push	ds
+		push	si
+		push	ax
+
+; Point to the file name and find out if it starts with "SD", "MD", or "PD".
+		mov	si, seg gdos_dta
+		mov	ds, si
+		mov	si, offset gdos_dta + 30	; ds:si -> file name
+		mov	al, 1[si]
+		and	al, 11011111b		; limit to upper case
+		cmp	byte ptr 1[si], 'D'
+		jne	nc_not_driver
+		lodsb
+		and	al, 11011111b		; limit to upper case
+		cmp	al, 'S'
+		je	nc_driver
+		cmp	al, 'M'
+		je	nc_driver
+		cmp	al, 'P'
+		je	nc_driver
+		cmp	al, 'I'
+		je	nc_driver
+		cmp	al, 'C'
+		je	nc_driver
+		cmp	al, 'V'
+		jne	nc_not_driver
+
+; It's a driver:  set the carry flag.
+nc_driver:
+		stc
+		jmps	end_name_check
+
+; Not a driver:  clear the carry flag.
+nc_not_driver:
+		clc
+
+end_name_check:
+		pop	ax
+		pop	si
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* patch_font_header							*
+;*	ds:0 -> font header to patch.					*
+;************************************************************************
+patch_font_header:
+
+; Patch the header flag word to indicate that the font data is not yet loaded.
+		or	word ptr .FLAGS_WORD, DATA_PAGED
+
+; Save the offset to the font data and the size of the font data in the
+; appropriate extended header locations.
+		mov	dx, .HOR_TABLE_OFF
+		mov	ax, .HOR_TABLE_SEG
+		add	dx, header_offset
+		adc	ax, header_segment
+		mov	.FONT_FILE_DATA_OFF, dx
+		mov	.FONT_FILE_DATA_SEG, ax
+		mov	ax, .FORM_WIDTH
+		mul	word ptr .FORM_HEIGHT	; ax = font form size
+		add	ax, .DAT_TABLE_OFF	; ax -> end of font form
+		sub	ax, .HOR_TABLE_OFF	; ax = total font data size
+		mov	.FONT_FILE_DATA_SIZE, ax
+
+; Zero the segment portions of the pointers to the horizontal offset table,
+; character offset table, and font data.  Adjust the offsets to point relative
+; to the horizontal offset table.  Zero the pointer to the next font and the
+; use count.
+		xor	ax, ax
+		mov	dx, .HOR_TABLE_OFF
+		mov	.HOR_TABLE_OFF, ax
+		mov	.HOR_TABLE_SEG, ax
+		sub	.OFF_TABLE_OFF, dx
+		mov	.OFF_TABLE_SEG, ax
+		sub	.DAT_TABLE_OFF, dx
+		mov	.DAT_TABLE_SEG, ax
+		mov	.USE_COUNT_LO, ax
+		mov	.USE_COUNT_HI, ax
+		mov	.FONT_HDRLRU_LO, ax
+		mov	.FONT_HDRLRU_HI, ax
+		mov	.FONT_GDOS_FLAGS, ax
+
+; Calculate the effects buffer size required.
+		call	calc_effects_buffer
+
+; Put the string index in the font header.
+		mov	ax, str_index
+		inc	str_index
+		mov	.FONT_STRINDEX, ax
+		ret
+
+
+;************************************************************************
+;* font_data_load							*
+;*	ds:0 -> font header.						*
+;*	Carry flag set if error occurs.					*
+;************************************************************************
+font_data_load:
+
+; Open the font file.
+		call	open_string_file
+		mov	ax, .FONT_STRINDEX
+		call	read_string_data
+		call	close_file
+		mov	dx, offset str_buf + STR_FILENAME
+		push	ds			; save font segment
+		mov	ax, cs
+		mov	ds, ax
+		call	access_file
+		pop	ds			; restore font segment
+		cmp	bx, 0			; error opening the file?
+		je	fdl_error_out
+
+; Seek to the appropriate location in the file.
+		mov	cx, .FONT_FILE_DATA_SEG
+		mov	dx, .FONT_FILE_DATA_OFF
+		call	seek_file
+		jc	fdl_error_close
+
+; Read the data and close the file.  If successful, adjust the font header
+; pointers and flag and the free block variables.
+		mov	cx, .FONT_FILE_DATA_SIZE
+
+		test	word ptr .FLAGS_WORD, COMPRESSED ; font compressed?
+		je	fdl_no_comp
+		mov	cx, .COMPRESSED_SIZE	; read size for compressed
+fdl_no_comp:
+		push	ds			; save font header segment
+		lds	dx, fb_free_addr	; ds:dx -> data buffer
+		call	read_file
+		cmp	ax, cx			; verify read if not compressd
+		jne	fdl_error_close		; bail out on error
+		pop	ds			; restore font header segment
+		jc	fdl_error_close		; abort if read error
+
+		test	word ptr .FLAGS_WORD, COMPRESSED ; font compressed?
+		je	fdl_rd_done		; if so then
+		mov	cx, .FONT_FILE_DATA_SIZE; cx = decoded size
+		call	decode			; decode file
+		mov	ax, cx			; ax = decoded size
+
+fdl_rd_done:	mov	es, fb_free_seg
+		add	ax, 15			; for rounding up
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; ax = paragraphs read
+		sub	fb_free_size, ax	; reduce free size
+		add	fb_free_seg, ax		; bump free block pointer
+		mov	.HOR_TABLE_SEG, es
+		mov	.OFF_TABLE_SEG, es
+		mov	.DAT_TABLE_SEG, es
+		and	word ptr .FLAGS_WORD, NOT DATA_PAGED
+		inc	font_loaded		; count loaded data
+		call	close_file
+		clc				; indicate no error
+		jmps	end_font_data_load
+
+; An error has occurred.  Close the file (first entry point) and return an
+; error indication (second entry point).
+fdl_error_close:
+		mov	bx, file_handle
+		call	close_file
+fdl_error_out:
+		stc				; indicate error
+
+; That's all!
+end_font_data_load:
+		ret
+
+
+;************************************************************************
+;* link_font								*
+;*	ds:si -> font header to link in.				*
+;************************************************************************
+link_font:
+		push	ds
+		push	si
+		push	di
+		push	bp
+
+; Have any fonts been linked in yet?
+		xor	di, di			; di = 0
+		mov	bx, ws_index		; bx = workstation table index
+		cmp	ws_font_seg[bx], di	; any fonts linked yet?
+		jne	check_against_first
+		mov	ws_font_seg[bx], ds	; initialize the list
+		mov	ws_font_block[bx], ds	; lowest font
+		jmp	end_link_font
+
+; There is at least one font already linked in.  If the new font size is
+; smaller than the first font or has a lower font id, link it in at the top.
+check_against_first:
+		mov	ax, ds
+		mov	es, ax			; es = new font segment
+		call	es_font_info
+		mov	bp, font_val		; bp = font id
+		mov	ch, attr_val		; ch = attribute value
+		mov	dx, es:.POINT_SIZE	; dx = font point size
+		mov	ds, ws_font_seg[bx]	; ds:di -> first font
+		call	ds_font_info
+		cmp	font_val, bp
+		jb	chain_loop
+		ja	top_link
+		cmp	word ptr .POINT_SIZE, dx
+		jl	chain_loop
+		jg	top_link
+		cmp	attr_val, ch
+		jb	chain_loop
+top_link:
+		mov	es:.FONT_PTR_SEG, ds	; re-link
+		mov	es:.FONT_PTR_OFF, di
+		mov	ws_font_seg[bx], es
+		jmps	end_link_font
+
+; The new font belongs after the first font.  Chain down the font list and
+; insert the font at the appropriate location.
+chain_loop:
+		cmp	.FONT_PTR_SEG, di	; end of the chain?
+		jne	more_chain
+		mov	es:.FONT_PTR_SEG, di
+		mov	es:.FONT_PTR_OFF, di
+		jmps	lnkf_do_links
+more_chain:
+		mov	ax, ds			; save current segment
+		mov	ds, .FONT_PTR_SEG	; chain to next
+		call	ds_font_info
+		cmp	font_val, bp
+		jb	chain_loop
+		ja	font_insert
+		cmp	.POINT_SIZE, dx
+		jl	chain_loop
+		jg	font_insert
+		cmp	attr_val, ch
+		jb	chain_loop
+font_insert:
+		mov	es:.FONT_PTR_SEG, ds
+		mov	es:.FONT_PTR_OFF, di
+		mov	ds, ax			; get previous segment
+
+; Update multi-section headers, if necessary.
+lnkf_do_links:
+		mov	.FONT_PTR_SEG, es
+		mov	.FONT_PTR_OFF, si
+		cmp	.NEXT_SET_SEG, di
+		je	end_link_font
+		mov	ds, .NEXT_SET_SEG
+		jmps	lnkf_do_links
+
+; That's all!
+end_link_font:
+		pop	bp
+		pop	di
+		pop	si
+		pop	ds
+		ret
+
+
+;************************************************************************
+;* unload_fonts								*
+;*	bx = workstation table index.					*
+;************************************************************************
+unload_fonts:
+; If no fonts are loaded, return.
+		cmp	ws_font_block[bx], 0	; any fonts there?
+		je	unload_fonts_done
+
+; Copy the control array and set contrl[7] to be the font link.  Transfer
+; control to the driver.
+		cmp	ws_font_seg[bx], 0	; were fonts really loaded?
+		je	uf_free_memory
+		call	font_invoke_driver	; does it all
+
+; Output font headers to the save file.
+		call	set_font_directory
+		call	write_headers
+		call	reset_current_directory
+
+; If the font can be removed from memory (i.e., nobody else is using it),
+; clear the font pointer word and free up the dynamic font memory.  Clear the
+; dynamic text buffer pointer.
+		mov	bx, ws_index		; bx = table index
+		call	find_fonts		; fonts used by another wks?
+		jnc	clear_pointers		; don't unload if still used
+uf_free_memory:
+		call	free_font_memory	; free memory
+
+clear_pointers:
+		xor	ax, ax
+		mov	ws_font_seg[bx], ax
+		mov	ws_font_block[bx], ax
+		mov	ws_texbuf[bx], ax
+		mov	ws_phdr_low[bx], ax
+		mov	ws_phdr_count[bx], ax
+		mov	ws_face[bx], ax
+		mov	ws_point[bx], ax
+		mov	ws_absize[bx], ax
+		mov	ws_selmode[bx], ax
+		mov	ws_lrulo[bx], ax
+		mov	ws_lruhi[bx], ax
+
+unload_fonts_done:
+		ret
+
+
+;************************************************************************
+;* font_invoke_driver							*
+;*	bx = workstation table index.					*
+;************************************************************************
+font_invoke_driver:
+; Copy the control array and set contrl[7] to be the font link.  Store the
+; text buffer location in contrl[8].  Store the text buffer size in contrl[9].
+; Store the address of the GDOS font manager in contrl[10] and contrl[5].
+; Transfer control to the driver.
+		lds	si, contrl		; ds:si = old control array
+		mov	ax, cs
+		mov	es, ax
+		mov	di, offset copy_contrl	; es:di = new control array
+		mov	cx, 7			; contrl items to copy
+	rep	movsw
+		mov	si, offset copy_contrl	; si = contrl offset
+		mov	di, offset contrl	; es:di = parameter block
+		mov	es:[di], si		; store offset
+		mov	es:2[di], es		; store segment
+		mov	ax, ws_root[bx]
+		mov	es:12[si], ax		; store handle number
+		mov	ax, ws_font_seg[bx]
+		mov	es:14[si], ax		; store font link in contrl
+		mov	ax, ws_texbuf[bx]
+		mov	es:16[si], ax		; store buffer location
+		mov	ax, text_buffer_size
+		mov	es:18[si], ax		; store buffer size in contrl
+		mov	es:20[si], offset font_manager
+		mov	es:10[si], cs
+		call	driver
+		ret
+
+
+;************************************************************************
+;* find_fonts								*
+;*	bx = workstation table index.					*
+;************************************************************************
+find_fonts:
+; Scan the workstation root handle table for a root handle which matches the
+; root handle of the workstation associated with the index passed in the bx
+; register.  For each such workstation found, check the font pointer.  If it
+; is set, clear the carry flag, set the si register to the workstation table
+; index, and return.  If the font pointer is not set or if no workstations are
+; found which share the root handle, clear the carry flag.
+		mov	ax, ws_root[bx]		; ax = root handle
+		push	ax			; save the root handle
+		mov	ws_root[bx], -1		; change so it won't be found
+		mov	cx, WS_ENTRIES		; cx = workstation table size
+		mov	di, cs
+		mov	es, di
+		mov	di, offset ws_root	; es:di = root handle table
+root_loop:
+	repne	scasw				; scan for the handle
+		jne	root_not_found		; skip following if not found
+		mov	si, di
+		sub	si, offset ws_root + 2	; si = font table index
+		cmp	ws_font_seg[si], 0	; font pointer set?
+		jz	root_loop		; pointer not set:  try again
+		clc				; pointer set:  indicate found
+		jmps	end_find_fonts
+
+root_not_found:
+		stc				; indicate not found
+
+; Restore the root handle (the value being searched for).
+end_find_fonts:
+		pop	ws_root[bx]		; restore root handle
+		ret
+
+
+;************************************************************************
+;* free_font_memory							*
+;*	bx = workstation table index.					*
+;************************************************************************
+free_font_memory:
+		mov	ax, ws_font_block[bx]
+		dec	ax
+		mov	es, ax			; es = font segment
+		mov	ah, FREE_MEM
+		int	PCDOS
+		ret
+
+
+;************************************************************************
+;* font_manager (called externally by drivers)				*
+;*	ax = offset of font header whose font is to be loaded.		*
+;*	bx = segment of font header whose font is to be loaded.		*
+;************************************************************************
+font_manager:
+		push	bp
+		mov	bp, sp
+		push	cx
+		push	dx
+		push	si
+		push	di
+		push	ds
+		push	es
+ 		cld				; clear direction flag
+
+; If the parameters passed in are both zero, return the header manager
+; address in ax:bx.
+		cmp	ax, 0
+		jne	fm_validate
+		cmp	bx, 0
+		jne	fm_validate
+		mov	ax, cs
+		mov	bx, offset header_manager
+		jmp	end_font_manager
+
+; Set drive and directory to the font drive and directory.
+fm_validate:
+		push	ax
+		push	bx
+		call	set_font_directory
+		pop	bx
+		pop	ax
+
+; Validate the pointer passed in.  Does it really point to a header with font
+; data which is not available?
+		mov	cx, WS_ENTRIES		; cx = number of possible wks
+		mov	dx, bx			; save requested segment
+		xor	bx, bx			; candidate workstation index
+fm_index_loop:
+		cmp	ws_font_seg[bx], 0
+		jne	fm_index_found
+		inc	bx
+		inc	bx
+		loop	fm_index_loop
+		jmp	fm_done		; no fonts loaded
+fm_index_found:
+		mov	ws_index, bx		; save workstation index
+		mov	cx, ws_font_seg[bx]
+		mov	ds, cx
+		xor	si, si			; ds:si -> head of font chain
+		mov	first_font_seg, ds
+fm_header_search_loop:
+		push	ds			; save base segment
+		push	si			; save base offset
+fm_multi_search_loop:
+		cmp	cx, dx
+		jne	fm_check_multi_header
+		cmp	si, ax
+		jne	fm_check_multi_header
+		pop	ax			; throw away base offset
+		pop	ax			; throw away base segment
+		jmps	fm_header_found
+fm_check_multi_header:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	fm_check_next_font
+		lds	si, .NEXT_SET_OFF	; ds:si -> next set
+		mov	cx, ds
+		jmps	fm_multi_search_loop
+fm_check_next_font:
+		pop	si			; throw away base offset
+		pop	ds			; throw away base segment
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	fm_done		; end of chain: bad pointer
+		lds	si, .FONT_PTR_OFF	; ds:si -> next font
+		mov	cx, ds
+		jmps	fm_header_search_loop
+
+; The pointer passed in is valid and is now in ds:si.  Save the pointer for
+; later and find out how large the space required for the font data is.
+fm_header_found:
+		push	ds
+		push	si			; save header pointer
+		mov	ax, .FONT_FILE_DATA_SIZE	; ax = data size
+		add	ax, 15
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; ax = paragraphs required
+
+; Release least frequently used font data until there is sufficient space for
+; the requested data.
+		mov	mfulo, 0
+		mov	mfuhi, 0
+fm_lfu_loop:
+		cmp	fb_free_size, ax
+		ja	fm_sufficient_space
+		push	ax			; save paragraphs required
+		call	find_lfu		; find the lfu font
+		call	remove_lfu		; remove the lfu font
+		pop	ax			; restore paragraphs required
+		jmps	fm_lfu_loop
+
+; Sufficient space has been released.  Load the font data.  If an error
+; occurs, set the font-not-available flag.
+fm_sufficient_space:
+		pop	si
+		pop	ds			; ds:si -> header of requested
+		mov	ax, mfulo
+		mov	bx, mfuhi
+		add	ax, 1
+		adc	bx, 0
+		call	lfu_wrap_check
+		mov	.USE_COUNT_LO, ax
+		mov	.USE_COUNT_HI, bx
+		call	font_data_load
+		jnc	fm_done		; success:  done
+		or	word ptr .FLAGS_WORD, DATA_PAGED
+
+; Clean up and return.
+fm_done:
+		call	reset_current_directory
+end_font_manager:
+		pop	es
+		pop	ds
+		pop	di
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bp
+		retf
+
+
+;************************************************************************
+;* lfu_wrap_check							*
+;*	bx:ax = lfu value.						*
+;************************************************************************
+lfu_wrap_check:
+
+; If the lfu value is not reeeeeeeeeeeeeal high, nothing needs to happen.
+		test	bx, 8000h
+		jz	end_lfu_wrap_check
+
+; The lfu value is way up there.  Shove everything down a bit.
+		shr	bx, 1
+		rcr	ax, 1
+		shr	bx, 1
+		rcr	ax, 1			; update next lfu value
+
+		push	ds
+		push	dx
+		push	cx
+		mov	ds, first_font_seg	; ds:0 -> top of font chain
+lwc_loop:
+		test	word ptr .FLAGS_WORD, DATA_PAGED
+		jnz	lwc_check_multi
+		mov	cx, .USE_COUNT_HI
+		mov	dx, .USE_COUNT_LO	; cx:dx = lfu count
+		shr	cx, 1
+		rcr	dx, 1
+		shr	cx, 1
+		rcr	dx, 1			; shift it all right by two
+		mov	.USE_COUNT_HI, cx
+		mov	.USE_COUNT_LO, dx	; cx:dx = lfu count
+lwc_check_multi:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	lwc_check_next_font
+		mov	ds, .NEXT_SET_SEG
+		jmps	lwc_loop
+lwc_check_next_font:
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	lwc_loop_done
+		mov	ds, .FONT_PTR_SEG
+		jmps	lwc_loop
+lwc_loop_done:
+		pop	cx
+		pop	dx
+		pop	ds
+
+end_lfu_wrap_check:
+		ret
+
+
+;************************************************************************
+;* find_lfu								*
+;*	bx = workstation index.						*
+;************************************************************************
+find_lfu:
+		push	bx
+		push	bp
+
+; Get the beginning of the font chain and initialize search registers.
+		mov	ds, ws_font_seg[bx]
+		xor	si, si			; ds:si -> top of font chain
+		mov	di, ds
+		mov	es, di
+		mov	di, si			; es:di -> top of font chain
+		mov	ax, 07fffh
+		mov	cx, 0ffffh		; ax:cx = use count
+		xor	dx, dx			; dx = saved size
+
+; Traverse the entire font chain and find the least frequently used font.
+; If there is a tie, use the largest (file size) among the tieing.
+; Keep track of the most frequently used font, too.
+fl_traversal_loop:
+		push	ds			; save base segment
+		push	si			; save base offset
+fl_multi_loop:
+		test	word ptr .FLAGS_WORD, DATA_PAGED	; available?
+		jnz	fl_check_multi_set
+		mov	bx, .USE_COUNT_HI
+		cmp	mfuhi, bx		; check high count
+		jb	fl_save_high
+		ja	fl_lfu_check
+		mov	bp, .USE_COUNT_LO
+		cmp	mfulo, bp		; check low count
+		jnb	fl_lfu_check
+fl_save_high:
+		mov	mfuhi, bx
+		mov	mfulo, bp
+fl_lfu_check:
+		cmp	.USE_COUNT_HI, ax	; check high count
+		jb	fl_save_new
+		ja	fl_check_multi_set
+		cmp	.USE_COUNT_LO, cx	; check low count
+		jb	fl_save_new
+		ja	fl_check_multi_set
+		cmp	.FONT_FILE_DATA_SIZE, dx	; check file size
+		jb	fl_check_multi_set
+fl_save_new:
+		mov	ax, .USE_COUNT_HI	; save new high count
+		mov	cx, .USE_COUNT_LO	; save new low count
+		mov	dx, .FONT_FILE_DATA_SIZE	; save new file size
+		mov	di, ds
+		mov	es, di
+		mov	di, si			; es:di -> best choice
+fl_check_multi_set:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	fl_check_next_font
+		lds	si, .NEXT_SET_OFF	; ds:si -> next set
+		jmps	fl_multi_loop
+fl_check_next_font:
+		pop	si			; restore base offset
+		pop	ds			; restore base segment
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	end_find_lfu		; end of chain:  done
+		lds	si, .FONT_PTR_OFF	; ds:si -> next font
+		jmps	fl_traversal_loop
+
+; The least frequently used font's header is currently pointed to by es:di.
+; Move the pointer to ds:si.
+end_find_lfu:
+		mov	si, es
+		mov	ds, si
+		mov	si, di			; ds:si -> lfu font header
+		pop	bp
+		pop	bx
+		ret
+
+
+;************************************************************************
+;* remove_lfu								*
+;*	ds:0 -> least frequently used font header.			*
+;************************************************************************
+remove_lfu:
+		push	bx
+
+; Set the font-not-available flag and zero out the segment portions of the
+; data pointers.
+		or	word ptr .FLAGS_WORD, DATA_PAGED
+		mov	es, .HOR_TABLE_SEG
+		xor	di, di			; es:di -> target of move
+		mov	.HOR_TABLE_SEG, di
+		mov	.OFF_TABLE_SEG, di
+		mov	.DAT_TABLE_SEG, di
+
+; Calculate the data transfer parameters.
+		mov	ax, .FONT_FILE_DATA_SIZE
+		add	ax, 15			; for paragraph round up
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; ax = size in paragraphs
+		mov	bx, es
+		add	bx, ax
+		mov	ds, bx			; ds = source segment
+		xor	si, si			; ds:si -> source of move
+
+; The amount to transfer will be broken into the number of 8000h blocks plus
+; a remainder.
+		neg	bx
+		add	bx, fb_free_seg		; bx will be low word of size
+		xor	dx, dx			; dx will be high word of size
+		shl	bx, 1
+		rcl	dx, 1
+		shl	bx, 1
+		rcl	dx, 1
+		shl	bx, 1
+		rcl	dx, 1
+		shl	bx, 1
+		rcl	dx, 1
+		shl	bx, 1
+		rcl	dx, 1			; dx = number of 8000h pieces
+		shr	bx, 1			; bx = remaining bytes to move
+
+; Move the data.
+		push	es			; save target block segment
+rl_move_big_pieces_loop:
+		cmp	dx, 0
+		je	rl_move_remainder
+		mov	cx, 8000h
+	rep	movsb
+		mov	cx, ds
+		add	cx, 800h
+		mov	ds, cx
+		xor	si, si			; ds:si -> next source block
+		mov	cx, es
+		add	cx, 800h
+		mov	es, cx
+		xor	di, di			; es:di -> next target block
+		dec	dx
+		jmps	rl_move_big_pieces_loop
+rl_move_remainder:
+		mov	cx, bx
+	rep	movsb
+
+; Adjust the free pointer and the free size.
+rl_adjust_free:
+		sub	fb_free_seg, ax
+		add	fb_free_size, ax
+
+; Relocate all of the pointers in the font header chain which pointed above
+; the target location.
+		mov	bx, ws_index		; bx = workstation index
+		mov	ds, ws_font_seg[bx]
+		xor	si, si			; ds:si -> top of font chain
+		pop	cx			; restore target block segment
+rl_traversal_loop:
+		push	ds			; save base segment
+		push	si			; save base offset
+rl_multi_loop:
+		test	word ptr .FLAGS_WORD, DATA_PAGED	; available?
+		jnz	rl_check_multi_set
+		cmp	.HOR_TABLE_SEG, cx
+		jb	rl_check_multi_set
+		sub	.HOR_TABLE_SEG, ax
+		sub	.OFF_TABLE_SEG, ax
+		sub	.DAT_TABLE_SEG, ax
+rl_check_multi_set:
+		cmp	word ptr .NEXT_SET_SEG, 0
+		je	rl_check_next_font
+		lds	si, .NEXT_SET_OFF	; ds:si -> next set
+		jmps	rl_multi_loop
+rl_check_next_font:
+		pop	si			; restore base offset
+		pop	ds			; restore base segment
+		cmp	word ptr .FONT_PTR_SEG, 0
+		je	end_remove_lfu		; end of chain:  done
+		lds	si, .FONT_PTR_OFF	; ds:si -> next font
+		jmps	rl_traversal_loop
+
+; That's all!
+end_remove_lfu:
+		pop	bx
+		ret
+
+		end

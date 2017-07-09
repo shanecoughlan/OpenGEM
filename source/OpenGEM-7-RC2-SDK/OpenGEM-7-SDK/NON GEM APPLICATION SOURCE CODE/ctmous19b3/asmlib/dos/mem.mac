@@ -1,0 +1,81 @@
+; Assembler source library
+; Copyright (c) 2002 Arkady Belousov <ark@mos.ru>
+;
+; This library is free software; you can redistribute it and/or modify it
+; under the terms of the GNU Lesser General Public License as published by
+; the Free Software Foundation; either version 2.1 of the License, or (at
+; your option) any later version.
+;
+; This library is distributed in the hope that it will be useful,
+; but WITHOUT ANY WARRANTY; without even the implied warranty of
+; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+; GNU Lesser General Public License for more details.
+;
+; You should have received a copy of the GNU Lesser General Public
+; License along with this library; if not, write to the Free Software
+; Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+;
+
+; Import: MOVREG2 (macro.mac), MOVOFFax_ (macro.mac), MOVSEG_ (macro.mac)
+; Export: DOSGetIntr, DOSSetIntr, DOSFreeMem
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Get interrupt vector
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	[intrno]		(interrupt #; default AL)
+; Out:	ES:BX			(interrupt vector)
+; Use:	MOVREG2
+; Modf:	AH
+; Call:	INT 21/35
+;
+DOSGetIntr	macro	intrno:vararg
+		MOVREG2	ax,ah,al,35h,<intrno>
+		int	21h		; get INT in ES:BX
+		assume	es:nothing
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Set interrupt vector
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	[intrno]		(interrupt #; default AL)
+;	[hseg]:[hoff]		(new interrupt handler; default DS:DX)
+;	[hsegname]		(segment name for ASSUME DS:)
+; Out:	none
+; Use:	MOVOFFax_, MOVSEG_
+; Modf:	AH
+; Call:	INT 21/25
+;
+DOSSetIntr	macro	intrno,hseg,hsegname,hoff:vararg
+		MOVOFFax_ dx,dh,dl,<hoff>,25h,<intrno>
+		MOVSEG_	ds,<hseg>,,<hsegname>
+		int	21h		; set INT in DS:DX
+endm
+
+;ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+;			Free memory block
+;‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+;
+; In:	none
+; Arg:	[memseg]		(segment of memory block; default ES)
+;	[memsegname]		(segment name for ASSUME ES:)
+;	[message]		(error string to load into DX)
+;	[errlabel]		(where to go if error)
+; Out:	Carry flag		(set if error)
+;	AX			(errcode {7,9} if Carry set)
+; Use:	MOVSEG_
+; Modf:	none
+; Call:	INT 21/49
+;
+DOSFreeMem	macro	memseg,memsegname,message,errlabel
+		MOVSEG_	es,<memseg>,,<memsegname>
+		mov	ah,49h
+		int	21h		; free memory
+		MOVOFF_	dx,<message>
+	ifnb <errlabel>
+		jc	errlabel
+	endif
+endm

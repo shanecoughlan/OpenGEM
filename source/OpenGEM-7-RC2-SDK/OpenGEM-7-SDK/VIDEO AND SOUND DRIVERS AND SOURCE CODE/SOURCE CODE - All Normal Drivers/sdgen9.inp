@@ -1,0 +1,19 @@
+sdgen9.vga= entry, gen_zyxg,
+jmptbl,
+monobjy,
+monout,
+copttext,
+isin,
+dummy,
+gen_drv,
+gepttxt1,
+gepttxt2,
+geptdraw,
+genmblit,
+genblit,
+genpat,
+enddseg,
+vgacp,
+vgafont[nop]
+
+                                                                                                                                                                                                                

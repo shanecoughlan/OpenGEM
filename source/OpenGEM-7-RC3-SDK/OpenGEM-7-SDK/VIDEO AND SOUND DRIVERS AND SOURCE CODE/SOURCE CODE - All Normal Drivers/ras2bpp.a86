@@ -1,0 +1,2775 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     *
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                *
+;*                                                                      *
+;*                  Historical Copyright                                *
+;*                                                                      *
+;*                                                                      *
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+
+		if not GSX
+public	COPY_RFM
+public	d_add_yover
+;******************************************************************************
+;
+; COPY_RFM
+;
+; Bit block transfer
+;	
+; Inputs:	Source Memory Form Definition Block	
+;		  Source Form Memory pointer (Offset, Segment)
+;		  Source Form Width and Height in Pixels
+;		  Source Form Width in Words
+;		  Source Form Format (0 = Device, 1 = Standard)
+;		  No. of Memory Planes in Source Form
+;		Writing Mode (Intin)
+;		Source Rectangle Upper and Lower X, Y Coordinates (Ptsin)
+;
+;		Ditto for Destination Form
+; Process:	The main process of bitblt does the following:
+;		    { load source (ds:si)
+;		      align bits (with destination bit position)
+;		      apply writing mode
+;		      store into destination (es:di) }
+;		    the process is repeated for the rectangle width (bytes)
+;		        and repeated for the rectangle height (scan lines).
+;    
+;		There are several additional considerations:
+;
+;		1. The start and end bytes (rectangle fringe) need special
+;		   blt mask so that bits outside the copy rectangle are
+;		   NOT altered.
+;
+;		2. A fast fetch and store innerloop blt can be used for
+;		   the words between the first and the last byte.
+;
+;		3. Overlapping source and destination rectangle must be
+;		   handled so source data is not destroyed before copy
+;		   occurs.  Only rectangles (source and detination) that
+;		   are in the same Form (defined by its form address) will
+;		   be checked, rectangles that are in different forms will
+;		   automatically marked as not overlapping.
+;
+;		5. Normal bitblt copies from left to right (x) and from
+;		   top to bottom (y), depending on the overlapping condition,
+;		   copy direction may need to be changed to start from 
+;		   right to left or bottom to top, (but never both backwards).
+;
+;		6. Memory Forms have either a standard format or device
+;		   dependent format or it may be the physical screen (indicated
+;		   by zero address).  The physical address computation module
+;		   need to check the form format flag in order to setup 
+;		   the source (ds:si) and destination address (es:di)
+;
+;		7. When loading the first source byte, depending on the start
+;		   bit position (x), it may be neccessary to load 2 bytes
+;		   for the first copy.  (for example: start copy from source
+;		   bit position 7 into destination bit position 2).
+;
+;******************************************************************************
+;	contrl(7,8)  -	source mfdb ptr  (seg:off)
+;	contrl(9,10)  -  dest. mfdb ptr  (seg:off)
+;	intin(0)     -  writing mode
+;
+;we need device specific stuff for addressing
+if mono_mem
+	public	buff_loop
+endif
+dseg
+if mono_port or mono_mem
+	extrn	current_bank:byte
+endif		
+	extrn	XMN_CLIP:WORD,XMX_CLIP:WORD	;clipping region
+	extrn	YMN_CLIP:WORD,YMX_CLIP:WORD	;
+	extrn	CLIP:WORD      			;clip on or off
+;
+	extrn	WORD_MASK_TABLE:word		;masks for fringes
+	extrn	CONTRL:word
+	extrn	PTSIN:word
+	extrn	INTIN:word
+if (num_planes gt 1) and not ( segment_access )
+	extrn	plane_port_tbl:byte
+	extrn	plane_read_tbl:byte
+endif
+	extrn	plane_loop_count:byte
+	extrn	MAP_COL:word
+	public	COPYTRAN
+COPYTRAN	DW	0			;TRANSPARENT VS OPAQUE FLAG
+tran_blt_tbl	db	0			; replace fg = 0/bg = 0
+		db	3			; 	  fg = 1/bg = 0
+		db	0ch			; 	  fg = 0/bg = 1
+		db	0fh			; 	  fg = 1/bg = 1	 
+		db	4			; trans   fg = 0
+		db	7			;	  fg = 1
+		db	4				  
+		db	7
+		db	6			; xor
+		db	6
+		db	6
+		db	6
+		db	1			; erase	  bg = 0
+		db	1
+		db	13			;	  bg = 1
+		db	13
+;
+sdad		dw	0      			;source dot address
+ddad		dw	0      			;destination dot address
+yover		dw	0      			;source and dest overlap
+;
+optable		dw	offset op0, offset op1, offset op2, offset op3
+		dw	offset op4, offset op5, offset op6, offset op7
+		dw	offset op8, offset op9, offset opa, offset opb
+		dw	offset opc, offset opd, offset ope, offset opf
+;
+woptable	dw	offset wop0, offset wop1, offset wop2, offset wop3
+		dw	offset wop4, offset wop5, offset wop6, offset wop7
+		dw	offset wop8, offset wop9, offset wopa, offset wopb
+		dw	offset wopc, offset wopd, offset wope, offset wopf
+;
+cseg				;need variables in code segment
+if mono_port or mono_mem
+source_bank	db	0
+dest_bank	db	0
+blt_bank_dir	db	0
+endif
+backwards	dw	0      	;must copy to buffer first
+;
+extrn	expand_byte:word
+extrn	CONCAT:near
+if wy700
+extrn	current_port:byte	;wy700 control port value
+extrn	word_port:word		;word pointer to wy700 control port value
+source_port	db	0	;wy700 source port value
+dest_port	db	0	;wy700 destination port value
+source_mem	db	0	;source is memory flag (wy700)
+dest_mem	db	0	;destination is memory flag (wy700)
+endif
+if mono_multisegs
+	extrn	graph_seg_high:word		;get the data from cs:	
+endif
+;
+PTSIN_SEG	dw	0
+s_off		dw	0	;start of source form
+s_seg		dw	0	;seg of source form
+source_next	dw	0	;width of source form
+if num_planes gt 1
+source_next_seg	dw	0	; segment offset in paragraphs to next form
+source_next_off	dw	0
+endif 
+s_format	dw	0	;form format flag
+s_planes	dw	0	;number of planes
+swrap		dw	0	;segment wrap
+tran_blt_map	dw	0
+if mono_multisegs or mono_xrxfp
+s_seg_wrap	dw	0
+d_seg_wrap	dw	0
+endif
+;
+d_off		dw	0	;start of dest form
+d_seg		dw	0	;seg of dest form
+dest_next	dw	0	;add this to get to next line in buffer
+if num_planes gt 1
+dest_next_seg	dw	0
+dest_next_off	dw	0
+endif
+d_format	dw	0	;form format flag
+d_planes	dw	0	;number of planes
+dwrap		dw	0	;segment wrap
+;
+width		dw	0	;width of area in pixels
+height		dw	0	;height of area in pixels
+;
+dest_words	dw	0	;number of words in the middle
+right_mask	dw	0	;
+left_mask	dw	0	;fringes of destination to be affected
+rotate_mask	dw	0	;overlap between words in inner loop
+;
+rotate		dw	offset rol_call	;where to jump to align source
+logicop		dw	offset op1	;pixel operation address
+wlogicop	dw	offset wop1	;pixel operation address
+blttype		dw	single_loop	;how big an area are we affecting
+; 
+COPY_RFM:
+	push	bp
+	push	ds
+	push	es
+;
+; Start by setting up for mem->mem
+;
+	mov	ax, offset mm_destgetbx
+	mov	destgetbx, ax
+	mov	ax, offset mm_destputax
+	mov	destputax, ax
+	mov	ax, offset mm_deststosw
+	mov	deststosw, ax
+	mov	ax, offset mm_srcmovsw
+	mov	srcmovsw, ax
+	mov	ax, offset mm_srclodsw
+	mov	srclodsw, ax
+	mov	ax, offset mm_srcgetdx
+	mov	srcgetdx, ax
+	mov	ax, offset mm_srcincsi
+	mov	srcincsi, ax
+	mov	ax, offset mm_srcdecsi
+	mov	srcdecsi, ax
+	mov	ax, offset mm_destincdi
+	mov	destincdi, ax
+	mov	ax, offset mm_destdecdi
+	mov	destdecdi, ax
+;
+	mov	ax, ds
+	mov	PTSIN_SEG,ax		; save the data seg
+	mov	di, offset CONTRL
+	mov	bx, 14[di]	
+	mov	es, 16[di]		;source mfdb
+	mov	ax, es:[bx]		;offset of source form
+	mov	s_off,ax
+	mov	cx, es:2[bx]		;segment of source form
+	mov	s_seg,cx
+	or	ax,cx
+	jnz	calc_source_mfdb_width
+	jmp	source_screen
+calc_source_mfdb_width:
+	mov	ax, es:8[bx]		;form width in words
+	shl	ax,1			;in bytes
+	mov	source_next,ax
+	cmp	COPYTRAN, 0
+	jnz	get_smfdb_tran
+if num_planes gt 1
+	mul 	es: word ptr 6[bx]	; multiply bytes/line * lines
+	mov	dx, ax
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1			; ax = paragraphs
+	mov	source_next_seg,ax
+	and	dx, 0fh
+	mov	source_next_off,dx
+endif
+	mov	ax, es:10[bx]		;format
+	mov	s_format,ax
+	mov	ax, es:12[bx]		;number of planes
+	mov	s_planes,ax
+	cmp	ax, num_planes		;test if a legit xfer
+	jz	j_get_d_mfdb
+plane_count_wrong:
+	pop	es
+	pop	ds
+	pop	bp
+	ret
+get_smfdb_tran:
+if num_planes gt 1
+	mov	source_next_seg,0
+	mov	source_next_off,0
+endif
+	mov	s_planes,1
+	mov	bx, intin+2
+	shl	bx,1
+	mov	ax, MAP_COL[bx]
+	mov	bx, intin+4
+	shl	bx, 1
+	mov	bx, MAP_COL[bx]
+	mov	dx, intin
+	dec	dx
+	mov	ah,dl	
+	and	ah, 3				; make sure mode 0-3
+	mov	cx, 4
+get_tran_bltmap:
+	mov	bh, ah
+	ror	al, 1
+	rcr	dx, 1
+	ror	bl, 1
+	rcr	dx, 1
+	ror	bh, 1
+	rcr	dx, 1
+	ror	bh, 1
+	rcr	dx, 1
+	loop	get_tran_bltmap
+	mov	tran_blt_map,dx
+j_get_d_mfdb:
+	jmps	get_d_mfdb
+
+source_screen:
+	mov	ax, offset sm_srclodsw
+	mov	srclodsw, ax
+	mov	ax, offset sm_srcgetdx
+	mov	srcgetdx, ax
+	mov	ax, offset sm_srcmovsw
+	mov	srcmovsw, ax
+	mov	ax, offset sm_srcincsi
+	mov	srcincsi, ax
+	mov	ax, offset sm_srcdecsi
+	mov	srcdecsi, ax
+	mov	source_next,0		;flag for screen source
+;
+; XXX This doesn't handle the weird case in Plantronics 16-colour where
+; you have to add on next_plane for plane 1->2 but not 0->1 or 2->3
+;
+if (num_planes gt 2) and ( segment_access )
+	mov	source_next_seg, next_plane
+	mov	source_next_off, 0
+endif
+if (num_planes gt 2) and not(segment_access )
+	mov	source_next_seg, 0
+	mov	source_next_off, 0
+endif
+if (num_planes eq 2)
+	mov	source_next_seg, 0
+	mov	source_next_off, 0
+endif
+;
+get_d_mfdb:
+	mov	bx, 18[di]	
+	mov	es, 20[di]		;dest mfdb
+	mov	ax, es:[bx]		;offset of dest form
+	mov	d_off,ax
+	mov	cx, es:2[bx]		;segment of dest form
+	mov	d_seg,cx
+	or	ax,cx
+	jz	dest_screen
+	mov	ax, es:8[bx]		;form width in words
+	shl	ax,1			;in bytes
+	mov	dest_next,ax
+if num_planes gt 1
+	mul 	es: word ptr 6[bx]	; multiply bytes/line * lines
+	mov	dx, ax
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1
+	shr	ax, 1			; ax = paragraphs
+	mov	dest_next_seg,ax
+	and	dx, 0fh
+	mov	dest_next_off,dx
+endif
+	mov	ax, es:10[bx]		;format
+	mov	d_format,ax
+	mov	ax, es:12[bx]		;number of planes
+	mov	d_planes,ax
+	cmp	ax, num_planes
+	jz	rfm_clip
+	jmp	plane_count_wrong
+dest_screen:
+	mov	ax, 05555h
+	mov	cs:plane_mask, ax
+	mov	ax, offset ms_destgetbx
+	mov	destgetbx, ax
+	mov	ax, offset ms_destputax
+	mov	destputax, ax
+	mov	ax, offset ms_deststosw
+	mov	deststosw, ax
+	mov	ax, offset ms_destincdi
+	mov	destincdi, ax
+	mov	ax, offset ms_destdecdi
+	mov	destdecdi, ax
+;
+; If we were doing screen->mem, set the movsw to screen->screen. Otherwise
+; set it to mem->screen.
+;
+	mov	ax, srcmovsw
+	cmp	ax, offset ss_srcmovsw	;If it's already screen->screen, 
+	jz	both_screen		;leave well alone.
+	cmp	ax, offset sm_srcmovsw
+	mov	ax, offset ss_srcmovsw
+	jz	both_screen
+	mov	ax, offset ms_srcmovsw
+both_screen:
+	mov	srcmovsw, ax
+	mov	dest_next,0		;flag for screen source
+;
+;
+; XXX This doesn't handle the weird case in Plantronics 16-colour where
+; you have to add on next_plane for plane 1->2 but not 0->1 or 2->3
+;
+if (num_planes gt 2) and ( segment_access )
+	mov	dest_next_seg, next_plane
+	mov	dest_next_off, 0
+endif
+if (num_planes gt 2) and not(segment_access )
+	mov	dest_next_seg, 0
+	mov	dest_next_off, 0
+endif
+if (num_planes eq 2)
+	mov	dest_next_seg, 0
+	mov	dest_next_off, 0
+endif
+;
+rfm_clip:
+	cmp	CLIP,FALSE
+	je	copy_rfm_noclip
+	cmp	d_seg,0
+	jne	copy_rfm_noclip		; if dest is not screen then forget it
+	call	clip_rfm
+copy_rfm_noclip:	
+	mov	yover,FALSE
+	mov	backwards,FALSE
+if mono_port or mono_mem
+	mov	blt_bank_dir, 1
+	mov	ax, s_seg
+	or	ax, d_seg
+	jnz	copy_rfm_mono_port_ntsctosc
+	mov	backwards, TRUE
+copy_rfm_mono_port_ntsctosc:
+endif
+	mov	ax,s_seg
+	cmp	ax,d_seg
+	jne	no_overlap
+	mov	bx,s_off
+	cmp	bx,d_off
+	jne	no_overlap
+;	
+	mov	ax,PTSIN + 2		;source y UL
+	mov	cx,PTSIN + 10		;dest y	UL
+	cmp	ax,cx
+	je	xchk
+	jg	no_overlap
+	mov	ax,PTSIN + 6
+	cmp	ax,cx
+	jl	no_overlap
+	mov	yover,TRUE		;have to copy from bottom to top
+if mono_port or mono_mem
+	mov	blt_bank_dir, -1
+endif
+	jmps	no_overlap
+xchk:	mov	ax,PTSIN
+	cmp	ax,PTSIN + 8		;source and dest x
+	jge	no_overlap
+	mov	backwards,TRUE
+no_overlap:
+	mov	ax,PTSIN + 2		;source y UL
+	mov	bx,PTSIN
+	mov	cx,PTSIN + 6
+	mov	dx,PTSIN + 4		
+	sub	dx,bx
+	inc	dx
+	mov	width,dx   		;compute source size
+	sub	cx,ax
+	inc	cx
+	mov	height,cx
+;
+source_address:
+	mov	ax,PTSIN + 2		;source y UL
+	mov	bx,PTSIN
+	cmp	yover,TRUE
+	jne	t_source
+	mov	ax,PTSIN + 6		;source y LL
+t_source:
+	mov	cx,source_next
+	cmp	cx,0
+	je	source_concat
+	call	not_screen_address
+	mov	sdad,bx
+	add	di,s_off		;add in base address
+	mov	si,di
+	mov	swrap,0
+if wy700
+	mov	cs:source_mem,1		;source is from memory
+	mov	cs:source_port,0
+endif
+if mono_multisegs or mono_xrxfp
+	mov	ax, s_seg
+	mov	s_seg_wrap, ax
+endif
+	jmps	s_add_done
+source_concat:
+	call	screen_address
+if wy700
+	mov	al,cs:current_port
+	mov	cs:source_port,al
+	mov	cs:source_mem,0		;source is from screen
+endif
+	mov	sdad, bx		; source rect. dot position
+	mov	si,di	
+	mov	ax,NEXT_LINE		;screen size equate
+	mov	source_next,ax
+	mov	ax,true_to_first
+	mov	swrap,ax		;screen segment wrap
+if mono_xrxfp
+	mov	s_seg, es
+	cmp	s_seg, graph_plane		;see if the wrap is the other
+	jnz	source_concat_seg
+	mov	s_seg_wrap, graph_plane_high
+	jmps	s_add_done
+source_concat_seg:
+	mov	s_seg_wrap, graph_plane
+endif
+if mono_multisegs
+	mov	s_seg, es
+	cmp	s_seg, seg_low		;see if the wrap is the other
+	jnz	source_concat_seg
+	mov	s_seg_wrap, seg_high
+	jmps	s_add_done
+source_concat_seg:
+	mov	s_seg_wrap, seg_low
+endif
+;
+if not ( mono_xrxfp or mono_multisegs )
+	mov	ax, graph_plane
+	mov	s_seg, ax		; init the segment register
+endif
+;							       
+if mono_port or mono_mem
+	mov	al, current_bank
+	mov	source_bank, al
+endif
+s_add_done:
+	cmp	yover,TRUE
+	jne	dest_address
+	neg	source_next
+	mov	ax,true_to_last
+	mov	swrap,ax		;screen segment wrap
+dest_address:
+	mov	ax,PTSIN + 10		;dest y UL
+	mov	bx,PTSIN + 8
+	cmp	yover,TRUE
+	jne	t_dest
+	mov	ax,PTSIN + 14		;dest y LL
+t_dest:
+	mov	cx,dest_next
+	cmp	cx,0
+	je	dest_concat
+	call	not_screen_address
+	mov	ddad,bx
+	add	di,d_off		;add in base address
+	mov	dwrap,0
+if wy700
+	mov	cs:dest_mem,1		;destination is to memory
+	mov	cs:dest_port,0
+endif
+if mono_multisegs or mono_xrxfp
+	mov	ax, d_seg
+	mov	d_seg_wrap, ax
+endif
+	jmps	d_add_done
+dest_concat:
+	call	screen_address
+if wy700
+	mov	al,cs:current_port
+	mov	cs:dest_port,al
+	mov	cs:dest_mem,0		;destination is to screen
+endif
+	mov	ddad, bx		; dest. rect. dot position
+	mov	ax,NEXT_LINE		;screen size equate
+	mov	dest_next,ax
+	mov	ax,true_to_first
+	mov	dwrap,ax		;screen segment wrap
+;
+if mono_xrxfp 
+	mov	d_seg, es
+	cmp	d_seg, graph_plane	;see if the wrap is the other
+	jnz	dest_concat_seg
+	mov	d_seg_wrap, graph_plane_high
+	jmps	d_add_done
+dest_concat_seg:
+	mov	d_seg_wrap, graph_plane
+endif
+;
+if mono_multisegs
+	mov	d_seg, es
+	cmp	d_seg, seg_low		;see if the wrap is the other
+	jnz	dest_concat_seg
+	mov	d_seg_wrap, seg_high
+	jmps	d_add_done
+dest_concat_seg:
+	mov	d_seg_wrap, seg_low
+endif
+;
+if not ( mono_multisegs or mono_xrxfp )
+	mov	ax, graph_plane
+	mov	d_seg, ax		; init the segment register
+endif
+;							       
+if mono_port or mono_mem
+	mov	al, current_bank
+	mov	dest_bank, al
+endif
+d_add_done:
+	cmp	yover,TRUE
+	jne	address_done
+d_add_yover:
+	neg	dest_next
+	mov	ax,true_to_last
+	mov	dwrap,ax	;screen segment wrap
+address_done:
+if wy700
+	push	ax
+	push	dx
+	mov	al,cs:source_port
+	mov	ah,cs:dest_port
+
+	cmp	cs:dest_mem,1		;is the destination in memory?
+	je	set_port		;yes, don't set screen bank
+
+	xchg	ah,al
+	cmp	cs:source_mem,1		;is the source in memory?
+	je	set_port		;yes, don't set screen bank
+
+	and	al,11111110b		;set up the screen banks
+	and	ah,11111101b
+	or	al,ah
+set_port:
+	mov	dx,3dfh
+	out	dx,al
+	mov	cs:current_port,al
+	pop	dx
+	pop	ax
+endif
+	call	blt
+blt_done:
+	pop	es
+	pop	ds
+	pop	bp
+	ret
+;
+not_screen_address:
+	mov	di,bx
+	and	bx,0fh
+	shr	di,1
+	shr	di,1
+	shr	di,1			;make a byte address
+	and	di,0fffeh		;make it even byte address
+	mul	cx			;get mem address of start corner
+	add	di,ax
+ 	ret
+;
+screen_address:
+	call	concat			; get mem address and dot address
+	xor	bh, bh			; concat sets bl only
+	shr	bx, 1			; Go from bit count to dot count
+;
+; Align on a dword boundary, with BX = dot count 0-15.
+;
+	test	di, 1
+if not byte_swap
+	jz	slowbyte
+	or	bx, 4
+else
+	jnz	slowbyte
+	or	bx, 4
+endif	
+slowbyte:
+	and	di, 0FFFEh		;Align to word boundary
+	ret
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;	do a normal blt from (ds:si) to (es:di)
+;	    uses ds:si		source
+;		 es:di		destination
+;		 sdad,ddad	address within word
+;		 width,height	width and length of area to copy
+;		 source_next	add this to get to next line in source
+;		 dest_next	add this to get to next line in destination
+;		
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+blt:
+	mov	ax,offset ror_call      ;assume rotate right to align
+	mov	cx,ddad
+	sub	cx,sdad	
+	mov	bx,cx
+	jns	do_ror			;if tsdad>tddad we rotate left
+	neg	cx
+	mov	ax,offset rol_call
+	add	bx,16			;make positive
+;
+do_ror:
+	shl	bx,1
+	mov	bx,word_mask_table[bx]
+if byte_swap
+	xchg	bh,bl
+endif	
+	not	bx
+	mov	rotate_mask,bx		;get the overlap for middle words
+	neg	cx
+	add	cx,0fh			;smaller cx is longer shift
+	shl	cx,1
+	shl	cx,1			;4 bytes for a 32 bit shift
+	add	ax,cx
+	mov	rotate,ax		;address to jump to to do cl shifts
+;
+get_masks:
+	mov	bx,ddad
+	shl	bx,1
+	mov	ax,word_mask_table[bx]	;get mask for destination dot address
+if byte_swap
+	xchg	ah,al
+endif	
+	mov	left_mask,ax		;1's are where we have good data
+;
+	shr	bx,1			;set it back to tddad
+	add	bx,width
+	cmp	bx,10h
+	ja	double_dest		;if bx<10 then it fits in one word
+	shl	bx,1
+	mov	ax,word_mask_table[bx]	;get mask for right side of BLT
+if byte_swap
+	xchg	ah,al
+endif	
+	not	ax
+	and	left_mask,ax 		;put the two masks together
+	mov	right_mask,0h		;we'll use this mask for skews
+	mov	dest_words,0		;number of words to write for middle
+	mov	blttype,offset single_loop
+	jmps	masks_done
+;
+double_dest:				;otherwise there are two masks
+	mov	blttype,offset double_loop
+	mov	ax,bx			;get tdad+width
+	shr	ax,1
+	shr	ax,1
+	shr	ax,1
+	shr	ax,1
+	dec	ax
+	mov	dest_words,ax		;number of words to write for middle
+	and	ax,ax
+	jnz	multi_dest
+	mov	ax,sdad
+	add	ax,width
+	cmp	ax,20h
+	jb	do_rightmask		;source fits in two words too
+multi_dest:
+	mov	blttype,offset multi_right
+	cmp	rotate,offset rol_call
+	jb	do_rightmask
+	mov	blttype,offset multi_left
+;
+do_rightmask:
+	and	bx,0fh
+	jnz	not_null
+	dec	dest_words		;last word is full so its a fringe
+	mov	bx,10h
+not_null:
+	shl	bx,1
+	mov	ax,word_mask_table[bx]
+if byte_swap
+	xchg	ah,al
+endif	
+	not	ax			;1's mean we have valid data
+	mov	right_mask,ax
+masks_done:
+if num_planes eq 1
+	cmp	COPYTRAN,0
+	jz	not_blt_tran
+	mov	bx, tran_blt_map
+	and	bx, 0fh
+	mov	al, tran_blt_tbl[bx]
+	xor	ah,ah
+	mov	intin, ax
+not_blt_tran:
+endif
+;
+if (num_planes gt 1) and not( segment_access )
+;
+	mov	plane_loop_count, num_planes	; load up the plane count
+	mov	bx, 1			; set up the mask bit for plane/color
+bltmasks_done_0:
+	mov	dx, plane_sel_port
+	mov	al, plane_port_tbl[bx]
+	out	dx, al			; output the byte for the port
+	mov	dx, plane_read_port
+	mov	al, plane_read_tbl[bx]
+	out	dx, al
+
+	shl	bx, 1			; move the bit mask over one
+	push	bx			; save the mask
+	push	si
+	push	di
+	push	es
+	push	ds
+	push	height
+	cmp	COPYTRAN,0
+	jz	not_blt_tran
+	mov	bx, tran_blt_map
+	and	bx, 0fh
+	mov	al, tran_blt_tbl[bx]
+	xor	ah,ah
+	mov	intin, ax
+	mov	cl,4
+	shr	tran_blt_map, cl
+not_blt_tran:
+	call	bltmasks_done_1
+	pop	height			; save the blit scan line count
+	pop	ds
+	pop	es
+	pop	di
+	pop	si
+	pop	bx
+	mov	ax,source_next_seg
+	add	s_seg,ax		; move source pointer
+	add	si,source_next_off	
+	mov	ax,dest_next_seg
+	add	d_seg,ax
+	add	di,dest_next_off	; move dest pointer
+	rol	plane_mask, 1
+	dec	plane_loop_count	; is line done
+	jnz	bltmasks_done_0
+	ret
+bltmasks_done_1:
+;
+endif
+;
+if (num_planes gt 1) and ( segment_access )
+;
+	mov	plane_loop_count, num_planes		; load up the plane count
+bltmasks_done_0:
+	push	si
+	push	di
+	push	es
+	push	ds
+	push	height
+	cmp	COPYTRAN,0
+	jz	not_blt_tran
+	mov	bx, tran_blt_map
+	and	bx, 0fh
+	mov	al, tran_blt_tbl[bx]
+	xor	ah,ah
+	mov	intin, ax
+	mov	cl, 4
+	shr	tran_blt_map, cl
+not_blt_tran:
+	call	bltmasks_done_1
+	pop	height
+	pop	ds
+	pop	es
+	pop	di
+	pop	si
+	mov	ax,source_next_seg
+	add	s_seg,ax		; move source pointer
+	add	si,source_next_off	
+	mov	ax,dest_next_seg
+	add	d_seg,ax
+	add	di,dest_next_off	; move dest pointer
+	rol	plane_mask, 1
+	dec	plane_loop_count	; is line done
+	jnz	bltmasks_done_0
+	ret
+bltmasks_done_1:
+;
+endif	
+	mov	bx,INTIN
+	and	bx, 0fh			; make sure in range
+	cmp	bx,03h			;replace mode?
+	jne	not_rep
+	mov	ax,sdad
+	cmp	ax,ddad
+	jne	not_rep			;we have to rotate
+	cmp	backwards,FALSE
+	jne	not_rep
+	jmp	rep_norotates
+if mono_xrxfp
+not_back_r:
+	jmp	not_back
+endif
+not_rep:	
+	shl	bx,1
+	mov	ax,optable[bx]
+	mov	logicop,ax		;call this address to do logicop
+	mov	ax,woptable[bx]
+	mov	wlogicop,ax		;logicop for words
+;
+	mov	cx,height
+;
+	mov	es,d_seg
+	mov	ds,s_seg		;set up segments
+;
+	cmp	backwards,FALSE
+if mono_xrxfp
+	je	not_back_r
+else
+	je	not_back
+endif
+buff_loop:				;we have to blt into a buffer first
+if mono_mem
+	push	es
+	mov	ax, graph_plane
+	mov	es, ax
+	mov	al, source_bank
+	mov	es:.mono_mem_off, al
+	pop	es
+	push	ax
+endif
+if mono_port
+	mov	al, source_bank
+	mov	dx, plane_sel_port
+	out	dx, al
+	push	ax			;save the source bank
+endif
+	mov	es,PTSIN_SEG
+	push	si
+	push	di
+	mov	di,offset PTSIN
+	mov	cx,dest_words
+	inc	cx			;one for left fringe
+	inc	cx			;one for right fringe
+	inc	cx			;in case dest = source - 1;
+	shl	cx, 1			;in case source is screen
+	rep	movsw			;copy from source to buffer
+	mov	si,offset PTSIN
+	pop	di
+	mov	ax,es
+if mono_xrxfp
+	push	ds
+endif		
+	mov	ds,ax	
+if mono_mem
+	mov	ax, graph_plane
+	mov	es, ax
+	mov	al, dest_bank
+	mov	es:.mono_mem_off, al
+endif
+	mov	es,d_seg
+	mov	cx,1
+if mono_port
+	mov	al, dest_bank
+	mov	dx, plane_sel_port
+	out	dx, al
+endif
+ 	call	not_back		;copy from buffer to dest
+if mono_xrxfp
+	pop	ds
+endif
+if mono_multisegs or mono_xrxfp
+	mov	d_seg, es
+endif
+	pop	si
+if mono_xrxfp
+	test	source_next, 8000h		; is this a negative number
+	jnz	buff_loop_next_xrxneg
+	add	si, source_next
+	jnc	buffnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	buff_loop_next_xrx
+	mov	ax, graph_plane
+	add	si, bytes_line
+	jmps	buff_loop_next_xrx
+buff_loop_next_xrxneg:
+	add	si, source_next
+	jc	buffnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	buff_loop_next_xrx
+	mov	ax, graph_plane_high
+	sub	si, bytes_line
+buff_loop_next_xrx:
+	mov	s_seg, ax
+	mov	ds, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	source_next, 8000h
+	jz	buff_loop_next_positive
+	add	si, source_next
+	jnc	buff_loop_new_source
+	jmps	buff_loop_nowrap
+buff_loop_next_positive:
+	add	si, source_next
+	jnc	buff_loop_nowrap
+buff_loop_new_source:
+	mov	ds, s_seg_wrap
+	mov	s_seg, ds
+buff_loop_nowrap:
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	source_add
+else
+	add	si,source_next		;get to next line
+endif
+endif
+if multiseg
+	cmp	si, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	buffnowrap
+	add	si, swrap		; wrap back to graphics seg.
+endif
+buffnowrap:
+	mov	ds,s_seg		;set up segment
+if mono_port or mono_mem 
+	pop	ax
+	mov	source_bank, al
+	cmp	si, ss:true_plane_size
+	jc	mono_buffnowrap
+	call	blit_mono_port_incsrc
+mono_buffnowrap:
+endif
+	dec	height
+	jnz	buff_loop
+	ret
+;
+not_back:
+if wy700
+	push	cs:word_port
+endif
+	mov	bp,left_mask		;get the first mask
+	call	blttype			;do the fastest one
+if wy700
+	pop	cs:word_port
+	push	ax
+	push	dx
+	mov	al,cs:current_port
+	mov	dx,3dfh
+	out	dx,al
+	pop	dx
+	pop	ax
+endif
+	ret
+;
+single_loop:				;destination is a single word
+	call	srclodsw
+	call	srcgetdx		;get two words (may only use one)
+	call	destgetbx	
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	dh,dl
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	and	ax,bp			;strip off garbage
+	call	logicop	
+if not byte_swap
+	xchg	ah,al
+endif
+	call	destputax
+	call	srcdecsi		;reset source address
+if mono_xrxfp
+	test	source_next, 8000h		; is this a negative number
+	jnz	single_loop_sseg_xrxneg
+	add	si, source_next
+	jnc	ssnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	single_loop_sseg_xrx
+	mov	ax, graph_plane
+	add	si, bytes_line
+	jmps	single_loop_sseg_xrx
+single_loop_sseg_xrxneg:
+	add	si, source_next
+	jc	ssnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	single_loop_sseg_xrx
+	mov	ax, graph_plane_high
+	sub	si, bytes_line
+single_loop_sseg_xrx:
+	mov	ds, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	source_next, 8000h
+	jz	single_loop_sseg
+	add	si, source_next
+	jc	ssnowrap
+	mov	ds, s_seg_wrap		;get the data from cs:	
+	jmps	ssnowrap
+single_loop_sseg:
+	add	si, source_next
+	jnc	ssnowrap
+	mov	ds, s_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+ if wy700				; jn 12-1-87, move in not mono_multise
+	call	source_add
+ else
+	add	si,source_next		;get to next line
+ endif	; wy700
+else
+ if mono_xrxfp
+	add	si,source_next		;get to next line
+ endif
+endif
+if multiseg
+	cmp	si, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	ssnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	si, ss:true_plane_size
+	jc	ssnowrap
+	call	blit_mono_port_incsrc
+endif
+ssnowrap:
+if mono_xrxfp
+	jmps	single_loop_dseg_xrxtst
+endif
+if mono_multisegs
+	test	dest_next, 8000h
+	jz	single_loop_dseg
+	add	di, dest_next
+	jc	sdnowrap
+	mov	es, d_seg_wrap		;get the data from cs:	
+	jmps	sdnowrap
+single_loop_dseg:
+	add	di, dest_next
+	jnc	sdnowrap
+	mov	es, d_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	dest_add
+else
+	add	di, dest_next
+endif
+endif
+if multiseg
+	cmp	di, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	sdnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	di, ss:true_plane_size
+	jc	sdnowrap
+	call	blit_mono_port_incdst
+endif
+sdnowrap:
+	loop	single_loop
+	ret
+if mono_xrxfp
+single_loop_dseg_xrxtst:
+	test	dest_next, 8000h		; is this a negative number
+	jnz	single_loop_dseg_xrxneg
+	add	di, dest_next
+	jnc	sdnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	single_loop_dseg_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	single_loop_dseg_xrx
+single_loop_dseg_xrxneg:
+	add	di, dest_next
+	jc	sdnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	single_loop_dseg_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+single_loop_dseg_xrx:
+	mov	es, ax
+	pop	ax
+	jmps	sdnowrap
+endif
+;
+double_loop:				;do a line (two fringes)
+	call	srclodsw
+	call	srcgetdx		;get two words (may only use one)
+	call	destgetbx		;get dest
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	dh,dl
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the first one back
+	and	ax,bp			;strip off garbage
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	call	destputax		;store the result
+	mov	ax,dx			;get the other half (it got shifted in)
+	call	destincdi
+	call	destgetbx		;get the next word
+;
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	bp, right_mask
+	and	ax,bp			;strip off unused bits
+	call	logicop	     	
+if not byte_swap
+	xchg	ah,al
+endif
+	call	destputax		;save the result
+	call	destdecdi		;reset dest address
+	call	srcdecsi		;reset source address
+if mono_xrxfp
+	jmps	double_loop_sseg_xrxtst
+endif
+if mono_multisegs
+	test	source_next, 8000h
+	jz	double_loop_sseg
+	add	si, source_next
+	jc	dsnowrap
+	mov	ds, s_seg_wrap		;get the data from cs:	
+	jmps	dsnowrap
+double_loop_sseg:
+	add	si, source_next
+	jnc	dsnowrap
+	mov	ds, s_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	source_add
+else
+	add	si,source_next		;get to next line
+endif
+endif
+if multiseg
+	cmp	si, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	dsnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	si, ss:true_plane_size
+	jc	dsnowrap
+	call	blit_mono_port_incsrc
+endif
+
+	jmps	dsnowrap
+ddnowrap:
+	loop	double_loop
+	ret
+if mono_xrxfp
+double_loop_sseg_xrxtst:
+	test	source_next, 8000h		; is this a negative number
+	jnz	double_loop_sseg_xrxneg
+	add	si, source_next
+	jnc	dsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	double_loop_sseg_xrx
+	mov	ax, graph_plane
+	add	si, bytes_line
+	jmps	double_loop_sseg_xrx
+double_loop_sseg_xrxneg:
+	add	si, source_next
+	jc	dsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	double_loop_sseg_xrx
+	mov	ax, graph_plane_high
+	sub	si, bytes_line
+double_loop_sseg_xrx:
+	mov	ds, ax
+	pop	ax
+	jmps	dsnowrap
+endif
+;
+dsnowrap:
+if mono_xrxfp
+	test	dest_next, 8000h		; is this a negative number
+	jnz	double_loop_dseg_xrxneg
+	add	di, dest_next
+	jnc	ddnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	double_loop_dseg_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	double_loop_dseg_xrx
+double_loop_dseg_xrxneg:
+	add	di, dest_next
+	jc	ddnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	double_loop_dseg_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+double_loop_dseg_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	dest_next, 8000h
+	jz	double_loop_dseg
+	add	di, dest_next
+	jc	ddnowrap
+	mov	es, d_seg_wrap		;get the data from cs:	
+	jmps	ddnowrap
+double_loop_dseg:
+	add	di, dest_next
+	jnc	ddnowrap
+	mov	es, d_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp ) 
+if wy700
+	call	dest_add
+else
+	add	di, dest_next
+endif
+endif
+if multiseg
+	cmp	di, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	ddnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	di, ss:true_plane_size
+	jc	ddnowrap
+	call	blit_mono_port_incdst
+endif
+	jmp	ddnowrap
+multi_left:
+	push	cx
+	mov	cx,dest_words
+	push	si
+	push	di
+	call	srclodsw
+	call	srcgetdx		;get two words
+	call	srcincsi		;point at next word
+	call	destgetbx		;get dest
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	dh,dl
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the mask for left fringe
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	call	deststosw		;store the result
+;
+	mov	bp,rotate_mask
+words_left:
+	mov	bx,dx			;save what's  left of this word
+	and	bx,bp			;clear out garbage at end of word
+	call	srcgetdx		;get next_word
+	call	srcincsi
+if not byte_swap
+	xchg	dh,dl
+endif
+	call	rotate			;rotate good bits into ax
+	not	bp
+	and	ax,bp			;strip off garbage
+	not	bp
+	xor	ax,bx			;put leftovers in front of word
+	jcxz	left_done		;we have to mask the last word
+	call	wlogicop
+if not byte_swap
+	xchg	ah,al
+endif
+	call	deststosw
+	dec	cx
+	jmp	words_left
+;
+left_done:
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	bp, right_mask		;load the mask we need
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	call	destputax		;save the result
+	pop	di
+	pop	si
+if mono_xrxfp
+	test	source_next, 8000h		; is this a negative number
+	jnz	long_loop_sseg_xrxneg
+	add	si, source_next
+	jnc	lsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	long_loop_sseg_xrx
+	mov	ax, graph_plane
+	add	si, bytes_line
+	jmps	long_loop_sseg_xrx
+long_loop_sseg_xrxneg:
+	add	si, source_next
+	jc	lsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	long_loop_sseg_xrx
+	mov	ax, graph_plane_high
+	sub	si, bytes_line
+long_loop_sseg_xrx:
+	mov	ds, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	source_next, 8000h
+	jz	long_loop_sseg
+	add	si, source_next
+	jc	lsnowrap
+	mov	ds, s_seg_wrap		;get the data from cs:	
+	jmps	lsnowrap
+long_loop_sseg:
+	add	si, source_next
+	jnc	lsnowrap
+	mov	ds, s_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	source_add
+else
+	add	si,source_next		;get to next line
+endif
+endif
+if multiseg
+	cmp	si, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	lsnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	si, ss:true_plane_size
+	jc	lsnowrap
+	call	blit_mono_port_incsrc
+endif
+lsnowrap:
+if mono_xrxfp
+	test	dest_next, 8000h		; is this a negative number
+	jnz	long_loop_dseg_xrxneg
+	add	di, dest_next
+	jnc	ldnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	long_loop_dseg_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	long_loop_dseg_xrx
+long_loop_dseg_xrxneg:
+	add	di, dest_next
+	jc	ldnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	long_loop_dseg_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+long_loop_dseg_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	dest_next, 8000h
+	jz	long_loop_dseg
+	add	di, dest_next
+	jc	ldnowrap
+	mov	es, d_seg_wrap		;get the data from cs:	
+	jmps	ldnowrap
+long_loop_dseg:
+	add	di, dest_next
+	jnc	ldnowrap
+	mov	es, d_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp ) 
+if wy700
+	call	dest_add
+else
+	add	di, dest_next
+endif
+endif
+if multiseg
+	cmp	di, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	ldnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	di, ss:true_plane_size
+	jc	ldnowrap
+	call	blit_mono_port_incdst
+endif
+ldnowrap:
+	pop	cx
+	dec	cx
+	jcxz	ldone
+	jmp	multi_left
+;
+ldone:
+	ret
+;
+multi_right:
+	push	cx
+	mov	cx,dest_words
+	push	si
+	push	di
+	call	srclodsw
+	call	destgetbx		;get dest
+;
+if not byte_swap
+	xchg	ah,al
+	xchg	bh,bl			;is this a 16 bit machine?
+endif
+;
+	call	rotate			;align source and destination
+	mov	bp, left_mask		;get the mask for left fringe
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	call	deststosw		;store the result
+;
+	mov	bp,rotate_mask
+words_right:
+	mov	bx,dx			;get bits left over from last shift
+	and	bx,bp			;save the high bits of the word
+	call	srclodsw		;get new word
+if not byte_swap
+	xchg	ah,al
+endif
+	call	rotate			;rotate it down toward dx
+	not	bp
+	and	ax,bp			;strip off garbage at high bits
+	not	bp
+	xor	ax,bx	       		;put leftovers in front of word
+	jcxz	right_done     		;is this the right fringe word?
+	call	wlogicop
+if not byte_swap
+	xchg	ah,al
+endif
+	call	deststosw
+	dec	cx
+	jmps	words_right
+;
+right_done:
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	bp, right_mask		;load the mask we need
+	and	ax,bp
+	call	logicop
+if not byte_swap
+	xchg	ah,al
+endif
+	call	destputax		;save the result
+	pop	di
+	pop	si
+if mono_xrxfp
+	test	source_next, 8000h		; is this a negative number
+	jnz	right_loop_sseg_xrxneg
+	add	si, source_next
+	jnc	rsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	right_loop_sseg_xrx
+	mov	ax, graph_plane
+	add	si, bytes_line
+	jmps	right_loop_sseg_xrx
+right_loop_sseg_xrxneg:
+	add	si, source_next
+	jc	rsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	right_loop_sseg_xrx
+	mov	ax, graph_plane_high
+	sub	si, bytes_line
+right_loop_sseg_xrx:
+	mov	ds, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	source_next, 8000h
+	jz	right_loop_sseg
+	add	si, source_next
+	jc	rsnowrap
+	mov	ds, s_seg_wrap		;get the data from cs:	
+	jmps	rsnowrap
+right_loop_sseg:
+	add	si, source_next
+	jnc	rsnowrap
+	mov	ds, s_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	source_add
+else
+	add	si,source_next		;get to next line
+endif
+endif
+if multiseg
+	cmp	si, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	rsnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	si, ss:true_plane_size
+	jc	rsnowrap
+	call	blit_mono_port_incsrc
+endif
+rsnowrap:
+if mono_xrxfp
+	test	dest_next, 8000h		; is this a negative number
+	jnz	right_loop_dseg_xrxneg
+	add	di, dest_next
+	jnc	rdnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	right_loop_dseg_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	right_loop_dseg_xrx
+right_loop_dseg_xrxneg:
+	add	di, dest_next
+	jc	rdnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	right_loop_dseg_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+right_loop_dseg_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	dest_next, 8000h
+	jz	right_loop_dseg
+	add	di, dest_next
+	jc	rdnowrap
+	mov	es, d_seg_wrap		;get the data from cs:	
+	jmps	rdnowrap
+right_loop_dseg:
+	add	di, dest_next
+	jnc	rdnowrap
+	mov	es, d_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	dest_add
+else
+	add	di, dest_next
+endif
+endif
+if multiseg
+	cmp	di, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	rdnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	di, ss:true_plane_size
+	jc	rdnowrap
+	call	blit_mono_port_incdst
+endif
+rdnowrap:
+	pop	cx
+	dec	cx
+	jcxz	rdone
+	jmp	multi_right
+;
+rdone:
+	ret
+;
+ror_call:				;call in here someplace to do
+	rcr	ax,1			;a 32 bit shift right
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+	rcr	ax,1
+	rcr	dx,1
+ror_one:
+	rcr	ax,1
+	rcr	dx,1
+ror_none:
+	ret
+;
+rol_call:				;this is a 32 bit left shift
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+	rcl	dx,1
+	rcl	ax,1
+rol_none:
+	ret
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	writing mode operations
+;	on entry, ax = Source word
+;	          bx = Dest word
+;		  bp = mask (1's represent useable bits)
+;	on exit,  ax = new destination word [D']
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+op0:	
+if not rev_vid
+	not	bp  			; mode 0  D'= 0
+	and	bx,bp
+	not	bp
+	mov	ax,bx
+	ret
+else
+	or	bx,bp			; mode 15 D'= 1
+	mov	ax,bx
+	ret
+endif
+;
+op1:	
+if not rev_vid
+	not	bp			; mode 1  D'= S and D
+	or	ax,bp
+	not	bp
+	and	ax,bx
+	ret
+else
+	or	ax,bx			; mode 7  D'= S or D  (or mode)
+	ret	
+endif
+;
+op2:
+if not rev_vid
+	not	bx			; mode 2  D'= S and [not D]
+	and	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	not	bx			; mode 11 D'= S or [not D]
+	or	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+
+endif
+;
+op3:	not	bp			; mode 3  D'= S (replace mode)	
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret	
+;
+op4:	
+if not rev_vid
+	not	ax			; mode 4  D'= [not S] and D (erase)
+	and	ax,bx
+	ret
+else
+	not	ax			; mode 13 D'= [not S] or D
+	and	ax,bp
+	or	ax,bx
+	ret
+endif
+;
+op5:	mov	ax,bx			; mode 5  D'= D
+	ret
+;
+op6:
+if not rev_vid
+	xor	ax,bx			; mode 6  D'= S xor D (xor mode)
+	ret
+else
+	xor	ax,bx			; mode 9 D'= not [S xor D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+endif	
+;
+op7:	
+if not rev_vid
+	or	ax,bx			; mode 7  D'= S or D  (or mode)
+	ret	
+else
+	not	bp			; mode 1  D'= S and D
+	or	ax,bp
+	not	bp
+	and	ax,bx
+	ret
+endif
+;
+op8:
+if not rev_vid
+	or	ax,bx			; mode 8  D'= not [S or D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	and	ax,bx			; mode 14 D'= not [S and D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+endif	  
+;
+op9:
+if not rev_vid
+	xor	ax,bx			; mode 9 D'= not [S xor D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	xor	ax,bx			; mode 6  D'= S xor D (xor mode)
+	ret
+endif
+;
+opa:	mov	ax,bx			; mode 10 D'= not D
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx	
+ 	ret
+;
+opb:
+if not rev_vid
+	not	bx			; mode 11 D'= S or [not D]
+	or	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	not	bx			; mode 2  D'= S and [not D]
+	and	ax,bx
+	not	bx
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+
+endif
+;
+opc:	not	ax			; mode 12 D'= not S
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret	
+;
+opd:
+if not rev_vid
+	not	ax			; mode 13 D'= [not S] or D
+	and	ax,bp
+	or	ax,bx
+	ret
+else
+	not	ax			; mode 4  D'= [not S] and D (erase)
+	and	ax,bx
+	ret
+endif
+;
+ope:
+if not rev_vid
+	and	ax,bx			; mode 14 D'= not [S and D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+else
+	or	ax,bx			; mode 8  D'= not [S or D]
+	not	ax
+	and	ax,bp
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+	ret
+endif
+;
+opf:	
+if not rev_vid
+	or	bx,bp			; mode 15 D'= 1
+	mov	ax,bx
+	ret
+else
+	not	bp  			; mode 0  D'= 0
+	and	bx,bp
+	not	bp
+	mov	ax,bx
+	ret
+endif
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	word writing mode operations
+;	on entry, ax = Source word
+;	          bx = Dest word
+;	on exit,  ax = new destination word [D']
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+wop0:	
+	xor	ax,ax  			; mode 1  D'= 0
+if rev_vid
+	not	ax
+endif
+	ret
+;
+wop1:					; mode 2 D'= S and D
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	and	ax,bx
+else
+	or	ax,bx
+endif
+	ret
+;
+wop2:					; mode 3  D'= S and [not D]
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	bx
+	and	ax,bx
+	ret
+else
+	not	bx
+	or	ax,bx
+	ret
+endif
+;
+wop3:					; mode 4  D'= S (replace mode)	
+	ret	
+;
+wop4:					; mode 5  D'= [not S] and D (erase)
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	ax
+	and	ax,bx
+	ret
+else
+	not	ax
+	or	ax,bx
+	ret
+endif
+;
+wop5:					; mode 6  D'= D
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	ax,bx	
+	ret
+;
+wop6:					; mode 7  D'= S xor D (xor mode)
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+
+	xor	ax,bx
+if rev_vid
+	not	ax
+endif
+	ret	
+;
+
+wop7:					; mode 8  D'= S or D  (or mode)
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	or	ax,bx
+	ret	
+else
+	and	ax,bx
+	ret
+endif
+;
+wop8:					; mode 9  D'= not [S or D]
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	or	ax,bx
+	not	ax
+	ret	  
+else
+	and	ax,bx
+	not	ax
+	ret
+endif
+;
+wop9:					; mode 10 D'= not [S xor D]
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	xor	ax,bx
+if not rev_vid
+	not	ax
+endif
+	ret
+;
+wopa:					; mode 11 D'= not D
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+	mov	ax,bx	
+	not	ax
+ 	ret
+;
+wopb:					; mode 12 D'= S or [not D]
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	bx
+	or	ax,bx
+	ret
+else
+	not	bx
+	and	ax,bx
+	ret	
+endif
+wopc:					; mode 13 D'= not S
+	not	ax
+	ret	
+;
+wopd:					; mode 14 D'= [not S] or D
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid
+	not	ax
+	or	ax,bx
+	ret
+else
+	not	ax
+	and	ax,bx
+	ret
+endif
+;
+wope:					; mode 15 D'= not [S and D]
+	call	destgetbx		;get destination
+if not byte_swap
+	xchg	bh,bl
+endif
+if not rev_vid 
+	and	ax,bx
+	not	ax
+	ret
+else
+	or	ax,bx
+	not	ax
+	ret
+endif
+wopf:
+	xor	ax,ax			; mode 16 D'= 1
+if not rev_vid
+	not	ax
+endif
+	ret
+;
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; * *	clip raster area
+;	on entry, PTSIN contains the rectangles
+;	on exit,  PTSIN contains altered rectangles
+;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+clip_rfm:
+	mov	ax, PTSIN + 10	; get the miny of dest rect
+	mov	bx, YMN_CLIP
+	mov	cx, PTSIN + 14	; get the maxy of dest rect
+	cmp	ax, bx		; if dest_miny < clip_miny
+	jge	clip_rfm_1
+	cmp	cx, bx		; if dest_maxy >= clip_miny
+	jl	clip_rfm_reject
+	mov	PTSIN + 10, bx  ; dest_miny = clip_miny
+	sub	bx, ax		; find delta of clip top y
+	add	PTSIN + 2, bx	; move the source up properly
+	mov	ax, PTSIN + 10
+clip_rfm_1:
+	mov	bx, YMX_CLIP
+	cmp	cx, bx		; if dest maxy > clip_maxy
+	jle	clip_rfm_2
+	cmp	ax, bx		; if dest mainy <= clip_maxy
+	jg	clip_rfm_reject
+	mov	PTSIN + 14, bx	; dest maxy = clip maxy
+	sub	cx, bx		; get the delta y
+	sub	PTSIN + 6, cx	; adjust the destination properly
+clip_rfm_2:
+	mov	ax, PTSIN + 8	; get the minx of dest rect
+	mov	bx, XMN_CLIP
+	mov	cx, PTSIN + 12
+	cmp	ax, bx		; if dest minx < clip minx
+	jge	clip_rfm_3
+	cmp	cx, bx		; if dest maxx >= clip minx
+	jl	clip_rfm_reject
+	mov	PTSIN + 8, bx	; dest minx = clip minx
+	sub	bx, ax		; find delta of clip top x
+	add	PTSIN, bx	; move the source up properly
+	mov	ax, PTSIN + 8
+clip_rfm_3:
+	mov	bx, XMX_CLIP
+	cmp	cx, bx		; if dest maxx > clip maxx
+	jle	clip_rfm_4
+	cmp	ax, bx		; if dest minx <= clip maxx
+	jg	clip_rfm_reject
+	mov	PTSIN + 12, bx
+	sub	cx, bx
+	sub	PTSIN + 4, cx	; adjust source
+clip_rfm_4:
+	ret
+clip_rfm_reject:
+	pop	ax		;dump return address
+	jmp	blt_done
+;*******************************
+; replace mode no rotate
+;
+;*******************************	
+rep_norotates:
+	mov	es,d_seg
+	mov	ds,s_seg		;set up segments
+	mov	bp,left_mask
+	mov	dx,right_mask
+scroll_loop:
+	push	si
+	push	di
+	call	srclodsw
+if not byte_swap
+	xchg	ah,al
+endif
+	and	ax,bp
+	call	destgetbx
+if not byte_swap
+	xchg	bh,bl
+endif
+	not	bp
+	and	bx,bp
+	not	bp
+	xor	ax,bx
+if not byte_swap
+	xchg	ah,al
+endif
+	call	deststosw
+;
+	mov	cx,dest_words
+	call	srcmovsw
+;
+	call	srclodsw
+if not byte_swap
+	xchg	ah,al
+endif
+	and	ax,dx
+	call	destgetbx
+if not byte_swap
+	xchg	bh,bl
+endif
+	not	dx
+	and	bx,dx
+	not	dx
+	xor	ax,bx
+if not byte_swap
+	xchg	ah,al
+endif
+	call	deststosw
+;
+	pop	di
+	pop	si
+if mono_xrxfp
+	test	source_next, 8000h		; is this a negative number
+	jnz	rep_loop_sseg_xrxneg
+	add	si, source_next
+	jnc	repsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	rep_loop_sseg_xrx
+	mov	ax, graph_plane
+	add	si, bytes_line
+	jmps	rep_loop_sseg_xrx
+rep_loop_sseg_xrxneg:
+	add	si, source_next
+	jc	repsnowrap
+	push	ax
+	mov	ax, ds
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	rep_loop_sseg_xrx
+	mov	ax, graph_plane_high
+	sub	si, bytes_line
+rep_loop_sseg_xrx:
+	mov	ds, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	source_next, 8000h
+	jz	rep_loop_sseg
+	add	si, source_next
+	jc	repsnowrap
+	mov	ds, s_seg_wrap		;get the data from cs:	
+	jmps	repsnowrap
+rep_loop_sseg:
+	add	si, source_next
+	jnc	repsnowrap
+	mov	ds, s_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	source_add
+else
+	add	si,source_next		;get to next line
+endif
+endif
+if multiseg
+	cmp	si, ss:true_plane_size		; check gone past the edge of graphics ?
+ 	jc	repsnowrap
+	add	si, swrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	si, ss:true_plane_size
+	jc	repsnowrap
+	call	blit_mono_port_incsrc
+endif
+	jmps	repsnowrap
+repdnowrap:
+   	dec	height
+	jnz	scroll_loop
+	ret
+repsnowrap:
+if mono_xrxfp
+	test	dest_next, 8000h		; is this a negative number
+	jnz	rep_loop_dseg_xrxneg
+	add	di, dest_next
+	jnc	repdnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane
+	mov	ax, graph_plane_high
+	jz	rep_loop_dseg_xrx
+	mov	ax, graph_plane
+	add	di, bytes_line
+	jmps	rep_loop_dseg_xrx
+rep_loop_dseg_xrxneg:
+	add	di, dest_next
+	jc	repdnowrap
+	push	ax
+	mov	ax, es
+	cmp	ax, graph_plane_high
+	mov	ax, graph_plane
+	jz	rep_loop_dseg_xrx
+	mov	ax, graph_plane_high
+	sub	di, bytes_line
+rep_loop_dseg_xrx:
+	mov	es, ax
+	pop	ax
+endif
+if mono_multisegs
+	test	dest_next, 8000h
+	jz	rep_loop_dseg
+	add	di, dest_next
+	jc	repdnowrap
+	mov	es, d_seg_wrap		;get the data from cs:	
+	jmps	repdnowrap
+rep_loop_dseg:
+	add	di, dest_next
+	jnc	repdnowrap
+	mov	es, d_seg_wrap
+endif
+if not ( mono_multisegs or mono_xrxfp )
+if wy700
+	call	dest_add
+else
+	add	di, dest_next
+endif
+endif
+if multiseg
+	cmp	di, ss:true_plane_size		; check gone past the edge of graphics ?
+	jc	repdnowrap
+	add	di, dwrap	; wrap back to graphics seg.
+endif
+if mono_port or mono_mem
+	cmp	di, ss:true_plane_size
+	jc	repdnowrap
+	call	blit_mono_port_incdst
+endif
+	jmps	repdnowrap
+if mono_port
+blit_mono_port_incsrc:
+	mov	ax, ds		; is the source the screen?
+	cmp	ax, graph_plane
+	jz	blit_mono_port_incsrc_isscreen
+	add	si, swrap
+	ret
+blit_mono_port_incsrc_isscreen:
+	sub	si, ss:true_plane_size
+	mov	bx, dx
+	mov	al, source_bank
+	mov	dx, plane_sel_port
+	add	al, blt_bank_dir
+	out	dx, al
+	mov	source_bank, al
+	mov	dx, bx
+	ret
+blit_mono_port_incdst:
+	mov	ax, es		; is the dest the screen?
+	cmp	ax, graph_plane
+	jz	blit_mono_port_incdst_isscreen
+	add	di, dwrap
+	ret
+blit_mono_port_incdst_isscreen:
+	sub	di, ss:true_plane_size
+	mov	bx, dx
+	mov	al, dest_bank
+	mov	dx, plane_sel_port
+	add	al, blt_bank_dir
+	out	dx, al
+	mov	dest_bank, al
+	mov	dx, bx
+	ret
+endif
+if mono_mem
+blit_mono_port_incsrc:
+	mov	ax, ds		; is the source the screen?
+	cmp	ax, graph_plane
+	jz	blit_mono_port_incsrc_isscreen
+	add	si, swrap
+	ret
+blit_mono_port_incsrc_isscreen:
+	cmp	blt_bank_dir, 1	; is this downward or up
+	jnz	blit_mono_port_incsrc_isscreen_up
+	sub	si, ss:true_plane_size
+	mov	al, source_bank
+	inc	al
+	cmp	al, 0c7h	;must we wrap?
+	jnz	blit_mono_port_incsrc_isscreen_downok
+	mov	al, 0c0h
+	add	si, bytes_line
+blit_mono_port_incsrc_isscreen_downok:
+	mov	.mono_mem_off, al
+	mov	source_bank, al
+	ret
+blit_mono_port_incsrc_isscreen_up:
+	add	si, ss:true_plane_size
+	mov	al, source_bank
+	cmp	al, 0c0h	;must we wrap
+	jz	blit_mono_port_incsrc_isscreen_up_wrap
+	dec	al
+	mov	.mono_mem_off, al
+	mov	source_bank, al
+	ret
+blit_mono_port_incsrc_isscreen_up_wrap:
+	mov	al, 0c6h
+	sub	si, bytes_line
+	mov	.mono_mem_off, al
+	mov	source_bank, al
+	ret
+blit_mono_port_incdst:
+	mov	ax, es		; is the dest the screen?
+	cmp	ax, graph_plane
+	jz	blit_mono_port_incdst_isscreen
+	add	di, dwrap
+	ret
+blit_mono_port_incdst_isscreen:
+	cmp	blt_bank_dir, 1	; is this downward or up
+	jnz	blit_mono_port_incdst_isscreen_up
+	sub	di, ss:true_plane_size
+	mov	al, dest_bank
+	inc	al
+	cmp	al, 0c7h	;must we wrap?
+	jnz	blit_mono_port_incdst_isscreen_downok
+	mov	al, 0c0h
+	add	di, bytes_line
+blit_mono_port_incdst_isscreen_downok:
+	mov	es:.mono_mem_off, al
+	mov	dest_bank, al
+	ret
+blit_mono_port_incdst_isscreen_up:
+	add	di, ss:true_plane_size
+	mov	al, dest_bank
+	cmp	al, 0c0h	;must we wrap
+	jz	blit_mono_port_incdst_isscreen_up_wrap
+	dec	al
+	mov	es:.mono_mem_off, al
+	mov	dest_bank, al
+	ret
+blit_mono_port_incdst_isscreen_up_wrap:
+	mov	al, 0c6h
+	sub	di, bytes_line
+	mov	es:.mono_mem_off, al
+	mov	dest_bank, al
+	ret
+endif
+if wy700
+
+source_add:
+	push	ax			;save registers
+	push	dx
+	mov	al,cs:current_port	;get current control port value
+	mov	dx,3dfh			;point to control port
+	xor	al,3			;switch banks
+	out	dx,al
+	mov	cs:current_port,al	;save new value
+	mov	dx,source_next		;get the offset
+	cmp	cs:source_mem,1		;is the source from memory?
+	je	wy700_add1		;yes, always do the add
+
+	test	al,1			;otherwise, only add offset if on even
+	lahf				;line and offset is positive or
+	shl	ah,1			;if on odd line and offset
+	xor	ah,dh			;is negative
+	jns	wy700_end1
+wy700_add1:
+	add	si,dx			;add offset
+wy700_end1:
+	pop	dx			;restore registers
+	pop	ax
+	ret
+
+dest_add:
+	push	ax			;save registers
+	push	dx
+	mov	al,cs:current_port	;get current control port value
+;	mov	dx,3dfh			;point to control port
+;	xor	al,3			;switch banks
+;	out	dx,al
+;	mov	cs:current_port,al	;save new value
+	mov	dx,dest_next		;get the offset
+	cmp	cs:dest_mem,1		;is the destination to memory?
+	je	wy700_add2		;yes, always do the add
+
+	test	al,2			;otherwise, only add offset if on even
+	lahf				;line and offset is positive or
+	shl	ah,1			;if on odd line and offset
+	xor	ah,dh			;is negative
+	jns	wy700_end2
+wy700_add2:
+	add	di,dx			;add offset
+wy700_end2:
+	pop	dx			;restore registers
+	pop	ax
+	ret
+endif
+;
+; 2bpp variables
+;
+plane_mask	dw	0
+destgetbx	dw	0
+destputax	dw	0
+deststosw	dw	0
+srclodsw	dw	0
+srcgetdx	dw	0
+srcmovsw	dw	0
+srcincsi	dw	0
+srcdecsi	dw	0
+destincdi	dw	0
+destdecdi	dw	0
+;
+; Memory -> Memory load/store functions
+;
+mm_srcincsi:
+	inc	si
+	inc	si
+	ret
+;
+mm_srcdecsi:
+	dec	si
+	dec	si
+	ret
+;
+mm_destincdi:
+	inc	di
+	inc	di
+	ret
+;
+mm_destdecdi:
+	dec	di
+	dec	di
+	ret
+;
+mm_destgetbx:
+	mov	bx,es:[di]		;get dest
+	ret
+
+mm_destputax:
+	mov	es:[di],ax		;store the result
+	ret
+
+mm_deststosw:
+	stosw
+	ret
+;
+mm_srcgetdx:
+	mov	dx, [si]
+	ret
+;
+mm_srclodsw:
+	lodsw
+	ret
+;
+mm_srcmovsw:
+	rep movsw
+	ret
+;
+; This is silly - copying from screen to screen by pretending the screen
+; is two planes and painstakingly scattering and gathering the bits of each
+; word. But a simple MOVSW won't work here - firstly because the rest of the
+; blit code is still assuming the screen has two planes, secondly because
+; I'd have to write screen->screen versions of all the other store/retrieve
+; functions, and thirdly I'd have to work out what it thinks it's doing about
+; the fringes of everything (probably have to double the masks or some such).
+;
+ss_srcmovsw:
+	test	cx,cx
+	jz	ss_nomovsw
+	call	sm_srclodsw
+	call	ms_deststosw
+	loop	ss_srcmovsw
+ss_nomovsw:
+	ret
+;
+sm_srcmovsw:
+	test	cx,cx
+	jz	ss_nomovsw
+	call	sm_srclodsw
+	stosw
+	loop	sm_srcmovsw
+	ret
+;
+sm_srclodsw:
+	push	cx
+	push	bx
+	lodsw
+	call	mdgb_1	;Encode first word
+	lodsw
+	call	mdgb_1	;Encode second word
+	mov	ax, bx
+	pop	bx
+	pop	cx
+	ret
+;
+sm_srcgetdx:
+	push	cx
+	push	bx
+	push	ax
+	lodsw
+	call	mdgb_1	;Encode first word
+	mov	ax, [si]
+	dec	si
+	dec	si
+	call	mdgb_1	;Encode second word
+	mov	dx, bx
+	pop	ax
+	pop	bx
+	pop	cx
+	ret
+;
+sm_srcincsi:
+	inc	si
+	inc	si
+	inc	si
+	inc	si
+	ret
+;
+sm_srcdecsi:
+	dec	si
+	dec	si
+	dec	si
+	dec	si
+	ret
+
+ms_destgetbx:
+	push	ax
+	push	cx
+	mov	ax, es:[di]
+	call	mdgb_1
+	inc	di	
+	inc	di
+	mov	ax, es:[di]
+	call	mdgb_1
+	dec	di
+	dec	di
+	pop	cx
+	pop	ax
+	ret
+;
+mdgb_1:
+	mov	cx, 8
+	and	ax, cs:plane_mask
+if not byte_swap
+	xchg	ah, al
+endif
+mdgb_2:
+	shr	bx, 1
+	test	al, 3
+	jz	mdgb_3
+	or	bh, 80h
+mdgb_3:	shr	ax, 1
+	shr	ax, 1
+	loop	mdgb_2
+	ret
+;	
+ms_srcmovsw:
+	test	cx,cx
+	jz	ss_nomovsw
+	lodsw
+	call	ms_deststosw
+	loop	ms_srcmovsw
+	ret
+;
+ms_deststosw:
+	call	ms_destputax
+ms_destincdi:
+	inc	di
+	inc	di
+	inc	di
+	inc	di
+	ret
+
+ms_destdecdi:
+	dec	di
+	dec	di
+	dec	di
+	dec	di
+	ret
+;
+ms_destputax:
+	push	bx
+	push	dx
+	mov	dx, plane_mask		;DX = bits to paint
+	mov	bl, al			;Put the low byte first
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]	;Stretch byte to double width
+if not byte_swap
+	xchg	bh, bl
+endif
+	and	bx, dx
+	not	dx			;DX = bits to stay
+	and	es:[di], dx		;Mask it out of destination
+	or	es:[di], bx		;OR in the new data
+	not	dx			;DX = bits to paint
+	inc	di
+	inc	di
+	mov	bl, ah
+	mov	bh, 0
+	shl	bx, 1
+	mov	bx, cs:expand_byte[bx]	;Stretch again
+if not byte_swap
+	xchg	bh, bl
+endif
+	and	bx, dx
+	not	dx
+	and	es:[di], dx
+	or	es:[di], bx
+	dec	di
+	dec	di
+	pop	dx
+	pop	bx	
+	ret
+
+
+	endif ; not GSX

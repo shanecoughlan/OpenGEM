@@ -1,0 +1,1614 @@
+;************************************************************************
+;*       Copyright 1999, Caldera Thin Clients, Inc.                     * 
+;*       This software is licenced under the GNU Public License.        *
+;*       Please see LICENSE.TXT for further information.                * 
+;*                                                                      * 
+;*                  Historical Copyright                                * 
+;*									*
+;*									*
+;*									*
+;*  Copyright (c) 1987, Digital Research, Inc. All Rights Reserved.	*
+;*  The Software Code contained in this listing is proprietary to	*
+;*  Digital Research, Inc., Monterey, California and is covered by U.S.	*
+;*  and other copyright protection.  Unauthorized copying, adaptation,	*
+;*  distribution, use or display is prohibited and may be subject to 	*
+;*  civil and criminal penalties.  Disclosure to others is prohibited.	*
+;*  For the terms and conditions of software code use refer to the 	*
+;*  appropriate Digital Research License Agreement.			*
+;*									*
+;************************************************************************
+;
+
+;
+; This is the bit of my disassembly of UDUNI9.VGA (ViewMAX/1), split out to 
+; cover the functions and variables of MONOBJ.C.
+;
+
+	cseg
+;
+; External subroutines
+;
+	extrn	RECTFILL:near
+	extrn	GCHR_KEY:near
+	extrn	HIDE_CUR:near,DIS_CUR:near, I_COLMAP:near
+	extrn	st_fl_ptr:near, CLEARMEM:near, S_COLMAP:near
+if GSX
+	extrn	GLOC_KEY:near, GCHC_KEY:near
+else
+	extrn	ex_timv:near
+	extrn	TRAN_FM:near
+	extrn	COPY_RFM:near
+	extrn	GSHIFT_S:near
+endif
+	dseg
+;
+; External variables
+;
+	extrn	X1:word, X2:word, Y1:word, Y2:word
+	extrn	PTSIN:word, INTIN:word, PTSOUT:word, INTOUT:word, CONTRL:word
+	extrn	FG_BP_1:word, LSTLIN:word
+	if not GSX
+	extrn	COPYTRAN:word
+	endif
+	extrn	XMX_CLIP:word, XMN_CLIP:word, YMX_CLIP:word, YMN_CLIP:word
+	extrn	DEV_TAB:word, CLIP:word, ud_lstyl:word, WRT_MODE:word
+	extrn	term_ch:word, gcurx:word, gcury:word, MOUSE_BT:word
+	extrn	HIDE_CNT:word, MAP_COL:word
+	extrn	SIZ_TAB:word, NEXT_PAT:word, udpt_np:word, FLIP_Y:word
+
+	public	line_qw, xrad, yrad, mark_scale, fill_int, n_steps
+	public	num_qc_lines, str_mode, fill_index, fill_qper
+	public	line_index, fill_per, val_mode, angle, mark_qi, line_qi
+	public	fill_qi, yc, xc, mark_qc, line_end, s_fill_per, patptr
+	public	chc_mode, loca_mode, s_patptr, s_begsty, es_endsty
+	public	beg_ang, end_ang, del_ang, line_beg, line_end, bez_flag
+	public	fill_style, fill_qc, line_qc, q_circle
+	public	fill_miny, fill_maxy, fill_color, line_color, line_width
+	public	write_qm, mark_color, patmsk, start, s_nxtpat, s_patmsk
+	public	mark_index, mark_height
+
+	if not GSX
+	public	vsl_udsty
+	public	dro_cpyfm
+	public	drt_cpyfm
+	public 	v_show_c
+	public	v_hide_c
+	public	vq_mouse_status
+	public	vq_key_s
+	public	vsl_ends
+	public	vsf_perimeter
+	public	s_clip
+	public	vqi_mode
+	endif
+
+	cseg
+	public	dr_recfl
+	public	arb_corner
+	public	v_nop
+	public	vsf_interior, v_choice, v_locator, v_valuator
+	public	vsf_style, vswr_mode, vsm_color
+	public	vsl_width, vsl_type, vsm_type, vq_color, v_string
+	public	vsin_mode, vsf_color, vsm_height
+	public	vsl_color
+
+;
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+;;
+; Start of monobj.c
+;;
+
+;		S u b r	o u t i	n e
+
+v_nop:
+					; cseg:35C4p ...
+		retn	
+
+
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+v_clrwk:
+		push	bp
+		mov	bp, sp
+		call	CLEARMEM
+		pop	bp
+		retn	
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+v_updwk:
+		push	bp
+		mov	bp, sp
+		pop	bp
+		retn	
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+vs_color:
+		push	bp
+		mov	bp, sp
+		call	S_COLMAP
+		pop	bp
+		retn	
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsl_type:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, 1
+		mov	bx, INTIN
+		dec	bx
+		cmp	bx, 7
+		mov	CONTRL+8, ax
+		mov	line_index, bx
+		jge	vsl_type1
+		test	bx, bx
+		jns	vsl_type2
+
+vsl_type1:				; CODE XREF: vsl_type+18j
+		mov	line_index, 0
+
+vsl_type2:				; CODE XREF: vsl_type+1Cj
+		mov	ax, line_index
+		inc	ax
+		mov	line_qi, ax
+		mov	INTOUT,	ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsl_width:
+		push	bp
+		sub	sp, 12h
+		mov	bp, sp
+;
+; Limit the requested line width to a reasonable value.
+;
+		cmp	word ptr PTSIN,	1
+		jge	vsl_width1
+		mov	word ptr PTSIN,	1
+		jmps	vsl_width2
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsl_width1:				; CODE XREF: vsl_width+Bj
+		cmp	word ptr PTSIN,	MAX_L_WIDTH
+		jle	vsl_width2
+		mov	word ptr PTSIN,	MAX_L_WIDTH
+;
+; Make the line width an odd number (if it was even, decrease it by 1).
+;
+vsl_width2:				; CODE XREF: vsl_width+13j
+					; vsl_width+1Aj
+		mov	ax, word ptr PTSIN
+		dec	ax	;(((width - 1) / 2 ) * 2 ) +1
+		mov	bx, 2
+		cwd	
+		idiv	bx
+		shl	ax, 1
+		inc	ax
+		mov	bx, 1
+		mov	word ptr PTSOUT+2, 0
+		mov	word ptr PTSOUT, ax
+		mov	line_qw, ax
+		mov	line_width, ax
+		mov	word ptr PTSIN,	ax
+		dec	ax
+		mov	CONTRL+4, bx
+		jnz	vsl_width3
+;
+; If width was being set to 1, that's easy.
+;
+		add	sp, 12h
+		pop	bp
+		retn	
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsl_width3:				; CODE XREF: vsl_width+49j
+		xor	ax, ax
+		mov	bx, line_width
+		inc	bx
+		mov	8[bp],	ax
+		mov	ax, bx
+		mov	cx, 2
+		cwd	
+		idiv	cx
+		mov	10[bp], ax
+		shl	ax, 1
+		mov	bx, 3
+		sub	bx, ax
+		mov	word ptr 4[bp], 0
+		mov	12[bp], bx
+
+vsl_width4:				; CODE XREF: vsl_width+89j
+		mov	ax, 4[bp]
+		cmp	ax, Q_CIRCLE_SIZE
+		jge	vsl_width5
+		shl	ax, 1
+		mov	si, ax
+		mov	q_circle[si], 0
+		inc	word ptr 4[bp]
+		jmps	vsl_width4
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsl_width5:				; CODE XREF: vsl_width+7Aj
+					; vsl_width+DBj
+		mov	ax, 10[bp]
+		mov	bx, 8[bp]
+		cmp	bx, ax
+		jge	vsl_width8
+		shl	ax, 1
+		mov	si, ax
+		mov	q_circle[si], bx
+		shl	bx, 1
+		mov	ax, 10[bp]
+		mov	q_circle[bx], ax
+		mov	ax, 12[bp]
+		test	ax, ax
+		jns	vsl_width6
+		mov	bx, 8[bp]
+		shl	bx, 1
+		shl	bx, 1
+		add	ax, bx
+		add	ax, 6
+		mov	12[bp], ax
+		jmps	vsl_width7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsl_width6:				; CODE XREF: vsl_width+ABj
+		mov	ax, 10[bp]
+		mov	bx, 8[bp]
+		sub	bx, ax
+		shl	bx, 1
+		shl	bx, 1
+		mov	cx, 12[bp]
+		add	cx, bx
+		add	cx, 0Ah
+		dec	word ptr 10[bp]
+		mov	12[bp], cx
+
+vsl_width7:				; CODE XREF: vsl_width+BCj
+		inc	word ptr 8[bp]
+		jmps	vsl_width5
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsl_width8:				; CODE XREF: vsl_width+93j
+		mov	ax, 8[bp]
+		mov	bx, 10[bp]
+		cmp	bx, ax
+		jnz	vsl_width9
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, 8[bp]
+		mov	q_circle[si], ax
+
+vsl_width9:				; CODE XREF: vsl_width+E5j
+		mov	ax, line_width
+		imul	DEV_TAB+6
+		cwd	
+		idiv	DEV_TAB+8
+		mov	bx, 2
+		cwd	
+		idiv	bx
+		inc	ax
+		xor	bx, bx
+		mov	num_qc_lines, ax
+
+if Y_ASPECT_GREATER
+
+		mov	4[bp],	bx	;for (i = 0;
+		mov	14[bp], bx	;low = 0;
+;
+; for (i = 0; i < num_qc_lines; i++)
+;
+vsl_width10:				; CODE XREF: vsl_width+17Dj
+		mov	ax, 4[bp]
+		mov	bx, num_qc_lines
+		cmp	bx, ax
+		jle	vsl_width13
+;
+; high = ((2 * i) + 1 * ysize / xsize) / 2;
+;
+		shl	ax, 1
+		inc	ax
+		imul	DEV_TAB+8
+		cwd	
+		idiv	DEV_TAB+6
+		mov	bx, 2
+		cwd	
+		idiv	bx
+;
+; d = 0;
+;
+		mov	word ptr 12[bp], 0	
+;
+; for (j = low; j <= high; j++)
+;
+		mov	bx, 14[bp]
+		mov	16[bp], ax
+		mov	6[bp],	bx
+;
+vsl_width11:				; CODE XREF: vsl_width+153j
+		mov	ax, 6[bp]
+		mov	bx, 16[bp]
+		cmp	bx, ax
+		jl	vsl_width12
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, q_circle[si]
+		add	12[bp], ax	;d += q_circle[j];
+		inc	word ptr 6[bp]
+		jmps	vsl_width11
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+;
+vsl_width12:				; CODE XREF: vsl_width+143j
+		mov	ax, 4[bp]
+		shl	ax, 1
+		mov	si, ax		;q_circle[i] =
+		mov	ax, 16[bp]
+		sub	ax, 14[bp]	
+		inc	ax
+		mov	2[bp],	ax
+		mov	ax, 12[bp]	;d / (high - low + 1);
+		mov	bx, 2[bp]
+		cwd	
+		idiv	bx
+		mov	q_circle[si], ax
+		mov	ax, 16[bp]
+		inc	ax
+		mov	14[bp], ax
+		inc	word ptr 4[bp]
+		jmps	vsl_width10
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+else		;Y aspect greater
+;
+; for (i = num_qc_lines - 1; i >= 0; i--)
+;	q_circle[i] = q_circle[2 * i * ysize / xsize + 1) / 2];
+;
+		mov	bx, num_qc_lines
+		dec	bx
+		mov	4[bp], bx
+vsl_width11:	
+		and	bx, bx
+		js	vsl_width13
+
+		mov	ax, 4[bp]	;i
+		shl	ax, 1		;i * 2
+		imul	DEV_TAB+8	;i * 2 * ysize
+		cwd	
+		idiv	DEV_TAB+6	;i * 2 * ysize / xsize
+		inc	ax		;i * 2 * ysize / xsize
+		mov	bx, 2
+		cwd	
+		idiv	bx		;(i * 2 * ysize / xsize) / 2
+		mov	si, ax
+		shl	si, 1	
+		mov	ax, q_circle[si] ; q_circle[(2*i*ysize / xsize +1)/2]
+		mov	di, 4[bp]
+		shl	di, 1		; q_circle[i] = ...
+		mov	q_circle[di], ax	
+		mov	bx, 4[bp]
+		dec	bx
+		mov	4[bp], bx
+		jmps	vsl_width11
+
+endif
+vsl_width13:				; CODE XREF: vsl_width+119j
+		add	sp, 12h
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsl_ends:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, 2
+		mov	bx, INTIN
+		test	bx, bx
+		mov	CONTRL+8, ax
+		mov	line_beg, bx
+		js	vsl_ends1
+		cmp	bx, 2
+		jle	vsl_ends2
+
+vsl_ends1:				; CODE XREF: vsl_ends+16j
+		mov	line_beg, 0
+
+vsl_ends2:				; CODE XREF: vsl_ends+1Bj
+		mov	ax, INTIN+2
+		test	ax, ax
+		mov	line_end, ax
+		js	vsl_ends3
+		cmp	ax, 2
+		jle	vsl_ends4
+
+vsl_ends3:				; CODE XREF: vsl_ends+2Bj
+		mov	line_end, 0
+
+vsl_ends4:				; CODE XREF: vsl_ends+30j
+		mov	ax, line_beg
+		mov	bx, line_end
+		mov	INTOUT,	ax
+		mov	INTOUT+2, bx
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsl_color:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	CONTRL+8, 1
+		mov	ax, INTIN
+		mov	bx, word ptr DEV_TAB + 26
+		cmp	bx,ax
+		mov	line_color, ax
+		jle	vsl_color1
+		test	ax, ax
+		jns	vsl_color2
+
+vsl_color1:				; CODE XREF: vsl_color+15j
+		mov	line_color, 1
+
+vsl_color2:				; CODE XREF: vsl_color+19j
+		mov	ax, line_color
+		mov	line_qc, ax
+		mov	INTOUT,	ax
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, MAP_COL[si]
+		mov	line_color, ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsm_type:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, 1
+		mov	bx, INTIN
+		cmp	bx, 6
+		mov	CONTRL+8, ax
+		mov	mark_qi, bx
+		jg	vsm_type1
+		cmp	bx, 1
+		jge	vsm_type2
+
+vsm_type1:				; CODE XREF: vsm_type+17j
+		mov	mark_qi, 3
+
+vsm_type2:				; CODE XREF: vsm_type+1Cj
+		mov	ax, mark_qi
+		mov	INTOUT,	ax
+
+vsm_type3:				; DATA XREF: chk_esc+19o
+		dec	ax
+		mov	mark_index, ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsm_height:				; DATA XREF: dseg:013Eo
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, SIZ_TAB+12h
+if GSX
+		mov	bx, DEV_TAB + 2
+		inc	bx
+		sub	bx, word ptr PTSIN+2
+		mov	word ptr PTSIN+2, bx
+else
+		mov	bx, word ptr PTSIN+2
+endif
+		cmp	bx, ax
+		jge	vsm_height1
+		mov	word ptr PTSIN+2, ax
+		jmps	vsm_height2
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsm_height1:				; CODE XREF: cseg:042Bj
+		mov	ax, SIZ_TAB+16h
+		mov	bx, word ptr PTSIN+2
+		cmp	bx, ax
+		jle	vsm_height2
+		mov	word ptr PTSIN+2, ax
+
+vsm_height2:				; CODE XREF: cseg:0430j cseg:043Bj
+		mov	ax, word ptr PTSIN+2
+		mov	mark_height, ax
+		mov	ax, SIZ_TAB+12h
+		mov	bx, 2
+		cwd	
+		idiv	bx
+		mov	bx, mark_height
+		add	bx, ax
+		mov	ax, bx
+		cwd	
+		idiv	SIZ_TAB+12h
+		mov	bx, 1
+		mov	mark_scale, ax
+		mov	ax, SIZ_TAB+10h
+		imul	mark_scale
+		mov	word ptr PTSOUT, ax
+		mov	ax, mark_scale
+		imul	SIZ_TAB+12h
+		mov	word ptr PTSOUT+2, ax
+		mov	FLIP_Y, bx
+		mov	CONTRL+4, bx
+		add	sp, 2
+		pop	bp
+		retn	
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsm_color:				; DATA XREF: dseg:0140o
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	CONTRL+8, 1
+		mov	ax, INTIN
+		mov	bx, word ptr DEV_TAB + 26
+		cmp	bx,ax	
+		mov	mark_color, ax
+		jle	vsm_color1
+		test	ax, ax
+		jns	vsm_color2
+
+vsm_color1:				; CODE XREF: cseg:0498j
+		mov	mark_color, 1
+
+vsm_color2:				; CODE XREF: cseg:049Cj
+		mov	ax, mark_color
+		mov	mark_qc, ax
+		mov	INTOUT,	ax
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, MAP_COL[si]
+		mov	mark_color, ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsf_interior:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	CONTRL+8, 1
+		mov	ax, INTIN
+		cmp	ax, 4
+		mov	fill_style, ax
+		jg	vsf_interior1
+		test	ax, ax
+		jns	vsf_interior2
+
+vsf_interior1:				; CODE XREF: vsf_interior+15j
+		mov	fill_style, 0
+
+vsf_interior2:				; CODE XREF: vsf_interior+19j
+		mov	ax, fill_style
+		mov	NEXT_PAT, 0
+		cmp	ax, 4
+		mov	INTOUT,	ax
+		jnz	vsf_interior3
+		mov	ax, udpt_np
+		mov	NEXT_PAT, ax
+
+vsf_interior3:				; CODE XREF: vsf_interior+30j
+		call	st_fl_ptr
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsf_style:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, 1
+		mov	bx, INTIN
+		cmp	fill_style, 2
+		mov	CONTRL+8, ax
+		mov	fill_qi, bx
+		jnz	vsf_style2
+		cmp	bx, 18h
+		jg	vsf_style1
+		cmp	bx, 1
+		jge	vsf_style4
+
+vsf_style1:				; CODE XREF: vsf_style+1Ej
+		mov	fill_qi, 1
+		jmps	vsf_style4
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsf_style2:				; CODE XREF: vsf_style+19j
+		mov	ax, fill_qi
+		cmp	ax, 0Ch
+		jg	vsf_style3
+		cmp	ax, 1
+		jge	vsf_style4
+
+vsf_style3:				; CODE XREF: vsf_style+33j
+		mov	fill_qi, 1
+
+vsf_style4:				; CODE XREF: vsf_style+23j
+					; vsf_style+2Bj ...
+		mov	ax, fill_qi
+		mov	INTOUT,	ax
+		dec	ax
+		mov	fill_index, ax
+		call	st_fl_ptr
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsf_color:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	CONTRL+8, 1
+		mov	ax, INTIN
+		mov	bx, word ptr DEV_TAB + 26
+		cmp	bx, ax
+		mov	fill_color, ax
+		jle	vsf_color1
+		test	ax, ax
+		jns	vsf_color2
+
+vsf_color1:				; CODE XREF: vsf_color+15j
+		mov	fill_color, 1
+
+vsf_color2:				; CODE XREF: vsf_color+19j
+		mov	ax, fill_color
+		mov	fill_qc, ax
+		mov	INTOUT,	ax
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, MAP_COL[si]
+		mov	fill_color, ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vq_color:
+		push	bp
+		mov	bp, sp
+		call	I_COLMAP
+		mov	CONTRL+8, 4
+		mov	CONTRL+4, 0
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+v_locator:
+	if	GSX
+;
+; This is from GEM/1.2
+;
+		push	bp
+		sub	sp, 4
+		mov	bp, sp
+		mov	ax, 1
+		cmp	loca_mode, 0
+		mov	INTIN, ax
+		jnz	v_loc2
+		mov	HIDE_CNT, ax
+		call	DIS_CUR
+v_loc1:		call	GLOC_KEY
+		mov	2[bp], ax
+		dec	ax
+		jnz	v_loc1
+		mov	ax, 1
+		mov	bx, term_ch
+		and	bx, 0FFh
+		mov	cx, X1
+		mov	dx, Y1
+		mov	CONTRL+4, ax
+		mov	CONTRL+8, ax
+		mov	PTSOUT, cx
+		mov	PTSOUT+2, dx
+		mov	INTOUT, bx
+		call	HIDE_CUR
+		jmps	v_loc9
+;
+v_loc2:		call	GLOC_KEY
+		mov	CONTRL+4, 1
+		mov	CONTRL+8, 0
+		mov	2[bp], ax
+		jmps	v_loc8
+;
+v_loc3:		mov	CONTRL+4, 0
+		jmps	v_loc9
+;
+v_loc4:		mov	CONTRL+4, 0
+		mov	CONTRL+8, 1
+		mov	ax, term_ch
+		and	ax, 0FFh
+		mov	INTOUT, ax
+		jmps	v_loc9
+;
+v_loc5:		mov	ax, X1
+		mov	bx, Y1
+		mov	PTSOUT, ax
+		mov	PTSOUT+2, bx
+		jmps	v_loc9
+;
+v_loc6:		mov	CONTRL+8, 1
+		mov	ax, X1
+		mov	bx, Y1
+		mov	PTSOUT, ax
+		mov	PTSOUT+2, bx
+		jmps	v_loc9
+;
+v_loc7		dw	offset v_loc3
+		dw	offset v_loc4
+		dw	offset v_loc5
+		dw	offset v_loc6
+;
+v_loc8:		mov	si, ax
+		cmp	si, 4
+		jnc	v_loc9
+		shl	si, 1
+		jmp	cs:v_loc7[si]
+;
+v_loc9:		mov	ax, DEV_TAB + 2	;Flip Y-coordinate for GSX
+		inc	ax
+		mov	bx, PTSOUT+2
+		sub	ax, bx
+		mov	PTSOUT+2, ax
+		add	sp, 4	
+		pop	bp
+		retn	
+
+
+	else			;GSX
+		push	bp
+		mov	bp, sp
+		pop	bp
+		retn	
+	endif
+
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+		if	not GSX
+v_show_c:				; DATA XREF: dseg:0194o
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		cmp	INTIN, 0
+		jnz	v_show_c1
+		mov	HIDE_CNT, 1
+
+v_show_c1:				; CODE XREF: cseg:05ADj
+		call	DIS_CUR
+		add	sp, 2
+		pop	bp
+		retn	
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+v_hide_c:
+		push	bp
+		mov	bp, sp
+		call	HIDE_CUR
+		pop	bp
+		retn	
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vq_mouse_status:			; DATA XREF: dseg:0198o
+		push	bp
+		mov	bp, sp
+		mov	ax, MOUSE_BT
+		mov	bx, 1
+		mov	cx, gcurx
+		mov	dx, gcury
+		mov	INTOUT,	ax
+		mov	word ptr PTSOUT, cx
+		mov	word ptr PTSOUT+2, dx
+		mov	CONTRL+4, bx
+		mov	CONTRL+8, bx
+		pop	bp
+		retn	
+	endif		;not GSX
+
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+v_valuator:
+		push	bp
+		mov	bp, sp
+		pop	bp
+		retn	
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+v_choice:
+	if	GSX
+		push	bp
+		sub	sp, 4
+		mov	bp, sp
+		cmp	chc_mode, 0
+		jnz	v_chc2
+		mov	CONTRL+8, 1
+v_chc1:		call	GCHC_KEY
+		dec	ax
+		jnz	v_chc1
+		mov	ax, term_ch
+		and	ax, 0FFh
+		mov	INTOUT, ax
+		jmps	v_chc4
+
+v_chc2:		call	GCHC_KEY
+		mov	CONTRL+8, ax
+		mov	2[bp], ax
+		dec	ax
+		jnz	v_chc3
+		mov	ax, term_ch
+		and	ax, 0FFh
+		mov	INTOUT, ax
+v_chc3:		cmp	word ptr 2[bp], 2
+		jnz	v_chc4
+		mov	ax, term_ch
+		and	ax, 0FFh
+		mov	INTOUT+2, ax
+v_chc4:		add	sp, 4
+		pop	bp
+		retn	
+
+	else			;GSX	
+		push	bp
+		mov	bp, sp
+		pop	bp
+		retn	
+	endif
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+v_string:
+		push	bp
+		sub	sp, 0Ch
+		mov	bp, sp
+		mov	word ptr 10[bp], 0FFh
+		mov	ax, INTIN
+		test	ax, ax
+		mov	6[bp],	ax
+		jns	v_string1
+		neg	word ptr 6[bp]
+		mov	word ptr 10[bp], 0FFFFh
+
+v_string1:				; CODE XREF: v_string+13j
+		cmp	str_mode, 0
+		jnz	v_string6
+		xor	ax, ax
+		mov	4[bp],	ax
+		mov	term_ch, ax
+
+v_string2:				; CODE XREF: v_string+60j
+		mov	ax, 4[bp]
+		cmp	ax, 6[bp]
+		jge	v_string4
+		mov	ax, term_ch
+		and	ax, 0FFh
+		cmp	ax, 0Dh
+		jz	v_string4
+
+v_string3:				; CODE XREF: v_string+44j
+		call	GCHR_KEY
+		test	ax, ax
+		jz	v_string3
+		mov	ax, 4[bp]
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, term_ch
+		mov	bx, 10[bp]
+		and	bx, ax
+		mov	INTOUT[si], bx
+		mov	term_ch, bx
+		inc	word ptr 4[bp]
+		jmps	v_string2
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+v_string4:				; CODE XREF: v_string+32j v_string+3Dj
+		mov	ax, term_ch
+		and	ax, 0FFh
+		cmp	ax, 0Dh
+		jnz	v_string5
+		dec	word ptr 4[bp]
+
+v_string5:				; CODE XREF: v_string+6Bj
+		mov	ax, 4[bp]
+		mov	CONTRL+8, ax
+		jmps	v_string9
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+v_string6:				; CODE XREF: v_string+22j
+		mov	word ptr 4[bp], 0
+
+v_string7:				; CODE XREF: v_string+A0j
+		mov	ax, 4[bp]
+		cmp	ax, 6[bp]
+		jge	v_string8
+		call	GCHR_KEY
+		test	ax, ax
+		jz	v_string8
+		mov	ax, 4[bp]
+		inc	word ptr 4[bp]
+		shl	ax, 1
+		mov	si, ax
+		mov	ax, term_ch
+		and	ax, 10[bp]
+		mov	INTOUT[si], ax
+		jmps	v_string7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+v_string8:				; CODE XREF: v_string+83j v_string+8Aj
+		mov	ax, 4[bp]
+		mov	CONTRL+8, ax
+
+v_string9:				; CODE XREF: v_string+76j
+		add	sp, 0Ch
+		pop	bp
+		retn	
+
+
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+		if	not GSX
+vq_key_s:				; DATA XREF: dseg:01A0o
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	CONTRL+8, 1
+		call	GSHIFT_S
+		mov	INTOUT,	ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+		endif
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vswr_mode:
+		push	bp
+		sub	sp, 4
+		mov	bp, sp
+		mov	ax, 1
+		mov	bx, INTIN
+		dec	bx
+		cmp	bx, 3
+		jg	vswr_mode1
+		xor	cx, cx
+		jmps	vswr_mode2
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vswr_mode1:				; CODE XREF: vswr_mode+11j
+		xor	cx, cx
+		inc	cx
+
+vswr_mode2:				; CODE XREF: vswr_mode+15j
+		test	bx, bx
+		js	vswr_mode3
+		xor	dx, dx
+		jmps	vswr_mode4
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vswr_mode3:				; CODE XREF: vswr_mode+1Cj
+		xor	dx, dx
+		inc	dx
+
+vswr_mode4:				; CODE XREF: vswr_mode+20j
+		or	cx, dx
+		mov	CONTRL+8, ax
+		mov	WRT_MODE, bx
+		jz	vswr_mode5
+		mov	WRT_MODE, 0
+
+vswr_mode5:				; CODE XREF: vswr_mode+2Ej
+		mov	ax, WRT_MODE
+		inc	ax
+		mov	write_qm, ax
+		mov	INTOUT,	ax
+		add	sp, 4
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsin_mode:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, 1
+		mov	bx, INTIN+2
+		mov	INTOUT,	bx
+		mov	[bp],	bx
+		dec	bx
+		mov	CONTRL+8, ax
+		mov	[bp],	bx
+		mov	ax, INTIN
+		jmps	vsin_mode6
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsin_mode0:				; CODE XREF: vsin_mode+55u
+		jmps	vsin_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsin_mode1:				; CODE XREF: vsin_mode+55u
+		mov	ax, [bp]
+		mov	loca_mode, ax
+		jmps	vsin_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsin_mode2:				; CODE XREF: vsin_mode+55u
+		mov	ax, [bp]
+		mov	val_mode, ax
+		jmps	vsin_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsin_mode3:				; CODE XREF: vsin_mode+55u
+		mov	ax, [bp]
+		mov	chc_mode, ax
+		jmps	vsin_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsin_mode4:				; CODE XREF: vsin_mode+55u
+		mov	ax, [bp]
+		mov	str_mode, ax
+		jmps	vsin_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+vsin_mode5	dw offset vsin_mode0	; DATA XREF: vsin_mode+55o
+		dw offset vsin_mode1
+		dw offset vsin_mode2
+		dw offset vsin_mode3
+		dw offset vsin_mode4
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsin_mode6:				; CODE XREF: vsin_mode+1Ej
+		mov	si, ax
+		cmp	si, 5
+		jnb	vsin_mode7
+		shl	si, 1
+		jmp	cs:vsin_mode5[si]
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsin_mode7:				; CODE XREF: vsin_mode+20j
+					; vsin_mode+28j ...
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+		if not GSX
+
+vqi_mode:
+		push	bp
+		mov	bp, sp
+		mov	CONTRL+8, 1
+		mov	ax, INTIN
+		jmps	vqi_mode6
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vqi_mode0:				; CODE XREF: vqi_mode+43u
+		jmps	vqi_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vqi_mode1:				; CODE XREF: vqi_mode+43u
+		mov	ax, loca_mode
+		mov	INTOUT,	ax
+		jmps	vqi_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vqi_mode2:				; CODE XREF: vqi_mode+43u
+		mov	ax, val_mode
+		mov	INTOUT,	ax
+		jmps	vqi_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vqi_mode3:				; CODE XREF: vqi_mode+43u
+		mov	ax, chc_mode
+		mov	INTOUT,	ax
+		jmps	vqi_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vqi_mode4:				; CODE XREF: vqi_mode+43u
+		mov	ax, str_mode
+		mov	INTOUT,	ax
+		jmps	vqi_mode7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+vqi_mode5	dw offset vqi_mode0	; DATA XREF: vqi_mode+43o
+		dw offset vqi_mode1
+		dw offset vqi_mode2
+		dw offset vqi_mode3
+		dw offset vqi_mode4
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vqi_mode6:				; CODE XREF: vqi_mode+Cj
+		mov	si, ax
+		cmp	si, 5
+		jnb	vqi_mode7
+		shl	si, 1
+		jmp	cs:vqi_mode5[si]
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vqi_mode7:				; CODE XREF: vqi_mode+Ej vqi_mode+16j
+					; ...
+		pop	bp
+		retn	
+
+
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+v_clsvwk:
+		push	bp
+		mov	bp, sp
+		pop	bp
+		retn	
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+	
+vsf_perimeter:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		cmp	CONTRL+6, 2
+		jnz	vsf_perimeter4
+		mov	ax, INTIN
+		cmp	ax, 0FFFFh
+		jz	vsf_perimeter3
+		test	ax, ax
+		jz	vsf_perimeter1
+		mov	ax, 1
+		jmps	vsf_perimeter2
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsf_perimeter1:				; CODE XREF: vsf_perimeter+17j
+		xor	ax, ax
+
+vsf_perimeter2:				; CODE XREF: vsf_perimeter+1Cj
+		mov	fill_per, ax
+
+vsf_perimeter3:				; CODE XREF: vsf_perimeter+13j
+		mov	ax, INTIN+2
+		mov	fill_qper, ax
+		jmps	vsf_perimeter7
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsf_perimeter4:				; CODE XREF: vsf_perimeter+Bj
+		cmp	INTIN, 0
+		jz	vsf_perimeter5
+		mov	ax, 1
+		jmps	vsf_perimeter6
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+vsf_perimeter5:				; CODE XREF: vsf_perimeter+30j
+		xor	ax, ax
+
+vsf_perimeter6:				; CODE XREF: vsf_perimeter+35j
+		mov	fill_qper, 0
+		mov	fill_per, ax
+
+vsf_perimeter7:				; CODE XREF: vsf_perimeter+29j
+		mov	ax, fill_per
+		mov	CONTRL+8, 1
+		mov	INTOUT,	ax
+		add	sp, 2
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+vsl_udsty:
+		push	bp
+		mov	bp, sp
+		mov	ax, INTIN
+		mov	ud_lstyl, ax
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+s_clip:
+		push	bp
+		sub	sp, 2
+		mov	bp, sp
+		mov	ax, INTIN
+		test	ax, ax
+		mov	CLIP, ax
+		jz	s_clip4
+		mov	ax, 1
+		push	ax
+		mov	ax, offset PTSIN
+		push	ax
+		call	arb_corner
+		mov	sp, bp
+		mov	ax, word ptr PTSIN
+		mov	bx, word ptr PTSIN+2
+		mov	cx, word ptr PTSIN+4
+		mov	dx, word ptr PTSIN+6
+		test	ax, ax
+		mov	XMN_CLIP, ax
+		mov	XMX_CLIP, cx
+		mov	YMX_CLIP, dx
+		mov	YMN_CLIP, bx
+		jns	s_clip1
+		mov	XMN_CLIP, 0
+
+s_clip1:				; CODE XREF: s_clip+3Dj
+		mov	ax, DEV_TAB
+		mov	bx, XMX_CLIP
+		cmp	bx, ax
+		jle	s_clip2
+		mov	XMX_CLIP, ax
+
+s_clip2:				; CODE XREF: s_clip+4Ej
+		mov	ax, YMN_CLIP
+		test	ax, ax
+		jns	s_clip3
+		mov	YMN_CLIP, 0
+
+s_clip3:				; CODE XREF: s_clip+58j
+		mov	ax, DEV_TAB+2
+		mov	bx, YMX_CLIP
+		cmp	bx, ax
+		jle	s_clip5
+		mov	YMX_CLIP, ax
+		jmps	s_clip5
+;ФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФФ
+
+s_clip4:				; CODE XREF: s_clip+Ej
+		xor	ax, ax
+		mov	bx, DEV_TAB
+		mov	cx, DEV_TAB+2
+		mov	XMN_CLIP, ax
+		mov	YMN_CLIP, ax
+		mov	YMX_CLIP, cx
+		mov	XMX_CLIP, bx
+
+s_clip5:				; CODE XREF: s_clip+69j s_clip+6Ej
+		add	sp, 2
+		pop	bp
+		retn	
+
+		endif			; not GSX
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+		
+arb_corner:
+					; ...
+		push	bp
+		sub	sp, 4
+		mov	bp, sp
+		mov	si, 8[bp]
+		mov	ax, [si]
+		mov	bx, 4[si]
+		cmp	bx, ax
+		jge	arb_corner1
+		mov	[si], bx
+		mov	4[si],	ax
+		mov	2[bp],	ax
+
+arb_corner1:				; CODE XREF: arb_corner+10j
+		cmp	word ptr 10[bp], 0
+		jnz	arb_corner2
+		mov	si, 8[bp]
+		mov	ax, 2[si]
+		cmp	ax, 6[si]
+		jl	arb_corner3
+
+arb_corner2:				; CODE XREF: arb_corner+1Ej
+		cmp	word ptr 10[bp], 1
+		jnz	arb_corner4
+		mov	si, 8[bp]
+		mov	ax, 2[si]
+		cmp	ax, 6[si]
+		jle	arb_corner4
+
+arb_corner3:				; CODE XREF: arb_corner+29j
+		mov	si, 8[bp]
+		mov	ax, 2[si]
+		mov	bx, 6[si]
+		mov	2[si],	bx
+		mov	6[si],	ax
+		mov	2[bp],	ax
+
+arb_corner4:				; CODE XREF: arb_corner+2Fj
+					; arb_corner+3Aj
+		add	sp, 4
+		pop	bp
+		retn	
+
+		if not GSX
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+dro_cpyfm:	push	bp
+		mov	bp, sp
+		mov	ax, 1
+		push	ax
+		mov	ax, offset PTSIN
+		push	ax
+		call	arb_corner
+		mov	sp, bp
+		mov	ax, 1
+		push	ax
+		mov	ax, offset PTSIN+8
+		push	ax
+		call	arb_corner
+		mov	sp, bp
+		mov	COPYTRAN, 0
+		call	COPY_RFM
+		pop	bp
+		retn	
+;
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+drt_cpyfm:
+		push	bp
+		mov	bp, sp
+		mov	ax, 1
+		push	ax
+		mov	ax, offset PTSIN
+		push	ax
+		call	arb_corner
+		mov	sp, bp
+		mov	ax, 1
+		push	ax
+		mov	ax, offset PTSIN+8
+		push	ax
+		call	arb_corner
+		mov	sp, bp
+		mov	COPYTRAN, 0FFFFh	
+		call	COPY_RFM
+		pop	bp
+		retn	
+;
+		endif		;not GSX
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+		
+dr_recfl:
+					; DATA XREF: dseg:0184o
+		push	bp
+		mov	bp, sp
+		xor	ax, ax
+		push	ax
+		mov	ax, offset PTSIN
+		push	ax
+		call	arb_corner
+		mov	sp, bp
+		mov	ax, fill_color
+		mov	LSTLIN,	0
+		mov	bx, word ptr PTSIN
+		mov	cx, word ptr PTSIN+4
+		mov	dx, word ptr PTSIN+2
+		mov	FG_BP_1, ax
+		mov	ax, word ptr PTSIN+6
+		mov	Y1, ax
+		mov	X2, cx
+		mov	Y2, dx
+		mov	X1, bx
+		call	RECTFILL
+		pop	bp
+		retn	
+
+		if not GSX
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+r_trnfm:
+		push	bp
+		mov	bp, sp
+		call	TRAN_FM
+		pop	bp
+		retn	
+
+
+
+;лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл
+
+;		S u b r	o u t i	n e
+
+dex_timv:
+		push	bp
+		mov	bp, sp
+		call	ex_timv
+		pop	bp
+		retn	
+		endif		;not GSX
+
+		dseg
+
+line_index	dw 0			; DATA XREF: vsl_type+14w vsl_type+1Ew
+					; ...
+line_color	dw 0			; DATA XREF: vsl_color+12w
+					; vsl_color+1Bw ...
+line_qi		dw 0			; DATA XREF: vsl_type+28w vql_attr+3r
+					; ...
+line_qc		dw 0			; DATA XREF: vsl_color+24w
+					; vql_attr+6r ...
+line_width	dw 0			; DATA XREF: vsl_width+3Ew
+					; vsl_width+52r ...
+line_qw		dw 0			; DATA XREF: vsl_width+3Bw
+					; vql_attr+1Br	...
+line_beg	dw 0			; DATA XREF: vsl_ends+12w vsl_ends+1Dw
+					; ...
+line_end	dw 0			; DATA XREF: vsl_ends+28w vsl_ends+32w
+					; ...
+mark_height	dw 0			; DATA XREF: cseg:0443w cseg:044Fr
+					; ...
+mark_scale	dw 0			; DATA XREF: cseg:045Fw cseg:0465r
+					; ...
+mark_index	dw 0			; DATA XREF: vsm_type+2Bw cseg:0B8Er
+					; ...
+mark_color	dw 0			; DATA XREF: cseg:0495w cseg:049Ew
+					; ...
+mark_qi		dw 0			; DATA XREF: vsm_type+13w vsm_type+1Ew
+					; ...
+mark_qc		dw 0			; DATA XREF: cseg:04A7w vqm_attr+9r
+					; ...
+fill_style	dw 0			; DATA XREF: vsf_interior+12w
+					; vsf_interior+1Bw ...
+fill_index	dw 0			; DATA XREF: vsf_style+47w
+					; st_fl_ptr+24r ...
+fill_color	dw 0			; DATA XREF: vsf_color+12w
+					; vsf_color+1Bw ...
+fill_per	dw 0			; DATA XREF: vsf_perimeter+20w
+					; vsf_perimeter+3Fw ...
+fill_qper	dw 0			; DATA XREF: vsf_perimeter+26w
+					; vsf_perimeter+39w ...
+fill_qi		dw 0			; DATA XREF: vsf_style+15w
+					; vsf_style+25w ...
+bez_flag	dw 0			; DATA XREF: entry+93w	cseg:0A52w
+					; ...
+fill_qc		dw 0			; DATA XREF: vsf_color+24w
+					; vqf_attr+6r ...
+fill_qp		dw 0
+val_mode	dw 0			; DATA XREF: vsin_mode+2Dw
+					; vqi_mode+18r	...
+chc_mode	dw 0			; DATA XREF: vsin_mode+35w
+					; vqi_mode+20r	...
+loca_mode	dw 0			; DATA XREF: vsin_mode+25w
+					; vqi_mode+10r	...
+str_mode	dw 0			; DATA XREF: v_string+1Dr vsin_mode+3Dw
+					; ...
+write_qm	dw 0			; DATA XREF: vswr_mode+3Aw
+					; vql_attr+Ar ...
+num_qc_lines	dw 0			; DATA XREF: vsl_width+107w
+					; vsl_width+113r ...
+
+q_circle	 rw	Q_CIRCLE_SIZE
+
+y		dw 0
+odeltay		dw 0
+deltay		dw 0
+deltay1		dw 0
+deltay2		dw 0
+fill_miny	dw 0			; DATA XREF: plygn_main+27w
+					; plygn_main+44r ...
+fill_maxy	dw 0			; DATA XREF: plygn_main+2Bw
+					; plygn_main+57r ...
+fill_int	dw 0			; DATA XREF: plygn_main+E7w
+					; sub_0_4DAE+6Ew ...
+patptr		dw 0			; DATA XREF: st_fl_ptr+15w
+					; st_fl_ptr+1Ew ...
+patmsk		dw 0			; DATA XREF: st_fl_ptr+6w
+					; st_fl_ptr+30w ...
+xc		dw 0			; DATA XREF: cseg:0CF2w cseg:0D33w
+					; ...
+yc		dw 0			; DATA XREF: cseg:0CF9w cseg:0D3Ew
+					; ...
+xrad		dw 0			; DATA XREF: cseg:0CF5w cseg:0D36w
+					; ...
+yrad		dw 0			; DATA XREF: cseg:0D0Bw cseg:0D3Aw
+					; ...
+del_ang		dw 0			; DATA XREF: cseg:0D12w cseg:0D4Cw
+					; ...
+beg_ang		dw 0			; DATA XREF: cseg:0D05w cseg:0D57w
+					; ...
+end_ang		dw 0			; DATA XREF: cseg:0D0Ew cseg:0D54w
+					; ...
+start		dw 0			; DATA XREF: sub_0_1689+4Dw
+					; sub_0_1689+7Er ...
+angle		dw 0			; DATA XREF: sub_0_1689+50w
+					; sub_0_1689+85w ...
+n_steps		dw 0			; DATA XREF: sub_0_155E+40r
+					; sub_0_155E+4Fw ...
+s_fill_per	dw 0			; DATA XREF: sub_0_1DBF+49w
+					; sub_0_1E1A+13r
+s_patptr	dw 0			; DATA XREF: sub_0_1DBF+4Dw
+					; sub_0_1E1A+17r
+s_patmsk	dw 0			; DATA XREF: sub_0_1DBF+2Fw
+					; sub_0_1E1A+1Er
+s_nxtpat	dw 0			; DATA XREF: sub_0_1DBF+1Ew
+					; sub_0_1E1A+6r
+s_begsty	dw 0			; DATA XREF: wline+52r
+					; wline+25Fr ...
+es_endsty	dw 0			; DATA XREF: wline+1D2r
+					; sub_0_1DBF+46w ...
+
+		end

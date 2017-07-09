@@ -1,0 +1,1655 @@
+;************************************************************************
+;*		HP Laserjet+ 150 x 150 dpi Printer			*
+;************************************************************************
+
+include externs.a86
+
+DGROUP	GROUP	DATA
+		dseg
+
+		public	CONTRL, INTIN, PTSIN, INTOUT, PTSOUT
+
+CONTRL		rw	CONTRL_SIZE
+INTOUT		rw	INTOUT_SIZE
+PTSOUT		rw	PTSOUT_SIZE
+INTIN		rw	INTIN_SIZE
+PTSIN		rw	0
+		db	'GEMVDI 3.0 HP LaserJet Plus 150 dpi Driver 10/1/87'
+		db	'Serial No. XXXX-0000-654321  All Rights Reserved'
+		db	'Copyright (C) 1985-1987 Digital Research Inc.'
+ptsin_end	rw	PTSIN_SIZE + 2 - (ptsin_end - PTSIN)/2
+
+
+CGROUP	GROUP	CODE
+		cseg
+
+		public	finish_window
+		public	set_copies
+		public	init_dev, dini_dev, enter_gr, clearmem, exit_gr
+		public	concat, adv_form, alphaout, scan_out
+		public	set_hv, set_font, tx_out
+		public  draw_rule
+		public	dev_hmi
+		public	set_undl
+		public	dev_rect
+		public	orient, s_orient
+		public	output_digits
+		public	set_page
+		public	ini_page
+		public	etx_out
+		public	line_out, analyze_line, upper_left
+
+		extrn	pout: near, printer_out: near
+		extrn	free_mem: near
+
+		public	ln_bytes
+		public	ln_next
+		public	sc_bytes
+		public	sc_off
+
+; Equates for ASCII characters used in this module.
+CR		equ	0Dh		; ASCII carriage return
+ESC		equ	1Bh		; ASCII escape
+FORM_FEED	equ	0Ch		; ASCII form feed
+LF		equ	0Ah		; ASCII line feed
+
+; The alpha attribute escape character is a DC2.
+ALPHA_ESCAPE	equ	12h
+
+; Device dependent scan size variables:
+; These all get set in set_page() (below) as per requested page size
+ln_bytes	dw	0		; bytes per scan line
+ln_next		dw	0		; bytes to next scan line
+sc_bytes	dw	0		; bytes per slice
+sc_off		dw	0
+
+
+;************************************************************************
+;*  ini_page()								*
+;*	Select paper tray.  The escape causes a FF if received during	*
+;*	formatting of a page, so don't send it if graphics isn't the 	*
+;*	first thing on the page. (Graphics may follow alpha text)	*
+;*	10/20/87 - only called on first page of multipage output	*
+;************************************************************************
+ini_page:
+		cmp	avp, 0
+		jne	ip_end
+		mov	al, '1'			; manual feed selection
+		cmp	tray, -1
+		jne	ip_send			; for any other choice....
+		mov	al, '2'			;  ...give them THE paper tray
+ip_send:
+		mov	tray_value, al
+		mov	si, offset paper_tray
+		call	printer_out
+ip_end:
+		ret
+
+;************************************************************************
+;*	set_page()							*
+;*		Set variables to accomodate requested page size.	*
+;************************************************************************
+set_page:
+		mov	ax, dev_tab
+		inc	ax			; width in pixels
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1			; width in bytes
+		inc	ax
+		and	ax, 0fffeh		; make word boundary
+		mov	ln_bytes, ax		; bytes per line
+		mov	dln_byte, ax		; bytes per line
+		mov	ln_next, ax		; bytes to next line
+		mov	sc_bytes, ax		; bytes in scan line
+		mov	sc_off, ax		; offset to next scan line
+
+; Number of slices that will fit on the page = chosen page size in y direction
+; divided by height of a slice.
+		mov	ax, dev_tab + 2
+		inc	ax
+		xor	dx, dx
+		mov	bx, G_SL_HGT
+		div	bx
+		mov	g_page, ax		; graphics slices per page
+
+; Same for alpha text slices
+		mov	ax, dev_tab + 2	
+		inc	ax		
+		xor	dx, dx		
+		mov	bx, A_SL_HGT	
+		div	bx		
+		mov	a_page, ax		; alpha text slices per page
+
+		ret
+
+;************************************************************************
+;*	s_orient():							*
+;************************************************************************
+s_orient:
+		ret
+
+;************************************************************************
+;*	orient():							*
+;*		Establish the device orientation.			*
+;************************************************************************
+orient:
+		push	bp
+		mov	bp, sp
+		cmp	p_orient, 0
+		je	o_portrait
+		mov	si, offset set_landscape
+		jmps	o_output
+o_portrait:
+		mov	si, offset set_portrait
+o_output:
+		call	printer_out
+		pop	bp
+		ret
+
+;****************************************************************
+;*  status = dev_rect()						*
+;*	Set up the graphics window parameters and return a	*
+;*	status of TRUE.						*
+;*	Called ONCE ONLY, from v_updwk() in jmptbl.c		*	
+;****************************************************************
+dev_rect:
+		push	bp
+
+; Move the clipping boundary parameters to the windowing variables.  Calculate
+; and save the scanning parameters.
+		mov	ax, ymn_rect
+		mov	yw_min, ax
+		mov	ax, ymx_rect
+		mov	yw_max, ax
+		mov	ax, xmn_rect
+		and	ax, 0fff8h		; truncate to nearest byte
+		mov	xw_min, ax
+		mov	scan_xbeg, ax		; save leftmost pixel
+		shr	ax, 1
+		shr	ax, 1
+		shr	ax, 1
+		mov	scan_byte, ax		; save scan starting byte
+		mov	bx, xmx_rect
+		mov	xw_max, bx
+		shr	bx, 1
+		shr	bx, 1
+		shr	bx, 1
+		inc	bx
+		sub	bx, ax
+		mov	scan_width, bx		; save scan width in bytes
+
+; Indicate that a placed graphics window is to be output.
+		mov	ax, 1			; status = TRUE
+		mov	graphic_window, ax
+
+		pop	bp
+		ret
+
+;************************************************************************
+;*	CONCAT								*
+;*		Convert the (x, y) pair passed in (BX, AX) into a	*
+;*		physical address (DI) and bit offset into a byte (BX).	*
+;************************************************************************
+concat:
+		push	ax
+		push	dx
+
+; Calculate the physical address and the bit offset.
+		sub	ax, ys_min		; normalize to start of slice
+		mov	dx, ln_bytes		; dx = bytes/line
+		mul	dx			; ax = bytes for y position
+		mov	di, bx
+		shr	di, 1
+		shr	di, 1
+		shr	di, 1			; adjust x to byte offset
+		add	di, ax			; di = byte offset to (x, y)
+		and	bx, 07h			; bl = bit offset into byte
+
+; Restore and leave.
+		pop	dx
+		pop	ax
+		ret
+
+;************************************************************************
+;*	init_dev()							*
+;*		Output the commands necessary to initialize the		*
+;*		device.							*
+;************************************************************************
+init_dev:
+		mov	si, offset initialize
+		call	printer_out
+
+; Initialize the vertical position variables.
+		xor	ax, ax
+		mov	avp, ax
+		mov	gvp, ax
+		mov	graphic_window, ax
+
+; Initialize set underline state to off.
+		mov	do_under, ax
+		ret
+
+;************************************************************************
+;*  Output a form feed to the device, if necessary.			*
+;*	VOID dini_dev()							*
+;************************************************************************
+dini_dev:
+		mov	ax, 0
+		push	ax		; param = 0 = conditional FF
+		call	adv_form
+		pop	ax
+
+		mov	si, offset def_font
+		call	printer_out
+
+; Release the .cnf file buffer, if it exists.
+		cmp	word ptr cnftop + 2, 0
+		je	end_dini_dev
+		push	word ptr cnftop + 2
+		call	free_mem
+		pop	ax
+
+end_dini_dev:
+		ret
+
+;************************************************************************
+;*	enter_gr()							*
+;*		Output the commands necessary to put the device into	*
+;*		graphics mode.						*
+;************************************************************************
+enter_gr:
+; Depending on whether this is a placed graphics window or not, output the
+; appropriate parameters.
+		cmp	graphic_window, 0
+		je	eg_convert_vp
+		mov	ax, scan_xbeg
+		mov	bx, yw_min
+		jmps	eg_common
+
+; Convert the current alpha vertical position to a graphic vertical position.
+; gvp = (avp * A_SL_HGT) / div_fact  (rounded up to integer)
+eg_convert_vp:
+		mov	ax, avp
+		mov	bx, A_SL_HGT
+		mul	bx
+		mov	bx, div_fact
+		div	bx
+		shl	dx, 1
+		cmp	dx, bx
+		jl	eg_save_gvp
+		inc	ax
+eg_save_gvp:
+		mov	gvp, ax
+		mov	bx, ax
+
+		xor	ax, ax
+		mov	scan_xbeg, ax
+		mov	scan_byte, ax
+
+		mov	dx, ln_bytes
+		mov	scan_width, dx
+
+eg_common:
+		mov	ulx, ax
+		mov	uly, bx
+		call	upper_left
+
+; Output the command to define the resolution.
+		mov	si, offset resolution
+		call	printer_out
+		ret
+
+
+;************************************************************************
+;*	UPPER_LEFT:							*
+;*		ulx = upper left x					*
+;*		uly = upper left y					*
+;************************************************************************
+upper_left:
+		mov	ax, ulx
+		mov	bx, uly
+		cmp	p_orient, 0
+		jne	ul_landscape
+		push	bx
+		push	ax
+		jmps	ul_command
+ul_landscape:
+		push	ax
+		neg	bx
+		add	bx, dev_tab + 2
+		add	bx, QUART_INCH
+		push	bx
+ul_command:
+		mov	si, offset position
+		call	printer_out
+		pop	cx			; cx = upper left x
+		call	deci_points		; output upper left x
+		mov	dl, 'h'			; output command suffix
+		call	pout
+		pop	cx			; cx = upper left y
+		call	deci_points		; output upper left y
+		mov	dl, 'V'			; output command suffix
+		call	pout
+		ret
+
+
+;************************************************************************
+;*	clearmem()							*
+;*		Clear the display list and rasterizing buffer.		*
+;************************************************************************
+clearmem:
+		push	es
+
+; Clear the display list and rasterizing buffer.
+		mov	es, display_list_seg
+		xor	ax, ax			; clear to zeroes
+		mov	di, ax			; es:di -> buffer start
+		mov	cx, buffer_size
+		shr	cx, 1			; cx = buffer length in words
+		rep	stosw
+
+; Restore and exit.
+		pop	es
+		ret
+
+
+;************************************************************************
+;*  adv_form()								*
+;*	Called from 3 places:						*
+;*	    c_escape case 20 (VDI call from the app) in monoprin.c	*
+;*	    v_clrwk() in monout.c - conditionally			*
+;*	    v_clswk() => dinit_g() => dini_dev() => adv_form()		*
+;************************************************************************
+adv_form:
+		push	bp
+		mov	bp, sp
+		mov	bx, 4[bp]
+		cmp	bx, 1
+		je	do_ff			; always form feed
+		mov	ax, avp
+		or	ax, gvp
+		jz	dont_ff			; conditionally form feed
+do_ff:
+		mov	dl, FORM_FEED
+		call	pout			; output a form feed
+		xor	ax, ax
+		mov	avp, ax			; reset alpha vertical pos
+		mov	gvp, ax			; reset graphic vertical pos
+dont_ff:
+		pop	bp
+		ret
+
+;********************************************************
+;*  set_copies()					*
+;*	Called ONCE ONLY from c_escape (case 28) in	*
+;*	monoprin.c					*
+;********************************************************
+set_copies:
+		push	bp
+		mov	bp, sp
+		mov	cx, 4[bp]		; get # copies parameter
+		mov	si, offset pagecount
+		call	printer_out
+		call	output_digits		; cx is input
+		mov	dl, 'X'
+		call	pout
+
+		pop	bp
+		ret
+
+;************************************************************************
+;*	exit_gr()							*
+;*		Output the commands necessary to terminate graphics	*
+;*		mode.							*
+;************************************************************************
+exit_gr:
+; Convert the current graphic vertical position to an alpha vertical position.
+; avp = (gvp * div_fact) / A_SL_HGT (rounded up to integer)
+		mov	ax, gvp
+		mov	bx, div_fact
+		mul	bx
+		mov	bx, A_SL_HGT
+		div	bx
+		cmp	dx, 0
+		je	save_avp
+		inc	ax
+save_avp:
+		mov	avp, ax
+		mov	graphic_window, 0
+		ret
+
+
+;************************************************************************
+;*	ALPHAENV							*
+;*		Verify that the alphanumeric text environment is cor-	*
+;*		rect.  If it is not, output the commands to the printer	*
+;*		to set the correct environment.				*
+;************************************************************************
+alphaenv:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+		push	si
+		push	bp
+
+; Is the attribute environment correct?
+		mov	dl, reqalpha
+		mov	dh, curalpha
+		cmp	dl, dh			; requested same as current?
+		je	end_alphaenv
+
+; The attribute environment is not correct.  Find out which attributes are
+; incorrect and output the appropriate command to set that environment.
+		mov	cx, 8			; cx = number of attributes
+		xor	bx, bx			; bx = command index
+
+alphaenv_loop:
+		mov	bp, dx			; bp = saved attribute info
+		and	dl, 1			; mask next requested attr
+		and	dh, 1			; mask next current attribute
+		cmp	dl, dh			; are they the same?
+		je	next_alphaenv_loop
+
+		push	bx			; save the command index
+		add	bl, dl			; update index with begin/end
+		shl	bl, 1			; bx = offset into word table
+		mov	si, com_addr[bx]	; si -> command string
+		cmp	byte ptr [si], 00h
+		je	no_print		; attribute isn't supported 
+		call	printer_out		; output command string
+no_print:	pop	bx			; restore command index
+
+next_alphaenv_loop:
+		mov	dx, bp			; restore shifted attr info
+		shr	dl, 1			; next requested attribute
+		shr	dh, 1			; next current attribute
+		inc	bx
+		inc	bx			; update command index
+		loop	alphaenv_loop
+
+; Save the new attribute set.
+		mov	al, reqalpha
+		mov	curalpha, al
+
+end_alphaenv:
+		pop	bp
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+;************************************************************************
+;*  Move to the left edge of the page and get printer's default font.	*
+;************************************************************************
+finish_window:
+		call	start_of_line
+
+		mov	si, offset def_font
+		call	printer_out
+
+		ret
+
+;************************************************************************
+;*  Move to the left edge of the page.					*
+;************************************************************************
+start_of_line:
+		push	si
+		push	cx
+		push	dx
+
+		mov	si, offset position
+		call	printer_out
+		mov	cx, 0
+		call	output_digits
+		mov	dl, 'H'
+		call	pout
+
+		pop	dx
+		pop	cx
+		pop	si
+		ret
+
+;************************************************************************
+;*  alphaout()								*
+;*	Output the alpha text string in the INTIN array.  If any alpha	*
+;*	attribute escape sequences are encountered, process them.	*
+;************************************************************************
+alphaout:
+		push	bp
+
+; Make sure that output occurs on a printer character line.
+		call	vertical_position
+
+; Make sure the correct alpha text environment exists on the printer.
+		call	alphaenv
+
+; Get the length of the string and start the output loop.
+		mov	cx, CONTRL + 6		; cx = number of characters
+		mov	si, offset INTIN
+		mov	bp, a_page
+
+alphaout_loop:
+		lodsw				; get the next character
+		cmp	al, ALPHA_ESCAPE
+		jne	not_escape
+		cmp	cx, 1			; any more characters?
+		je	not_escape
+		mov	bl, byte ptr [si]	; check the next character
+		cmp	bl, '9'			; have I got a number?
+		jle	number			; convert to decimal
+		cmp	bl, 'A'			; have I got a letter?
+		jl	bad_escape		; not a number, not a letter
+		sub	bl, 7			; sub 55 to convert letter
+number:		sub	bl, 48			; sub 48 to convert number
+
+		cmp	bl, 0			; should now have a decimal
+		jl	bad_escape		; number between 0 and 35
+		cmp	bl, 35			
+		jg	bad_escape
+		
+		cmp	bl, 16			; ascii G - ascii V are
+		jl	got_escape		; reserved
+		cmp	bl, 32
+		jge	got_escape
+
+bad_escape:
+		dec	cx
+		inc	si
+		inc	si
+		jmp	next_alphaout_loop
+
+; An alpha attribute escape sequence has been found.  Process it.
+got_escape:
+		dec	cx
+		inc	si
+		inc	si
+		xor	bh, bh
+
+		cmp	bl, 32			; check for style setting
+		jl	attrib			; (style = W - Z, or 32 - 35)
+		sub	bl, 32			; calculate style table index
+		shl	bl, 1
+
+		push	si
+		mov	si, styl_addr[bx]	; bx = offset into word table
+		cmp	byte ptr [si], 00h	; check for unsupported style
+		je	no_style
+		call	printer_out
+no_style:	pop 	si
+		jmps	next_alphaout_loop
+
+attrib:		mov	al, alpha_clear[bx]	; al = bit clearing mask
+		and	reqalpha, al		; clear the attribute bit
+		mov	al, alpha_set[bx]	; al = bit setting mask
+		or	reqalpha, al		; set the bit appropriately
+		call	alphaenv
+		jmps	next_alphaout_loop
+
+; Not a special character.  If the character is a formfeed and the vertical
+; position is zero, don't output the character.
+not_escape:
+		cmp	al, FORM_FEED
+		jne	output_character
+		cmp	avp, 0
+		je	next_alphaout_loop
+
+; Going to send the FF character down.
+; Reset the driver's vertical position
+		mov	avp, 0
+		mov	gvp, 0
+
+; Move the printer to the beginning of the line 
+		call	start_of_line
+
+output_character:
+		cmp	al, 32			; map table rang is [32,255]
+		jb	noxlat			; if < 32 then no lookup
+		lea	bx, map_tbl-32		; bx -> base - offset for 32
+		xlat	bx			; run al thru map
+noxlat:
+		mov	dl, al
+		call	pout			; output the character
+
+; Character was a line feed.  Bump the alpha vertical position.  If bump 
+; causes advancement beyond the end of page, reset the vertical position.
+		cmp	al, LF
+		jne	next_alphaout_loop
+		inc	avp
+		cmp	avp, bp
+		jl	next_alphaout_loop
+		mov	avp, 0
+
+; End of the output loop.  Do another, if necessary.
+next_alphaout_loop:
+		dec	cx			
+		je	end_alphaout		
+		jmp	alphaout_loop		
+
+end_alphaout:
+		pop	bp
+		ret
+
+;************************************************************************
+;*  VERTICAL_POSITION							*
+;*	Adjust the position of the print head so that the alpha		*
+;*	text output will occur on the appropriate text line.		*
+;************************************************************************
+vertical_position:
+; If the current alpha cursor position is beyond the end of the page,
+; reset it.
+		mov	ax, avp
+		cmp	ax, a_page
+		jl	position_cursor
+		sub	ax, a_page
+		mov	avp, ax
+
+; Output the command to position the alpha cursor.  The line number must be
+; output as a string of ASCII digits.
+position_cursor:
+		mov	si, offset position
+		call	printer_out
+		mov	cx, ax			; param for output_digits()
+		call	output_digits
+		mov	dl, 'R'			; position at LINE #
+		call	pout
+		ret
+
+
+;************************************************************************
+;*	scan_out()							*
+;*		Output the information in the rasterizing buffer.	*
+;************************************************************************
+scan_out:
+		push	bp
+		push	es
+		cld
+
+; How many lines from the rasterizing buffer really need to be output?
+		mov	ax, yw_max
+		cmp	ys_max, ax		; clip slice to window?
+		jg	so_calc_lines
+		mov	cx, slice_cnt		; cx = scan lines to output
+		jmps	so_parameters
+
+; The rasterizing buffer needs to be clipped to the window.
+so_calc_lines:
+		sub	ax, ys_min
+		inc	ax
+		mov	cx, ax			; cx = scan lines to output
+
+; Set up parameters for the scanning loop.
+so_parameters:
+		mov	di, scan_byte
+		mov	es, graph_plane		; es:di -> rasterizing buffer
+
+; Top of the slice loop.  Output each scan line in the slice.
+so_scanline_loop:
+		push	cx			; save scan line count
+		push	di			; save buffer offset
+		call	line_out		; output the scan line
+		pop	di			; restore buffer offset
+		add	di, sc_bytes		; bump to next scan line
+		inc	uly			; bump to next scan line
+		inc	gvp			; bump vertical position
+		pop	cx			; restore scan line count
+		loop	so_scanline_loop
+
+end_scan_out:
+		pop	es
+		pop	bp
+		ret
+
+;************************************************************************
+;*	line_out()							*
+;*		Encode and output the current scan line.		*
+;*		Inputs:							*
+;*			es:di -> buffer offset				*
+;************************************************************************
+line_out:
+; Scan the line to discard leading white space.
+		push	di			; save starting position
+		xor	al, al			; scan while zeroes
+		mov	cx, scan_width		; cx = search count limit
+		repe	scasb
+		jne	lo_analyze		; found black
+		pop	di
+		jmps	end_line_out		; all white:  skip it
+
+; The beginning of black data has been found.  Analyze the rest of the line.
+lo_analyze:
+		call	analyze_line
+		pop	bp			; restore starting byte
+
+; Output the black runs in the line.
+		mov	si, offset ptsin
+lo_out_loop:
+		lodsw				; ax = x address
+		cmp	ax, 0ffffh		; end of data?
+		je	end_line_out
+		push	si			; save work buffer address
+		push	ax			; save x byte address
+		sub	ax, bp			; subtract line base
+		shl	ax, 1
+		shl	ax, 1
+		shl	ax, 1			; ax = pixel offset
+		add	ax, scan_xbeg		; ax = pixel position
+		mov	ulx, ax
+		mov	cx, [si]		; cx = bytes count
+		push	cx			; save bytes count
+		call	upper_left
+		pop	cx			; restore bytes count
+		mov	si, offset begin_graphics
+		call	printer_out
+
+; Output the graphics transfer command with the appropriate count of bytes.
+; Then output the rasterized bytes.
+		mov	si, offset graphics_out
+		call	printer_out
+		call	output_digits
+		mov	dl, 'W'
+		call	pout
+		pop	si			; restore x byte address
+		call	output_bytes
+		mov	si, offset end_graphics
+		call	printer_out
+
+; Prepare for the next pass.
+		pop	si			; restore work buffer address
+		inc	si
+		inc	si			; next work buffer item
+		jmps	lo_out_loop
+
+end_line_out:
+		ret
+
+
+;************************************************************************
+;*	analyze_line()							*
+;*		Analyze the current scan line, gathering black/white	*
+;*		run information.					*
+;*		Inputs:							*
+;*			es:di -> buffer offset				*
+;*			al = 0						*
+;*			cx = remaining bytes in the line		*
+;************************************************************************
+analyze_line:
+; Save the start of the black data.
+		mov	bx, offset ptsin	; working buffer
+		lea	si, -1[di]		; scasb goes one too far
+		mov	[bx], si
+		inc	bx
+		inc	bx
+
+; Search for the next white byte.
+al_loop:
+		repne	scasb
+		jnz	al_info_gathering_done
+		lea	si, -1[di]		; scasb goes one too far
+		mov	[bx], si		; location of next white byte
+		inc	bx
+		inc	bx
+		jcxz	al_info_gathering_done
+
+; Search for the next black byte.
+		repe	scasb
+		jz	al_info_gathering_done
+		lea	si, -1[di]		; scasb goes one too far
+		mov	[bx], si		; location of next black byte
+		inc	bx
+		inc	bx
+		jcxz	al_info_gathering_done
+		jmps	al_loop
+
+; Information gathering on the line is done.  Append the final position
+; and a null to the working buffer.
+al_info_gathering_done:
+		mov	[bx], di
+		mov	word ptr 2[bx], 0ffffh
+
+; Compress short white runs out of the working buffer.  Any white run which
+; is shorter than eleven bytes is too short.  New working buffer format:
+; <black start position><length><black start position><length>...<FFFF>
+		mov	si, offset ptsin
+		mov	bx, si
+al_compression_outer_loop:
+		mov	cx, [si]		; cx = black anchor position
+		inc	si
+		inc	si			; point to next white
+		cmp	word ptr [si], 0ffffh	; ends immediately?
+		je	al_terminate
+		mov	[bx], cx		; save black anchor position
+
+; Attempt to compress the working buffer.
+al_compression_inner_loop:
+		lodsw				; ax = white position
+		cmp	ax, 0ffffh		; ends with white?
+		je	al_ends_with_white
+		mov	bp, ax			; save "last" white
+		mov	dx, [si]		; dx = next black position
+		cmp	dx, 0ffffh		; ends with black?
+		je	al_ends_with_black
+		sub	dx, ax			; dx = number of white bytes
+		cmp	dx, 11			; compressible white?
+		jge	al_black_run_end
+		inc	si
+		inc	si
+		jmps	al_compression_inner_loop
+
+; The end of a black run has been reached.  Save the length.
+al_black_run_end:
+		sub	ax, cx			; end - anchor
+		mov	2[bx], ax		; save length
+		add	bx, 4			; point to next
+		jmps	al_compression_outer_loop
+
+; The scan line ends after a long white.  Indicate the end of data.
+al_terminate:
+		mov	word ptr [bx], 0ffffh	; mark the end
+		jmps	end_analyze_line
+
+; The scan line ends after a short white.  Save the length and indicate
+; the end of data.
+al_ends_with_white:
+		sub	bp, cx			; last white - anchor
+		mov	2[bx], bp		; save length
+		mov	word ptr 4[bx], 0ffffh	; mark the end
+		jmps	end_analyze_line
+
+; The scan line ends in black.  Save the length and indicate the end of data.
+al_ends_with_black:
+		sub	ax, cx			; end - anchor
+		mov	2[bx], ax		; save length
+		mov	word ptr 4[bx], 0ffffh	; mark the end
+
+end_analyze_line:
+		ret
+
+
+;************************************************************************
+;*	OUTPUT_DIGITS							*
+;*		Convert the number in CX to ASCII digits and output	*
+;*		them to the printer.					*
+;************************************************************************
+output_digits:
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+
+; Convert the number and output the digits.
+		mov	bx, 10
+		mov	ax, cx			; ax = number to convert
+		xor	cx, cx			; cx = recursion counter
+
+push_digits_loop:
+		xor	dx, dx
+		div	bx
+		push	dx			; save remainder
+		inc	cx
+		cmp	ax, 0
+		jnz	push_digits_loop
+		
+pop_digits_loop:
+		pop	ax			; get next digit
+		add	al, '0'			; convert to ASCII digit
+		mov	dl, al
+		call	pout			; output the character
+		loop	pop_digits_loop
+
+; Restore and exit.
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		ret
+
+
+;************************************************************************
+;*	OUTPUT_BYTES							*
+;************************************************************************
+output_bytes:
+		mov	dl, es:[si]		; get the byte to output
+		call	pout			; output it
+		inc	si			; point to next byte
+		loop	output_bytes
+		ret
+
+
+;************************************************************************
+;*	DECI_POINTS:							*
+;*		cx = pixels						*
+;************************************************************************
+deci_points:
+		shl	cx, 1
+		shl	cx, 1			; cx = 4*count
+		mov	ax, cx
+		shl	ax, 1			; ax = 8*count
+		xor	dx, dx
+		mov	bx, 10
+		div	bx
+		add	cx, ax			; cx = integer portion
+		call	output_digits		; output integer portion
+		cmp	dx, 0
+		je	end_deci_points
+		mov	cx, dx
+		mov	dl, '.'
+		call	pout
+		call	output_digits		; output tenths
+end_deci_points:
+		ret
+
+
+;************************************************************************
+;*  VOID draw_rule( w, h, fill_style, fill_index )			*
+;*	Output the rule style.						*
+;************************************************************************
+draw_rule:
+		push	bp
+		mov	bp, sp
+
+; If the rule is white, skip it.
+		cmp	fill_color, 0		; is it white?
+		jne	dr_not_solid_white
+		jmp	end_draw_rul
+dr_not_solid_white:
+
+; If the orientation is landscape, adjust the current position to the left
+; by the width of the rule.
+		cmp	p_orient, 0
+		je	dr_out_command
+		mov	si, offset dposition
+		call	printer_out
+		mov	dl, '-'
+		call	pout
+		mov	cx, 6[bp]
+		shl	cx, 1
+		call	output_digits
+		mov	dl, 'X'
+		call	pout
+
+; Set the rule size.
+dr_out_command:
+		mov	si, offset rulesize	; send the width leadin
+		call	printer_out
+		cmp	p_orient, 0
+		je	dr_xport
+		mov	cx, 6[bp]		; cx = y2 - y1
+		jmps	dr_xout
+dr_xport:
+		mov	cx, 4[bp]		; cx = x2 - x1
+dr_xout:
+		inc	cx			; make it a width 
+		shl	cx, 1			; make it 300 dpi
+		call	output_digits
+		mov	dl, 'A'
+		call	pout
+		mov	si, offset rulesize	; send the height leadin
+		call	printer_out
+		mov	bp, sp
+		cmp	p_orient, 0
+		je	dr_yport
+		mov	cx, 4[bp]		; cx = x2 - x1
+		jmps	dr_yout
+dr_yport:
+		mov	cx, 6[bp]		; cx = y2 - y1
+dr_yout:
+		inc	cx			; make it a width
+		shl	cx, 1			; make it 300 dpi
+		call	output_digits
+		mov	dl, 'B'
+		call	pout
+		mov	bp, sp
+		mov	ax, 8[bp]		; get the style
+		dec	ax
+		jz	draw_solid_rule
+		mov	si, offset rulesize
+		call	printer_out 
+		mov	bp, sp
+		mov	si, 10[bp]		; get the style index
+		dec	si			; make it 0 based
+      		and	si, 7			; make it have eight elements
+		mov	cl, greytable[si]
+		xor	ch, ch
+		call	output_digits
+		mov	dl, 'G'
+		call	pout
+		mov	ax, 2
+draw_solid_rule:
+		push	ax
+		mov	si, offset rulesize
+		call	printer_out		
+		pop	dx
+		add	dl, '0'
+		call	pout
+		mov	dl, 'P'
+		call	pout
+end_draw_rul:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	set_hv()							*
+;*	    Output the current x,y position in printer coords.		*
+;************************************************************************
+set_hv:
+		push	bp
+		mov	si, offset dposition	; send the x leadin
+		call	printer_out
+		mov	bp, sp
+		cmp	p_orient, 0
+		je	sh_xport
+		mov	cx, dev_tab + 2
+		add	cx, QUART_INCH
+		sub	cx, 6[bp]
+		jmps	sh_xout
+sh_xport:
+		mov	cx, 4[bp]
+sh_xout:
+		shl	cx, 1			; make it 300 dpi
+		call	output_digits
+		mov	dl, 'X'
+		call	pout
+		mov	si, offset dposition	; send the y leadin
+		call	printer_out
+		mov	bp, sp
+		cmp	p_orient, 0
+		je	sh_yport
+		mov	cx, 4[bp]
+		jmps	sh_yout
+sh_yport:
+		mov	cx, 6[bp]
+sh_yout:
+		cmp	cx, gvp
+		jb	sh_build_y
+		mov	gvp, cx			; save maximum vertical pos
+sh_build_y:
+		shl	cx, 1			; make it 300 dpi
+		call	output_digits
+		mov	dl, 'Y'
+		call	pout
+
+; If underlining needs to be turned on, do it.
+		cmp	do_under, 0
+		je	end_set_hv
+		mov	si, offset stulon
+		call	printer_out
+
+end_set_hv:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*  Output the current justification value.				*
+;*	VOID dev_hmi(PTSIN[2], width, spaces, sp_width, monosts)	*
+;************************************************************************
+dev_hmi:
+		push	bp
+		mov	bp, sp
+	        mov	ax, 12[bp]		; get the monosts
+		and	ax, ax
+		jz	dev_hmi_prop
+		xor	ax, ax
+		mov	mono_spint, ax
+		mov	mono_sprem, ax
+		inc	ax	
+		mov	mono_pos_delta, ax	; assume the delta will be > 0
+		mov	ax, 4[bp]		; get the req width
+		shl	ax, 1			; make 150 dpi
+		sub	ax, 6[bp]		; find the delta
+		jnc	dev_hmi_mono
+		mov	mono_pos_delta, 0	; delta is less than 0
+		neg	ax
+dev_hmi_mono:
+		mov	bx, 8[bp]		; get the number of spaces
+		and	bx, bx
+		jz	dev_hmi_mono_nospaces
+		xor	dx, dx
+		div	bx			; get the space width int/rem
+		mov	mono_spint, ax
+		mov	mono_sprem, dx
+dev_hmi_mono_nospaces:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*
+;************************************************************************
+dev_hmi_prop:
+		mov	si, offset sthmi	; send the hmi leadin
+		call	printer_out
+		mov	ax, 4[bp]		; get 150 dpi width of line
+		shl	ax, 1			; make it a 300 dpi width
+		mov	bx, 6[bp]		; get 300 dpi width of line
+		xor	si, si
+		sub	ax, bx			; calc delta width for line
+		jnc	dev_hmi_pos
+		neg	ax
+		not	si			; set the negative flag
+dev_hmi_pos:
+		mov	cx, 8[bp]		; get the number of spaces
+		mov	bx, 40			; 120/300 * 100
+		mul	bx			; calculate delta per space
+		and	cx, cx			; are there any?
+		jnz	dev_hmi_calc
+		xor	ax, ax			; set delta width to 0
+		jmps	dev_hmi_calc_done
+dev_hmi_calc: 
+		div	cx
+dev_hmi_calc_done:				; cx = delta width per space
+		mov	cx, ax
+		mov	ax, 10[bp]		; get the actual space width
+		mul	bx			; 120/300 * 100
+		and	si, si			; is this a negative delta?
+		jnz	dev_hmi_neg
+		add	ax, cx
+		jmps	dev_hmi_outdig
+dev_hmi_neg:
+		sub	ax, cx
+		jnc	dev_hmi_outdig
+		mov	ax, bx			; one unit if no space left
+dev_hmi_outdig:
+		push	ax
+		call	bintodec
+		mov	dl, 'H'
+		call	pout
+		pop	ax			; restore delta
+		mov	bx, 40
+		xor	dx, dx
+		div	bx			; back to 300 dpi
+		sub	ax, 10[bp]
+		mov	prop_hmi, ax
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	bintodec:							*
+;*		ax = number to convert					*
+;************************************************************************
+bintodec:
+		mov	si, offset tens_tbl
+		xor	dl, dl			; init the counter
+bintodec_lead_loop:	
+		mov	bx, [si]
+		inc	si
+		inc	si
+		cmp	bx, 10			; time for the decimal point?
+		jz	bintodec_frac_start
+		cmp	ax, bx			; if number >= tens digit
+		jc	bintodec_lead_loop
+bintodec_int_loop:
+		cmp	ax, bx			; if number >= tens digit
+		jc	bintodec_int_next
+		inc	dl
+		sub	ax, bx
+		jmps	bintodec_int_loop
+bintodec_int_next:
+		add	dl, '0'			; make it a digit
+		push	ax
+		push	si
+		call	pout
+		pop	si
+		pop	ax
+		mov	bx, [si]
+		inc	si
+		inc	si
+		xor	dl, dl
+		cmp	bx, 10			; time for the decimal point?
+		jnz	bintodec_int_loop
+bintodec_frac_start:
+		push	ax
+		push	dx
+		push	si
+		mov	dl, '.'
+		call	pout
+		pop	si
+		pop	dx
+		pop	ax
+bintodec_frac_loop:		
+		cmp	ax, bx			; if number >= tens digit
+		jc	bintodec_frac_next
+		inc	dl
+		sub	ax, bx
+		jmps	bintodec_frac_loop
+bintodec_frac_next:
+		add	dl, '0'			; make it a digit
+		push	ax
+		push	si
+		call	pout
+		pop	si
+		pop	ax
+		mov	bx, [si]
+		inc	si
+		inc	si
+		xor	dl, dl
+		and	bx, bx			; is it time to exit?
+		jnz	bintodec_frac_loop
+		ret
+
+
+;************************************************************************
+;*	set_undl( STYLE & UNDER )					*
+;*		Set the under line status				*
+;************************************************************************
+set_undl:
+		push	bp
+		mov	bp, sp
+		mov	ax, 4[bp]		; get the status
+		mov	do_under, ax
+		and	ax, ax			; if 0 then turn off
+		jnz	end_set_undl		; postpone turning on
+		mov	si, offset stuloff
+		call	printer_out
+end_set_undl:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	set_font( &curfont->esc_seq )					*
+;*		Output the esc seq string				*
+;************************************************************************
+set_font:
+		push	bp
+		mov	bp, sp
+		les	si, 4[bp]
+		inc	si
+set_font_loop:
+		mov	dl, es:[si]		; fetch the char
+		and	dl, dl
+		jz	set_font_done
+		inc	si
+		push	si
+		push	es
+		call	pout
+		pop	es
+		pop	si
+		jmps	set_font_loop
+set_font_done:
+		pop	bp
+		ret
+
+
+;************************************************************************
+;*	etx_out(x, y, character)					*
+;*		Output the character at the indicated location.		*
+;************************************************************************
+etx_out:
+		push	bp
+		mov	bp, sp
+
+; Perform x positioning, if necessary.
+		cmp	p_orient, 0
+		je	eo_xport
+		mov	cx, dev_tab + 2
+		add	cx, QUART_INCH
+		shl	cx, 1			; make 300 dpi
+		sub	cx, 6[bp]
+		jmps	eo_xout
+eo_xport:
+		mov	cx, 4[bp]
+eo_xout:
+		cmp	cx, etx_x		; need to change?
+		je	eo_check_y
+		mov	etx_x, cx		; save new position
+		mov	si, offset dposition
+		call	printer_out
+		call	output_digits
+		mov	dl, 'X'
+		call	pout
+
+; Perform y positioning, if necessary.
+eo_check_y:
+		cmp	p_orient, 0
+		je	eo_yport
+		mov	cx, 4[bp]
+		jmps	eo_yout
+eo_yport:
+		mov	cx, 6[bp]
+eo_yout:
+		cmp	cx, etx_y		; need to change?
+		je	eo_map
+		mov	etx_y, cx		; save new position
+		mov	si, offset dposition
+		call	printer_out
+		call	output_digits
+		mov	dl, 'Y'
+		call	pout
+
+; Map the character.
+eo_map:
+		mov	dx, 8[bp]		; dl = character
+		les	si, dv_map		; es:si -> map
+		sub	dx, 32
+		jle	map_etx
+		add	si, dx
+map_etx:
+		mov	dl, es:[si]		; dl = mapped character
+
+; Send the character.
+eo_send:
+		call	pout
+
+end_etx_out:
+		pop	bp
+		ret
+
+;************************************************************************
+;*	WORD extra = tx_out(*ptxtptr, monosts)				*
+;*	WORD *ptxtptr							*
+;*	BOOLEAN monosts							*
+;*  On entry, GLOBAL dv_map must point to the mapping table to be used.	*
+;************************************************************************
+tx_out:
+		push	bp
+		mov	bp, sp
+		mov	dx, 4[bp]		; character to output
+		push	dx
+
+; Map the character.
+		les	si, dv_map
+		sub	dx, 32
+	 	jle	map_tx
+		add	si, dx
+map_tx:
+		mov	dl, es:[si]
+
+; Send the character.
+to_output:
+		call	pout
+		pop	dx
+		xor	ax, ax			; assume not space:  return 0
+		cmp	dl, 32			; was this a space?
+		jnz	text_out_notspace
+		mov	ax, 6[bp]		; is this monospaced?
+		and	ax, ax
+		jz	to_prop_space
+		mov	ax, mono_spint
+		cmp	mono_sprem, 0
+		jz	text_out_monospaced
+		inc	ax
+		dec	mono_sprem
+text_out_monospaced:
+		and	ax, ax			; is any motion required?
+		jnz	mono_rel_move
+text_out_notspace:
+		pop	bp
+		ret
+to_prop_space:
+		mov	ax, prop_hmi
+		pop	bp
+		ret
+mono_rel_move:
+		push	ax			; save the value
+		mov	si, offset dposition	; send the x leadin
+		call	printer_out
+		mov	dl, 43			; assume positive motion
+		cmp	mono_pos_delta, 0
+		jnz	mono_rel_move_pos
+		mov	dl, 45
+mono_rel_move_pos:
+		call	pout	
+		pop	cx
+		push	cx
+		call	output_digits
+		mov	dl, 'X'
+		call	pout
+		pop	ax			; return width
+		pop	bp
+		ret
+
+;------------------------------------------------------------------------
+include devind.a86
+include devdata.a86
+
+		dseg
+
+		public	map_col, term_ch, map_tbl, fwmap_tbl, dln_byte
+		public	etx_x, etx_y
+		public	gvp
+
+		extrn	buffer_size:word, display_list_seg:word
+		extrn	xw_min:word, xw_max:word, yw_max:word, yw_min:word
+		extrn	xmn_rect:word, xmx_rect:word
+		extrn	ymn_rect:word, ymx_rect:word
+		extrn	p_orient:word, tray:word
+		extrn	dv_map:dword
+		extrn	cnftop:dword
+		extrn	fill_color:word
+
+do_under	dw	0
+graphic_window	dw	0
+scan_xbeg	rw	1
+scan_byte	rw	1
+scan_width	rw	1
+ulx		rw	1
+uly		rw	1
+
+tens_tbl	dw	10000, 1000, 100, 10, 1, 0
+mono_spint	dw	0
+mono_sprem	dw	0
+mono_pos_delta	dw	0
+prop_hmi	rw	1
+
+greytable	db	2, 10, 15, 30, 45, 70, 90, 100
+
+etx_x		rw	1
+etx_y		rw	1
+
+;********************************************************
+;* Copy of code segment variable for use in image.c	*
+;********************************************************
+dln_byte	dw	0
+
+;************************
+;*   Printer commands	*
+;************************
+pagecount	db	end_pc - bg_pc		     ; Select number of copies
+bg_pc		db	ESC, '&l'		     ; &l#X
+end_pc		rb	0
+
+paper_tray	db	end_pt - bg_pt			; Select paper tray
+bg_pt		db	ESC, '&l'			; &l#H
+tray_value	db	'?H'
+end_pt		rb	0
+
+stulon		db	end_stulon - bg_stulon		; Underline on
+bg_stulon	db	ESC, '&dD'
+end_stulon	rb	0
+
+stuloff		db	end_stuloff - bg_stuloff	; Underline off
+bg_stuloff	db	ESC, '&d@'
+end_stuloff	rb	0
+
+sthmi		db	end_sthmi - bg_sthmi	     ; Horizontal motion index
+bg_sthmi	db	ESC, '&k'		     ; &k#H
+end_sthmi	rb	0
+
+rulesize	db	end_rulsiz - bg_rulsiz	     ; print rule/pattern size
+bg_rulsiz	db	ESC, '*c'		     ; *c#P
+end_rulsiz	rb	0
+
+begin_graphics	db	end_bg_com - bg_com
+bg_com		db	ESC, '*r1A'
+end_bg_com	rb	0
+
+end_graphics	db	end_eg_com - eg_com
+eg_com		db	ESC, '*rB'
+		db	ESC, '&a0C'		    ; after graphics move left
+end_eg_com	rb	0
+
+graphics_out	db	end_go_com - go_com
+go_com		db	ESC, '*b'
+end_go_com	rb	0
+
+initialize	db	end_ini_com - ini_com
+ini_com		db	ESC, 'E'			; reset printer
+		db	ESC, '(8U'			; Roman character set
+end_ini_com	rb	0
+
+def_font	db	end_df_com - df_com
+df_com		db	ESC, '&lO'			; portrait orientation
+		db	ESC, '(8U'			; Roman character set
+		db	ESC, '(sp10h12vsb3T'		; default font
+end_df_com	rb	0
+
+resolution	db	end_res_com - res_com
+res_com		db	ESC, '*t150R'
+end_res_com	rb	0
+
+set_landscape	db	end_sl_com - sl_com
+sl_com		db	ESC, '&l1o8d2e6d48F'
+end_sl_com	rb	0
+
+set_portrait	db	end_sp_com - sp_com
+sp_com		db	ESC, '&lO'
+end_sp_com	rb	0
+
+position	db	end_p_com - p_com		; lines - &a#R
+p_com		db	ESC, '&a'			; decipoints - &a#H#V
+end_p_com	rb	0
+
+dposition	db	end_dpos - d_pos	; horiz. & vert. cursor MOVES
+d_pos		db	ESC, '*p'		; in dots
+end_dpos	rb	0			; *p#Y
+
+
+; Global device dependent variables.
+term_ch		dw	0
+map_col		dw	0			; black
+		dw	1			; white
+
+;************************
+;*  Alpha text locals.	*
+;************************
+; alpha text attribute bit clearing/setting mask table.
+alpha_clear	db	0ffh, 0feh
+		db	0ffh, 0fdh
+		db	0ffh, 0fbh
+		db	0ffh, 0f7h
+		db	0ffh, 0efh
+		db	0ffh, 0dfh
+		db	0ffh, 0bfh
+		db	0ffh, 07fh
+alpha_set	db	01h, 0
+		db	02h, 0
+		db	04h, 0
+		db	08h, 0
+		db	10h, 0
+		db	20h, 0
+		db	40h, 0
+		db	80h, 0
+
+; Pointer table for printer commands.
+com_addr	dw	end_bold
+		dw	begin_bold
+		dw	end_italic
+		dw	begin_italic
+		dw	end_under
+		dw	begin_under
+		dw	end_super
+		dw	begin_super
+		dw	end_sub
+		dw	begin_sub
+		dw	end_lq
+		dw	begin_lq
+		dw	end_expand
+		dw	begin_expand
+		dw	end_light
+		dw	begin_light
+
+styl_addr	dw	set_pica
+		dw	set_elite
+		dw	set_cmpres
+		dw	set_propor
+
+; Printer attribute commands (length, command string).
+end_bold	db	5, ESC, '(s0B'
+begin_bold	db	5, ESC, '(s3B'
+end_italic	db	5, ESC, '(s0S'
+begin_italic	db	5, ESC, '(s1S'
+end_under	db	4, ESC, '&d@'
+begin_under	db	4, ESC, '&dD'
+end_super	db	7, ESC, '&a+50V'
+begin_super	db	7, ESC, '&a-50V'
+end_sub		db	7, ESC, '&a-50V'
+begin_sub	db	7, ESC, '&a+50V'
+end_lq		db	0
+begin_lq	db	0
+end_expand	db	0
+begin_expand	db	0
+end_light	db	5, ESC, '(s0B'
+begin_light	db	6, ESC, '(s-3B'
+
+set_pica	db	11, ESC, '(s0P', ESC, '(s10H'
+set_elite	db	11, ESC, '(s0P', ESC, '(s12H'
+set_cmpres	db	14, ESC, '(s0P', ESC, '(s16.66H'
+set_propor	db	5, ESC, '(s1P'
+
+map_tbl		db	 32,  33,  34,  35,  36,  37,  38,  39
+		db	 40,  41,  42,  43,  44,  45,  46,  47
+		db	 48,  49,  50,  51,  52,  53,  54,  55
+		db	 56,  57,  58,  59,  60,  61,  62,  63
+		db	 64,  65,  66,  67,  68,  69,  70,  71
+		db	 72,  73,  74,  75,  76,  77,  78,  79
+		db	 80,  81,  82,  83,  84,  85,  86,  87
+		db	 88,  89,  90,  91,  92,  93,  94,  95
+		db	 96,  97,  98,  99, 100, 101, 102, 103
+		db	104, 105, 106, 107, 108, 109, 110, 111
+		db	112, 113, 114, 115, 116, 117, 118, 119
+		db	120, 121, 122, 123, 124, 125, 126, 127
+		db	180, 207, 197, 192, 204, 200, 212, 181
+		db	193, 205, 201, 221, 209, 217, 216, 208
+		db	220, 215, 211, 194, 206, 202, 195, 203
+		db	239, 218, 219, 214, 187, 210, 186, 190
+		db	196, 213, 198, 199, 183, 182, 249, 250
+		db	185,  34,  34,  60,  62, 184, 251, 253
+		db	226, 234, 188, 191,  32,  32, 161, 225
+		db	233, 189,  32,  32,  32,  32,  32,  32
+		db	 32,  32,  32,  32, 246, 246, 179, 224
+		db	162, 163, 164, 165, 230, 229, 166, 167
+		db	232, 231, 223, 235, 236, 173, 237, 174
+		db	238, 222,  32,  32,  32,  32,  32,  32
+		db	 32, 222,  32,  32,  32,  32,  32,  32
+		db	 32,  32,  32,  32,  32,  32,  32,  32
+		db	 32,  32,  32,  32,  32,  32,  32,  32
+		db	 32,  32,  32,  32,  32,  32,  32,  32
+
+
+fwmap_tbl	db	 32,  33,  34,  35,  36,  37,  38,  39
+		db	 40,  41,  42,  43,  44,  45,  46,  47
+		db	 48,  49,  50,  51,  52,  53,  54,  55
+		db	 56,  57,  58,  59,  60,  61,  62,  63
+		db	 64,  65,  66,  67,  68,  69,  70,  71
+		db	 72,  73,  74,  75,  76,  77,  78,  79
+		db	 80,  81,  82,  83,  84,  85,  86,  87
+		db	 88,  89,  90,  91,  92,  93,  94,  95
+		db	 96,  97,  98,  99, 100, 101, 102, 103
+		db	104, 105, 106, 107, 108, 109, 110, 111
+		db	112, 113, 114, 115, 116, 117, 118, 119
+		db	120, 121, 122, 123, 124, 125, 126, 127
+		db	180, 207, 197, 192, 204, 200, 212, 181
+		db	193, 205, 201, 221, 209, 217, 216, 208
+		db	220, 215, 211, 194, 206, 202, 195, 203
+		db	239, 218, 219, 214, 187, 210, 186, 190
+		db	196, 213, 198, 199, 183, 182, 249, 250
+		db	185, 177, 178, 171, 172, 184, 251, 253
+		db	226, 234, 188, 191, 241, 240, 161, 225
+		db	233, 189, 244, 243, 242, 168, 169, 170
+		db	160, 255, 176, 252, 246, 245, 179, 224
+		db	162, 163, 164, 165, 230, 229, 166, 167
+		db	232, 231, 223, 235, 236, 173, 237, 174
+		db	238, 222,  32,  32,  32,  32,  32,  32
+		db	 32, 222,  32,  32,  32,  32,  32,  32
+		db	 32,  32,  32,  32,  32,  32,  32,  32
+		db	 32,  32,  32,  32,  32,  32,  32,  32
+		db	 32,  32,  32,  32,  32,  32,  32,  32
+
+
+		end
