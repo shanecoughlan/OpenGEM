@@ -3,7 +3,7 @@ CLS
 
 REM  OpenGEM SETUP Release 6
 REM  Copyright (C) 2001-2017  Shane Coughlan
-REM  http://gem.opendawn.com email: shane@opendawn.com
+REM  http://gem.opendawn.com email: shane at opendawn.com
 
 :CHOOSE
 REM Chose what device you want to setup
@@ -42,7 +42,7 @@ CLS
 :1
 ECHO OFF
 REM Change the video driver
-CD GEMAPPS\GEMSYS\SETUP
+CD SETUP
 VIDEO
 GOTO CHOOSE
 CLS
@@ -51,7 +51,7 @@ CLS
 ECHO OFF
 CLS
 REM Change the sound driver
-CD GEMAPPS\GEMSYS\SETUP
+CD SETUP
 SOUND
 GOTO CHOOSE
 CLS
@@ -60,7 +60,7 @@ CLS
 ECHO OFF
 CLS
 REM Change the printer driver
-CD GEMAPPS\GEMSYS\SETUP
+CD SETUP
 PRINTER
 GOTO CHOOSE
 CLS
@@ -69,7 +69,7 @@ CLS
 ECHO OFF
 CLS
 REM Repair OpenGEM
-CD GEMAPPS\GEMSYS\SETUP
+CD SETUP
 REPAIR
 GOTO CHOOSE
 CLS
@@ -103,6 +103,7 @@ CLS
 
 :6
 REM Exit OpenGEM SETUP
+:END
 CD\
 ECHO               **************************************************
 ECHO               *       Thank you for using OpenGEM Setup        *
